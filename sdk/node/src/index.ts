@@ -83,6 +83,12 @@ export {
   ToolsPolicyOptions,
 } from './policy.js';
 
+// Export experimental config-floor lookup.
+export {
+  getSandboxConfigForTool,
+  ResolveContext,
+} from './config-floors.js';
+
 // Export typed wire-format errors.
 //
 // `WireError` and `mxcErrorFromEnvelope` are deliberately NOT re-exported:
