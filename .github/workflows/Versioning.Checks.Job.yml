@@ -67,3 +67,6 @@ jobs:
 
       - name: Validate config corpus against dev schema
         run: node scripts/versioning/validate-configs.js
+
+      - name: Validate sandbox config floor catalog
+        run: node scripts/versioning/validate-config-floors.js

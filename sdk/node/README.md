@@ -197,6 +197,25 @@ child.stderr!.on('data', (d) => process.stderr.write(d));
 child.on('close', (code) => console.log('exit:', code));
 ```
 
+### Experimental config floors
+
+`getSandboxConfigForTool()` is an experimental proof of concept for resolving a
+small, repository-reviewed catalog of minimum tool requirements:
+
+```typescript
+import { getSandboxConfigForTool } from '@microsoft/mxc-sdk';
+
+const floor = getSandboxConfigForTool(['npm'], { projectRoot: process.cwd() });
+```
+
+The result is an existing `SandboxPolicy` with machine-specific symbols already
+resolved. `undefined` means that every requested tool is unknown. A floor is
+compatibility input, **not authorization**: invocation-name matching is not a
+security identity boundary, and the resolver never reads or changes the host's
+policy. The host remains responsible for deciding whether and how to compose
+requirements with its own policy and hard OS, enterprise, and device constraints.
+See [the proof-of-concept design notes](../../docs/sandbox-config-floors-poc.md).
+
 ### 2. `spawnSandbox(script, policy, ...)` — convenience
 
 Quick path for **process-isolation only** (`processcontainer` on Windows, `lxc` on Linux, `seatbelt` on macOS). Returns a `node-pty` `IPty` with merged stdout/stderr.

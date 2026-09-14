@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "1",
+  "entries": [
+    {
+      "tool": "git",
+      "description": "Git needs read-write access to the repository it operates on.",
+      "identity": [
+        {
+          "kind": "invocation-name",
+          "names": ["git", "git.exe"]
+        }
+      ],
+      "sandboxPolicy": {
+        "version": "0.8.0-alpha",
+        "filesystem": {
+          "readonlyPaths": ["${git_prefix}"],
+          "readwritePaths": ["${project_root}"]
+        }
+      }
+    },
+    {
+      "tool": "node",
+      "description": "Node.js needs read access to scripts and modules in the project.",
+      "identity": [
+        {
+          "kind": "invocation-name",
+          "names": ["node", "node.exe"]
+        }
+      ],
+      "sandboxPolicy": {
+        "version": "0.8.0-alpha",
+        "filesystem": {
+          "readonlyPaths": ["${node_prefix}", "${project_root}"]
+        }
+      }
+    },
+    {
+      "tool": "npm",
+      "description": "npm needs Node.js, project writes, its cache, and its configured registry.",
+      "identity": [
+        {
+          "kind": "invocation-name",
+          "names": ["npm", "npm.cmd", "npx", "npx.cmd"]
+        }
+      ],
+      "requires": ["node"],
+      "sandboxPolicy": {
+        "version": "0.8.0-alpha",
+        "filesystem": {
+          "readonlyPaths": ["${npm_prefix}"],
+          "readwritePaths": ["${project_root}", "${npm_cache}"]
+        },
+        "network": {
+          "allowOutbound": true,
+          "allowedHosts": ["${npm_registry_host}"]
+        }
+      }
+    }
+  ]
+}
