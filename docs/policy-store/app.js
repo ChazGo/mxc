@@ -39,17 +39,17 @@ const details = {
     ],
   },
   preset: {
-    number: "Opt-out",
+    number: "Fallback",
     owner: "OpenClaw owned",
     heading: "Use default MXC preset",
     summary:
-      "When automatic floor retrieval is disabled, OpenClaw applies the default tool policy selected in the MXC plugin directly to policy composition. It does not store that preset as the tool's floor.",
+      "OpenClaw applies the default tool policy selected in the MXC plugin when automatic retrieval is disabled or when MXC returns undefined because the catalog has no floor for the tool. The preset is not stored as the tool's floor.",
     code: "selected default preset",
     items: [
       "Current proposed presets are Locked Down, Recommended, and Unprotected",
       "Recommended is the proposed default preset",
       "The preset is evaluated per invocation and is not written to the per-tool store",
-      "Re-enabling retrieval later still produces a fresh MXC catalog lookup",
+      "A later invocation can retry catalog retrieval and store a newly available floor",
     ],
   },
   stored: {
@@ -118,16 +118,29 @@ const details = {
     ],
   },
   persist: {
-    number: "3B",
+    number: "3D",
     owner: "OpenClaw owned",
     heading: "Store floor by tool",
     summary:
-      "OpenClaw stores a returned floor under the requested tool's record. If MXC returns undefined, OpenClaw keeps its application baseline rather than inventing an empty floor.",
+      "OpenClaw stores a returned SandboxPolicy under the requested tool's record. Undefined never enters this path and is never represented as an empty or default stored floor.",
     code: "policyStore.set(toolId, returnedFloor)",
     items: [
       "No combined multi-tool floor is stored",
       "Mutable user and learned changes remain consumer-owned layers",
       "The stored record then converges into the same composition path as a cache hit",
+    ],
+  },
+  "floor-result": {
+    number: "3C",
+    owner: "OpenClaw owned",
+    heading: "Floor returned?",
+    summary:
+      "OpenClaw branches on the MXC API result. A SandboxPolicy is stored for that tool. Undefined means the catalog has no matching floor, so OpenClaw uses its selected default MXC preset without persisting it as a tool floor.",
+    code: "result === undefined ? preset : store(result)",
+    items: [
+      "SandboxPolicy flows to per-tool storage",
+      "Undefined flows to the default-preset fallback",
+      "Both branches converge at effective-policy composition",
     ],
   },
   consumer: {

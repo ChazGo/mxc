@@ -86,14 +86,15 @@
         </div>
 
         <div class="architecture-diagram" aria-label="OpenClaw and MXC policy lookup flow">
-          <svg class="flow-svg" viewBox="0 0 1720 810" role="img" aria-labelledby="flow-title flow-description">
+          <svg class="flow-svg" viewBox="0 0 1900 810" role="img" aria-labelledby="flow-title flow-description">
             <title id="flow-title">OpenClaw per-tool policy lookup and MXC sandbox creation flow</title>
             <desc id="flow-description">
               OpenClaw checks for a stored per-tool floor. On a miss, it checks
               whether automatic floor retrieval is enabled. The default enabled
               path calls the MXC Sandbox Config Floors API, which reads and
-              resolves the catalog. The opt-out path uses OpenClaw's selected
-              default MXC preset. Both paths compose policy, apply hard constraints,
+              resolves the catalog. A returned floor is stored per tool. An
+              undefined result and the opt-out path both use OpenClaw's selected
+              default MXC preset. All paths compose policy, apply hard constraints,
               and create the final MXC sandbox.
             </desc>
             <defs>
@@ -102,24 +103,27 @@
               </marker>
             </defs>
 
-            <rect class="flow-lane openclaw-lane" x="20" y="45" width="1680" height="400" rx="22"></rect>
-            <rect class="flow-lane mxc-lane" x="20" y="500" width="1680" height="260" rx="22"></rect>
+            <rect class="flow-lane openclaw-lane" x="20" y="45" width="1860" height="400" rx="22"></rect>
+            <rect class="flow-lane mxc-lane" x="20" y="500" width="1860" height="260" rx="22"></rect>
             <text class="lane-title" x="48" y="82">OPENCLAW - WRITABLE PER-TOOL POLICY, APPROVAL, AND UX</text>
             <text class="lane-title" x="48" y="537">MXC - READ-ONLY CATALOG AND SDK RESOLUTION</text>
 
             <path class="flow-arrow" d="M250 190 H315"></path>
             <path class="flow-arrow" d="M485 190 H550"></path>
-            <path class="flow-arrow" d="M750 190 H1110"></path>
+            <path class="flow-arrow" d="M750 190 V95 H1380 V125"></path>
             <path class="flow-arrow" d="M400 265 V290"></path>
             <path class="flow-arrow" d="M400 420 V560"></path>
             <path class="flow-arrow" d="M490 355 H550"></path>
-            <path class="flow-arrow" d="M760 365 H1210 V255"></path>
+            <path class="flow-arrow" d="M760 355 H880"></path>
+            <path class="flow-arrow" d="M970 290 V270 H1145 V255"></path>
+            <path class="flow-arrow" d="M880 355 H760"></path>
+            <path class="flow-arrow" d="M655 295 V270 H1380 V255"></path>
             <path class="flow-arrow" d="M510 620 H605"></path>
             <path class="flow-arrow" d="M805 620 H900"></path>
-            <path class="flow-arrow" d="M1120 620 V410 H965 V350"></path>
-            <path class="flow-arrow" d="M1065 285 L1110 230"></path>
-            <path class="flow-arrow" d="M1310 190 H1360"></path>
-            <path class="flow-arrow" d="M1510 190 H1550"></path>
+            <path class="flow-arrow" d="M1010 560 V420"></path>
+            <path class="flow-arrow" d="M1240 190 H1280"></path>
+            <path class="flow-arrow" d="M1480 190 H1530"></path>
+            <path class="flow-arrow" d="M1680 190 H1720"></path>
 
             <g class="arrow-tag" transform="translate(495 154)">
               <rect width="48" height="28" rx="14"></rect>
@@ -133,12 +137,20 @@
               <rect width="42" height="28" rx="14"></rect>
               <text x="21" y="19">NO</text>
             </g>
+            <g class="arrow-tag" transform="translate(1040 263)">
+              <rect width="48" height="28" rx="14"></rect>
+              <text x="24" y="19">YES</text>
+            </g>
+            <g class="arrow-tag" transform="translate(790 318)">
+              <rect width="90" height="28" rx="14"></rect>
+              <text x="45" y="19">UNDEFINED</text>
+            </g>
             <g class="message-tag" transform="translate(250 452)">
               <rect width="290" height="42" rx="10"></rect>
               <text x="145" y="16">REQUEST</text>
               <text class="code-label" x="145" y="33">tools: [tool], ctx</text>
             </g>
-            <g class="message-tag" transform="translate(990 452)">
+            <g class="message-tag" transform="translate(880 452)">
               <rect width="260" height="42" rx="10"></rect>
               <text x="130" y="16">RETURN</text>
               <text class="code-label" x="130" y="33">SandboxPolicy | undefined</text>
@@ -180,9 +192,9 @@
               <rect x="550" y="295" width="210" height="130" rx="16"></rect>
               <foreignObject x="570" y="310" width="170" height="100">
                 <div class="svg-node-content">
-                  <span>Opt-out</span>
+                  <span>Fallback</span>
                   <strong>Use default MXC preset</strong>
-                  <small>Not persisted per tool</small>
+                  <small>Opt-out or no catalog floor</small>
                 </div>
               </foreignObject>
             </g>
@@ -199,19 +211,29 @@
             </g>
 
             <g class="flow-node" data-detail="persist" role="button" tabindex="0">
-              <rect x="865" y="220" width="200" height="130" rx="16"></rect>
-              <foreignObject x="885" y="238" width="160" height="96">
+              <rect x="1050" y="125" width="190" height="130" rx="16"></rect>
+              <foreignObject x="1070" y="143" width="150" height="96">
                 <div class="svg-node-content">
-                  <span>3B. Miss result</span>
+                  <span>3D. Store</span>
                   <strong>Store floor by tool</strong>
-                  <small>Or keep baseline when undefined</small>
+                  <small>Only when a floor is returned</small>
+                </div>
+              </foreignObject>
+            </g>
+
+            <g class="flow-node decision-node" data-detail="floor-result" role="button" tabindex="0">
+              <polygon points="970,290 1060,355 970,420 880,355"></polygon>
+              <foreignObject x="905" y="319" width="130" height="82">
+                <div class="svg-node-content centered">
+                  <span>3C. Result</span>
+                  <strong>Floor returned?</strong>
                 </div>
               </foreignObject>
             </g>
 
             <g class="flow-node" data-detail="consumer" role="button" tabindex="0">
-              <rect x="1110" y="125" width="200" height="130" rx="16"></rect>
-              <foreignObject x="1130" y="143" width="160" height="96">
+              <rect x="1280" y="125" width="200" height="130" rx="16"></rect>
+              <foreignObject x="1300" y="143" width="160" height="96">
                 <div class="svg-node-content">
                   <span>4. Compose</span>
                   <strong>Build effective policy</strong>
@@ -221,8 +243,8 @@
             </g>
 
             <g class="flow-node" data-detail="constraints" role="button" tabindex="0">
-              <rect x="1360" y="125" width="150" height="130" rx="16"></rect>
-              <foreignObject x="1377" y="143" width="116" height="96">
+              <rect x="1530" y="125" width="150" height="130" rx="16"></rect>
+              <foreignObject x="1547" y="143" width="116" height="96">
                 <div class="svg-node-content">
                   <span>5. Constrain</span>
                   <strong>Hard ceilings</strong>
@@ -232,8 +254,8 @@
             </g>
 
             <g class="flow-node" data-detail="sandbox" role="button" tabindex="0">
-              <rect x="1550" y="125" width="120" height="130" rx="16"></rect>
-              <foreignObject x="1565" y="143" width="90" height="96">
+              <rect x="1720" y="125" width="120" height="130" rx="16"></rect>
+              <foreignObject x="1735" y="143" width="90" height="96">
                 <div class="svg-node-content">
                   <span>6. Create</span>
                   <strong>MXC sandbox</strong>
@@ -406,7 +428,7 @@
           <span class="flow-number">3</span>
           <div>
             <h3>Resolve through the MXC SDK</h3>
-            <p>The resolver matches tool identity, follows dependencies, resolves symbols, and returns a sandbox policy floor or no result. OpenClaw performs one lookup per tool using a single-element array.</p>
+            <p>The resolver matches tool identity, follows dependencies, resolves symbols, and returns a sandbox policy floor or <code>undefined</code>. OpenClaw stores a returned floor per tool; <code>undefined</code> uses the selected default MXC preset.</p>
           </div>
         </li>
         <li>
