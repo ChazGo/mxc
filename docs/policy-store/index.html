@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Proposed MXC policy store architecture and consumer ownership model.">
+  <title>MXC Policy Store - Proposed Architecture</title>
+  <script>
+    document.documentElement.dataset.theme = localStorage.getItem("mxc-policy-store-theme") || "light";
+  </script>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="hero">
+    <nav class="topbar" aria-label="Page navigation">
+      <a class="brand" href="https://github.com/ChazGo/mxc">MXC</a>
+      <div class="topbar-actions">
+        <div class="nav-links">
+          <a href="#architecture">Architecture</a>
+          <a href="#ownership">Ownership</a>
+          <a href="#flow">Flow</a>
+          <a href="#questions">Open questions</a>
+          <a href="#sources">Sources</a>
+        </div>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false">
+          Dark theme
+        </button>
+      </div>
+    </nav>
+
+    <div class="hero-content">
+      <div>
+        <div class="eyebrow"><span class="status-dot"></span> Proposed design</div>
+        <h1>A shared floor, not a shared mutable policy</h1>
+        <p class="lede">
+          MXC provides a reviewed, versioned, read-only catalog describing the minimum
+          sandbox requirements associated with known tools. Each consuming agent owns
+          its user settings, learned changes, approval experience, policy composition,
+          persistence, and final sandbox creation.
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="#architecture">Explore the design</a>
+          <a class="button secondary" href="https://github.com/microsoft/mxc/pull/779">Read the floor proposal</a>
+        </div>
+      </div>
+      <aside class="principle-card">
+        <span class="card-label">Core security rule</span>
+        <strong>Requirements are descriptive. They are not grants of access.</strong>
+        <p>Resolving a floor does not modify the consumer's policy.</p>
+      </aside>
+    </div>
+  </header>
+
+  <main>
+    <section id="architecture" class="section">
+      <div class="section-heading">
+        <div>
+          <span class="kicker">High-level architecture</span>
+          <h2>One catalog, many consumer-owned policy stores</h2>
+        </div>
+        <p>Select a component to see its responsibility and trust boundary.</p>
+      </div>
+
+      <div class="architecture-shell">
+        <div class="api-callout">
+          <div>
+            <span class="card-label">Proposed MXC SDK API</span>
+            <h3>MXC Sandbox Config Floors expose a shared lookup contract</h3>
+            <p>
+              The consumer supplies the tools it intends to run. MXC resolves the
+              reviewed catalog and returns a <code>SandboxPolicy</code> floor, or
+              <code>undefined</code> when the catalog has no matching entry.
+            </p>
+          </div>
+          <div class="api-examples">
+            <pre><code>getSandboxConfigForTool(
+  tools: string[],
+  ctx?: ResolveContext
+): SandboxPolicy | undefined</code></pre>
+            <div class="usage-note">
+              <span>OpenClaw per-tool lookup</span>
+              <code>getSandboxConfigForTool(["npm"], ctx)</code>
+            </div>
+          </div>
+          <a href="https://github.com/microsoft/mxc/pull/779">microsoft/mxc#779</a>
+        </div>
+
+        <div class="architecture-diagram" aria-label="OpenClaw and MXC policy lookup flow">
+          <svg class="flow-svg" viewBox="0 0 1720 810" role="img" aria-labelledby="flow-title flow-description">
+            <title id="flow-title">OpenClaw per-tool policy lookup and MXC sandbox creation flow</title>
+            <desc id="flow-description">
+              OpenClaw checks for a stored per-tool floor. On a miss, it checks
+              whether automatic floor retrieval is enabled. The default enabled
+              path calls the MXC Sandbox Config Floors API, which reads and
+              resolves the catalog. The opt-out path uses OpenClaw's selected
+              default MXC preset. Both paths compose policy, apply hard constraints,
+              and create the final MXC sandbox.
+            </desc>
+            <defs>
+              <marker id="arrow-head" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L9,3 z"></path>
+              </marker>
+            </defs>
+
+            <rect class="flow-lane openclaw-lane" x="20" y="45" width="1680" height="400" rx="22"></rect>
+            <rect class="flow-lane mxc-lane" x="20" y="500" width="1680" height="260" rx="22"></rect>
+            <text class="lane-title" x="48" y="82">OPENCLAW - WRITABLE PER-TOOL POLICY, APPROVAL, AND UX</text>
+            <text class="lane-title" x="48" y="537">MXC - READ-ONLY CATALOG AND SDK RESOLUTION</text>
+
+            <path class="flow-arrow" d="M250 190 H315"></path>
+            <path class="flow-arrow" d="M485 190 H550"></path>
+            <path class="flow-arrow" d="M750 190 H1110"></path>
+            <path class="flow-arrow" d="M400 265 V290"></path>
+            <path class="flow-arrow" d="M400 420 V560"></path>
+            <path class="flow-arrow" d="M490 355 H550"></path>
+            <path class="flow-arrow" d="M760 365 H1210 V255"></path>
+            <path class="flow-arrow" d="M510 620 H605"></path>
+            <path class="flow-arrow" d="M805 620 H900"></path>
+            <path class="flow-arrow" d="M1120 620 V410 H965 V350"></path>
+            <path class="flow-arrow" d="M1065 285 L1110 230"></path>
+            <path class="flow-arrow" d="M1310 190 H1360"></path>
+            <path class="flow-arrow" d="M1510 190 H1550"></path>
+
+            <g class="arrow-tag" transform="translate(495 154)">
+              <rect width="48" height="28" rx="14"></rect>
+              <text x="24" y="19">YES</text>
+            </g>
+            <g class="arrow-tag" transform="translate(417 267)">
+              <rect width="78" height="28" rx="14"></rect>
+              <text x="39" y="19">NO POLICY</text>
+            </g>
+            <g class="arrow-tag" transform="translate(497 318)">
+              <rect width="42" height="28" rx="14"></rect>
+              <text x="21" y="19">NO</text>
+            </g>
+            <g class="message-tag" transform="translate(250 452)">
+              <rect width="290" height="42" rx="10"></rect>
+              <text x="145" y="16">REQUEST</text>
+              <text class="code-label" x="145" y="33">tools: [tool], ctx</text>
+            </g>
+            <g class="message-tag" transform="translate(990 452)">
+              <rect width="260" height="42" rx="10"></rect>
+              <text x="130" y="16">RETURN</text>
+              <text class="code-label" x="130" y="33">SandboxPolicy | undefined</text>
+            </g>
+
+            <g class="flow-node" data-detail="invocation" role="button" tabindex="0">
+              <rect x="70" y="125" width="180" height="130" rx="16"></rect>
+              <foreignObject x="88" y="143" width="144" height="96">
+                <div class="svg-node-content">
+                  <span>1. Invoke</span>
+                  <strong>Run one tool</strong>
+                  <small>Tool ID plus project context</small>
+                </div>
+              </foreignObject>
+            </g>
+
+            <g class="flow-node decision-node active" data-detail="decision" role="button" tabindex="0">
+              <polygon points="400,115 485,190 400,265 315,190"></polygon>
+              <foreignObject x="338" y="152" width="124" height="82">
+                <div class="svg-node-content centered">
+                  <span>2. Check</span>
+                  <strong>Stored policy for tool?</strong>
+                </div>
+              </foreignObject>
+            </g>
+
+            <g class="flow-node decision-node" data-detail="retrieval" role="button" tabindex="0">
+              <polygon points="400,290 490,355 400,420 310,355"></polygon>
+              <foreignObject x="335" y="319" width="130" height="82">
+                <div class="svg-node-content centered">
+                  <span>3B. Setting</span>
+                  <strong>Automatic floor retrieval?</strong>
+                  <small>Enabled by default</small>
+                </div>
+              </foreignObject>
+            </g>
+
+            <g class="flow-node" data-detail="preset" role="button" tabindex="0">
+              <rect x="550" y="295" width="210" height="130" rx="16"></rect>
+              <foreignObject x="570" y="310" width="170" height="100">
+                <div class="svg-node-content">
+                  <span>Opt-out</span>
+                  <strong>Use default MXC preset</strong>
+                  <small>Not persisted per tool</small>
+                </div>
+              </foreignObject>
+            </g>
+
+            <g class="flow-node" data-detail="stored" role="button" tabindex="0">
+              <rect x="550" y="125" width="200" height="130" rx="16"></rect>
+              <foreignObject x="570" y="143" width="160" height="96">
+                <div class="svg-node-content">
+                  <span>3A. Hit</span>
+                  <strong>Load stored floor</strong>
+                  <small>Read OpenClaw's per-tool record</small>
+                </div>
+              </foreignObject>
+            </g>
+
+            <g class="flow-node" data-detail="persist" role="button" tabindex="0">
+              <rect x="865" y="220" width="200" height="130" rx="16"></rect>
+              <foreignObject x="885" y="238" width="160" height="96">
+                <div class="svg-node-content">
+                  <span>3B. Miss result</span>
+                  <strong>Store floor by tool</strong>
+                  <small>Or keep baseline when undefined</small>
+                </div>
+              </foreignObject>
+            </g>
+
+            <g class="flow-node" data-detail="consumer" role="button" tabindex="0">
+              <rect x="1110" y="125" width="200" height="130" rx="16"></rect>
+              <foreignObject x="1130" y="143" width="160" height="96">
+                <div class="svg-node-content">
+                  <span>4. Compose</span>
+                  <strong>Build effective policy</strong>
+                  <small>Floor, user state, learning, approval</small>
+                </div>
+              </foreignObject>
+            </g>
+
+            <g class="flow-node" data-detail="constraints" role="button" tabindex="0">
+              <rect x="1360" y="125" width="150" height="130" rx="16"></rect>
+              <foreignObject x="1377" y="143" width="116" height="96">
+                <div class="svg-node-content">
+                  <span>5. Constrain</span>
+                  <strong>Hard ceilings</strong>
+                  <small>OS, enterprise, device</small>
+                </div>
+              </foreignObject>
+            </g>
+
+            <g class="flow-node" data-detail="sandbox" role="button" tabindex="0">
+              <rect x="1550" y="125" width="120" height="130" rx="16"></rect>
+              <foreignObject x="1565" y="143" width="90" height="96">
+                <div class="svg-node-content">
+                  <span>6. Create</span>
+                  <strong>MXC sandbox</strong>
+                  <small>Run tool</small>
+                </div>
+              </foreignObject>
+            </g>
+
+            <g class="flow-node api-node" data-detail="api" role="button" tabindex="0">
+              <rect x="290" y="560" width="220" height="120" rx="16"></rect>
+              <foreignObject x="308" y="578" width="184" height="86">
+                <div class="svg-node-content">
+                  <span>MXC API</span>
+                  <strong>getSandboxConfigForTool([tool], ctx)</strong>
+                  <small>Lookup entry for one OpenClaw tool</small>
+                </div>
+              </foreignObject>
+            </g>
+
+            <g class="flow-node" data-detail="catalog" role="button" tabindex="0">
+              <rect x="605" y="560" width="200" height="120" rx="16"></rect>
+              <foreignObject x="625" y="578" width="160" height="86">
+                <div class="svg-node-content">
+                  <span>Catalog</span>
+                  <strong>Read reviewed floor</strong>
+                  <small>Versioned, read-only requirements</small>
+                </div>
+              </foreignObject>
+            </g>
+
+            <g class="flow-node" data-detail="resolution" role="button" tabindex="0">
+              <rect x="900" y="560" width="220" height="120" rx="16"></rect>
+              <foreignObject x="920" y="578" width="180" height="86">
+                <div class="svg-node-content">
+                  <span>Resolver</span>
+                  <strong>Resolve requirement</strong>
+                  <small>Identity, dependencies, platform, symbols</small>
+                </div>
+              </foreignObject>
+            </g>
+          </svg>
+        </div>
+
+        <article class="detail-panel" aria-live="polite">
+          <div class="detail-title">
+            <span id="detail-number">2</span>
+            <div>
+              <span id="detail-owner" class="card-label">OpenClaw owned</span>
+              <h3 id="detail-heading">Stored policy for tool?</h3>
+            </div>
+          </div>
+          <div>
+            <p id="detail-summary">
+              OpenClaw first checks its writable per-tool policy store. An existing
+              record avoids a catalog lookup. A missing record checks whether
+              automatic MXC floor retrieval is enabled before selecting either the
+              catalog path or the configured default preset.
+            </p>
+            <pre id="detail-code" class="detail-code"><code>policyStore.get(toolId)</code></pre>
+          </div>
+          <ul id="detail-list">
+            <li>Store entries are keyed and persisted per tool</li>
+            <li>A cache hit flows directly into policy composition</li>
+            <li>A miss evaluates the OpenClaw plugin retrieval setting</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="ownership" class="section alt">
+      <div class="section-heading">
+        <div>
+          <span class="kicker">Ownership boundary</span>
+          <h2>What MXC owns and what each agent owns</h2>
+        </div>
+      </div>
+
+      <div class="ownership-grid">
+        <article class="ownership-card mxc">
+          <span class="ownership-tag">Shared and read-only</span>
+          <h3>MXC policy store</h3>
+          <ul>
+            <li>Known-tool requirement catalog</li>
+            <li>Catalog schema and validation</li>
+            <li>Versioning and dependency resolution</li>
+            <li>SDK lookup and diagnostics</li>
+            <li>Integrity and packaging model</li>
+          </ul>
+          <p class="boundary-note">MXC returns requirements. It does not decide what the user permits.</p>
+        </article>
+
+        <article class="ownership-card agent">
+          <span class="ownership-tag">Consumer-specific and writable</span>
+          <h3>Agent policy store and UX</h3>
+          <ul>
+            <li>Access profile and default posture</li>
+            <li>Per-tool floor persistence and matching</li>
+            <li>Automatic floor retrieval setting, enabled by default</li>
+            <li>User changes and per-tool overrides</li>
+            <li>Learning Mode candidates and approvals</li>
+            <li>One-time and persistent authorization</li>
+            <li>Settings UI, audit data, and migration</li>
+          </ul>
+          <p class="boundary-note">The agent composes the final request without exceeding OS, enterprise, or device constraints.</p>
+        </article>
+      </div>
+
+      <div class="consumer-grid">
+        <article class="consumer-card first-consumer">
+          <span class="consumer-status">First consumer in the current proposal</span>
+          <h3>OpenClaw</h3>
+          <p>
+            Calls the MXC API once for each tool by passing a single-element
+            <code>tools</code> array. OpenClaw stores each returned floor
+            separately when automatic retrieval is enabled. Users can opt out and
+            apply the selected default MXC preset directly without storing it for
+            the tool. OpenClaw owns the mutable configuration, approvals, audit
+            data, and final sandbox composition.
+          </p>
+          <a href="https://github.com/ChazGo/rfcs/pull/1">OpenClaw policy RFC</a>
+        </article>
+
+        <article class="consumer-card compatible">
+          <span class="consumer-status">Compatible proposed consumer</span>
+          <h3>GitHub Copilot</h3>
+          <p>
+            The same SDK contract can support another agent that needs shared
+            known-tool requirements while retaining its own settings and policy
+            experience. A direct Policy Store integration is not yet committed
+            by the public design sources.
+          </p>
+        </article>
+
+        <article class="consumer-card compatible">
+          <span class="consumer-status">Extensible contract</span>
+          <h3>Other agent runtimes</h3>
+          <p>
+            Any consumer can use the catalog if it can identify tools, evaluate
+            the returned requirements, apply its own authorization model, and
+            create an MXC sandbox.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section id="flow" class="section">
+      <div class="section-heading">
+        <div>
+          <span class="kicker">Proposed data flow</span>
+          <h2>From reviewed requirement to contained execution</h2>
+        </div>
+      </div>
+
+      <ol class="flow-list">
+        <li>
+          <span class="flow-number">1</span>
+          <div>
+            <h3>Capture or declare requirements</h3>
+            <p>Maintainers gather evidence about the files, network endpoints, runtimes, and capabilities a tool needs.</p>
+          </div>
+        </li>
+        <li>
+          <span class="flow-number">2</span>
+          <div>
+            <h3>Review and publish a catalog entry</h3>
+            <p>The requirement is generalized, validated, versioned, and reviewed before it becomes catalog data.</p>
+          </div>
+        </li>
+        <li>
+          <span class="flow-number">3</span>
+          <div>
+            <h3>Resolve through the MXC SDK</h3>
+            <p>The resolver matches tool identity, follows dependencies, resolves symbols, and returns a sandbox policy floor or no result. OpenClaw performs one lookup per tool using a single-element array.</p>
+          </div>
+        </li>
+        <li>
+          <span class="flow-number">4</span>
+          <div>
+            <h3>Apply consumer policy and approval</h3>
+            <p>The agent evaluates the floor against its access profile, user configuration, learned overrides, and approval rules.</p>
+          </div>
+        </li>
+        <li>
+          <span class="flow-number">5</span>
+          <div>
+            <h3>Respect non-overridable ceilings</h3>
+            <p>OS, enterprise, and device constraints remain authoritative even when a tool floor requests broader access.</p>
+          </div>
+        </li>
+        <li>
+          <span class="flow-number">6</span>
+          <div>
+            <h3>Create and audit the sandbox</h3>
+            <p>The consumer creates the final MXC request and records the catalog version, matched entry, approvals, and effective policy.</p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section id="questions" class="section alt">
+      <div class="section-heading">
+        <div>
+          <span class="kicker">Still unresolved</span>
+          <h2>Production design work</h2>
+        </div>
+        <p>The prototype validates the seam, not the full production contract.</p>
+      </div>
+
+      <div class="question-grid">
+        <article><span>Identity</span><h3>How is a tool identified strongly across versions and installation mechanisms?</h3></article>
+        <article><span>Lifecycle</span><h3>How are catalog publication, updates, integrity validation, pinning, and rollback handled?</h3></article>
+        <article><span>Governance</span><h3>Who reviews and maintains entries, and how are enterprise or private catalogs layered?</h3></article>
+        <article><span>Composition</span><h3>What exact precedence and conflict behavior applies across floors, user choices, and hard ceilings?</h3></article>
+        <article><span>SDK parity</span><h3>Which SDKs expose lookup, diagnostics, provenance, and matched-entry metadata?</h3></article>
+        <article><span>Learning Mode</span><h3>How are observations converted into candidate changes without silently widening policy?</h3></article>
+      </div>
+    </section>
+
+    <section id="sources" class="section sources">
+      <div class="section-heading">
+        <div>
+          <span class="kicker">Public design sources</span>
+          <h2>What this page is based on</h2>
+        </div>
+      </div>
+
+      <div class="source-list">
+        <a href="https://github.com/microsoft/mxc/pull/779">
+          <span>Design proposal</span>
+          <strong>microsoft/mxc#779 - Sandbox config floors</strong>
+          <small>Defines floors as minimum requirements and keeps authorization with the host.</small>
+        </a>
+        <a href="https://github.com/ChazGo/mxc/pull/1">
+          <span>Draft prototype</span>
+          <strong>ChazGo/mxc#1 - TypeScript SDK config-floor resolver</strong>
+          <small>Demonstrates catalog validation, dependency closure, symbols, and unknown-tool behavior.</small>
+        </a>
+        <a href="https://github.com/ChazGo/rfcs/pull/1">
+          <span>Consumer design</span>
+          <strong>ChazGo/rfcs#1 - OpenClaw per-tool sandbox configuration</strong>
+          <small>Describes OpenClaw-owned matching, persistence, approvals, learning, and enforcement.</small>
+        </a>
+      </div>
+
+      <p class="as-of">
+        Design status as of September 23, 2026. This page describes proposed behavior,
+        not shipped MXC or agent runtime behavior.
+      </p>
+    </section>
+  </main>
+
+  <footer>
+    <strong>MXC Policy Store</strong>
+    <span>Shared requirements. Consumer-owned authorization.</span>
+  </footer>
+
+  <script src="./app.js"></script>
+</body>
+</html>
