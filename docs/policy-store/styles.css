@@ -472,6 +472,64 @@ h3 {
   gap: 10px;
 }
 
+.api-disclosure {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.api-disclosure summary,
+.consumer-card summary {
+  position: relative;
+  padding-right: 34px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.api-disclosure summary::-webkit-details-marker,
+.consumer-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.api-disclosure summary::after,
+.consumer-card summary::after {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  color: var(--cyan);
+  content: "+";
+  font-size: 1.25rem;
+  font-weight: 700;
+  transform: translateY(-50%);
+}
+
+.api-disclosure[open] summary::after,
+.consumer-card[open] summary::after {
+  content: "\2212";
+}
+
+.api-disclosure summary {
+  padding: 10px 42px 10px 13px;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.api-disclosure summary::after {
+  right: 14px;
+}
+
+.api-disclosure > div {
+  padding: 0 13px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.api-disclosure p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .usage-note {
   display: flex;
   flex-wrap: wrap;
@@ -716,11 +774,28 @@ h3 {
   border-color: rgba(120, 230, 174, 0.5);
 }
 
-.consumer-card h3 {
-  margin: 10px 0 13px;
+.consumer-card summary {
+  min-height: 62px;
+}
+
+.consumer-card summary::after {
+  right: 0;
+}
+
+.consumer-card summary strong {
+  display: block;
+  margin-top: 10px;
+  font-size: 1.15rem;
+}
+
+.consumer-detail {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
 }
 
 .consumer-card p {
+  margin-bottom: 14px;
   color: var(--muted);
 }
 

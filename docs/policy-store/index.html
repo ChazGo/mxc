@@ -77,6 +77,13 @@
   tools: string[],
   ctx?: ResolveContext
 ): SandboxPolicy | undefined</code></pre>
+            <details class="api-disclosure">
+              <summary>What is <code>ResolveContext</code>?</summary>
+              <div>
+                <p><code>projectRoot?: string</code> sets the base directory for <code>./</code>-relative paths. It defaults to the current working directory.</p>
+                <p><code>symbols?: Record&lt;string, string&gt;</code> overrides individual catalog symbols; MXC detects any symbols the caller does not provide.</p>
+              </div>
+            </details>
             <div class="usage-note">
               <span>OpenClaw per-tool lookup</span>
               <code>getSandboxConfigForTool(["npm"], ctx)</code>
@@ -364,40 +371,52 @@
       </div>
 
       <div class="consumer-grid">
-        <article class="consumer-card first-consumer">
-          <span class="consumer-status">First consumer in the current proposal</span>
-          <h3>OpenClaw</h3>
-          <p>
-            Calls the MXC API once for each tool by passing a single-element
-            <code>tools</code> array. OpenClaw stores each returned floor
-            separately when automatic retrieval is enabled. Users can opt out and
-            apply the selected default MXC preset directly without storing it for
-            the tool. OpenClaw owns the mutable configuration, approvals, audit
-            data, and final sandbox composition.
-          </p>
-          <a href="https://github.com/ChazGo/rfcs/pull/1">OpenClaw policy RFC</a>
-        </article>
+        <details class="consumer-card first-consumer">
+          <summary>
+            <span class="consumer-status">First consumer in the current proposal</span>
+            <strong>OpenClaw</strong>
+          </summary>
+          <div class="consumer-detail">
+            <p>
+              Calls the MXC API once for each tool by passing a single-element
+              <code>tools</code> array. OpenClaw stores each returned floor
+              separately when automatic retrieval is enabled. Users can opt out and
+              apply the selected default MXC preset directly without storing it for
+              the tool. OpenClaw owns the mutable configuration, approvals, audit
+              data, and final sandbox composition.
+            </p>
+            <a href="https://github.com/ChazGo/rfcs/pull/1">OpenClaw policy RFC</a>
+          </div>
+        </details>
 
-        <article class="consumer-card compatible">
-          <span class="consumer-status">Compatible proposed consumer</span>
-          <h3>GitHub Copilot</h3>
-          <p>
-            The same SDK contract can support another agent that needs shared
-            known-tool requirements while retaining its own settings and policy
-            experience. A direct Policy Store integration is not yet committed
-            by the public design sources.
-          </p>
-        </article>
+        <details class="consumer-card compatible">
+          <summary>
+            <span class="consumer-status">Compatible proposed consumer</span>
+            <strong>GitHub Copilot</strong>
+          </summary>
+          <div class="consumer-detail">
+            <p>
+              The same SDK contract can support another agent that needs shared
+              known-tool requirements while retaining its own settings and policy
+              experience. A direct Policy Store integration is not yet committed
+              by the public design sources.
+            </p>
+          </div>
+        </details>
 
-        <article class="consumer-card compatible">
-          <span class="consumer-status">Extensible contract</span>
-          <h3>Other agent runtimes</h3>
-          <p>
-            Any consumer can use the catalog if it can identify tools, evaluate
-            the returned requirements, apply its own authorization model, and
-            create an MXC sandbox.
-          </p>
-        </article>
+        <details class="consumer-card compatible">
+          <summary>
+            <span class="consumer-status">Extensible contract</span>
+            <strong>Other agent runtimes</strong>
+          </summary>
+          <div class="consumer-detail">
+            <p>
+              Any consumer can use the catalog if it can identify tools, evaluate
+              the returned requirements, apply its own authorization model, and
+              create an MXC sandbox.
+            </p>
+          </div>
+        </details>
       </div>
     </section>
 

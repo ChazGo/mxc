@@ -75,6 +75,8 @@ const details = {
     items: [
       "Returns an existing SandboxPolicy type",
       "The generic API can resolve multiple tools, but OpenClaw uses one tool per call",
+      "ctx.projectRoot sets the base for relative paths and defaults to the current working directory",
+      "ctx.symbols can override individual values that MXC would otherwise detect",
       "Returns undefined when every requested tool is unknown",
     ],
   },
