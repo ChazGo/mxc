@@ -70,7 +70,7 @@ const details = {
     owner: "MXC owned",
     heading: "Policy Store API",
     summary:
-      "The MXC Sandbox Config Floors proposal places catalog lookup behind an MXC SDK API. MXC performs matching, dependency resolution, platform selection, and symbol expansion without modifying the consumer's policy.",
+      "The MXC Sandbox Config Floors proposal places catalog lookup behind an MXC SDK API. Its optional ResolveContext supplies a projectRoot for relative paths and caller overrides for individual symbols. MXC resolves everything else without modifying the consumer's policy.",
     code: "getSandboxConfigForTool(tools, ctx)",
     items: [
       "Returns an existing SandboxPolicy type",

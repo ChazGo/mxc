@@ -77,16 +77,10 @@
   tools: string[],
   ctx?: ResolveContext
 ): SandboxPolicy | undefined</code></pre>
-            <details class="api-disclosure">
-              <summary>What is <code>ResolveContext</code>?</summary>
-              <div>
-                <p><code>projectRoot?: string</code> sets the base directory for <code>./</code>-relative paths. It defaults to the current working directory.</p>
-                <p><code>symbols?: Record&lt;string, string&gt;</code> overrides individual catalog symbols; MXC detects any symbols the caller does not provide.</p>
-              </div>
-            </details>
-            <div class="usage-note">
+            <div class="usage-note usage-example">
               <span>OpenClaw per-tool lookup</span>
-              <code>getSandboxConfigForTool(["npm"], ctx)</code>
+              <code>const ctx = { projectRoot: "/workspace/project" };</code>
+              <code>getSandboxConfigForTool(["npm"], ctx);</code>
             </div>
           </div>
           <a href="https://github.com/microsoft/mxc/pull/779">microsoft/mxc#779</a>

@@ -472,13 +472,6 @@ h3 {
   gap: 10px;
 }
 
-.api-disclosure {
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--surface);
-}
-
-.api-disclosure summary,
 .consumer-card summary {
   position: relative;
   padding-right: 34px;
@@ -486,12 +479,10 @@ h3 {
   list-style: none;
 }
 
-.api-disclosure summary::-webkit-details-marker,
 .consumer-card summary::-webkit-details-marker {
   display: none;
 }
 
-.api-disclosure summary::after,
 .consumer-card summary::after {
   position: absolute;
   top: 50%;
@@ -503,31 +494,8 @@ h3 {
   transform: translateY(-50%);
 }
 
-.api-disclosure[open] summary::after,
 .consumer-card[open] summary::after {
   content: "\2212";
-}
-
-.api-disclosure summary {
-  padding: 10px 42px 10px 13px;
-  color: var(--text);
-  font-size: 0.82rem;
-  font-weight: 750;
-}
-
-.api-disclosure summary::after {
-  right: 14px;
-}
-
-.api-disclosure > div {
-  padding: 0 13px 12px;
-  border-top: 1px solid var(--line);
-}
-
-.api-disclosure p {
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 0.78rem;
 }
 
 .usage-note {
@@ -549,6 +517,22 @@ h3 {
 
 .usage-note code {
   color: var(--text);
+}
+
+.usage-example {
+  display: grid;
+  justify-content: stretch;
+  gap: 4px;
+}
+
+.usage-example span {
+  margin-bottom: 3px;
+}
+
+.usage-example code {
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
 }
 
 .api-callout > a {
