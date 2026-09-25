@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Proposed initial tool scope for the MXC Policy Store catalog.">
+  <title>MXC Policy Store - Initial Tool Scope</title>
+  <script>
+    document.documentElement.dataset.theme = localStorage.getItem("mxc-policy-store-theme") || "light";
+  </script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="hero scope-hero">
+    <nav class="topbar" aria-label="Page navigation">
+      <a class="brand" href="../">MXC Policy Store</a>
+      <div class="topbar-actions">
+        <div class="nav-links">
+          <a href="../">Architecture</a>
+          <a href="#initial-set">Initial set</a>
+          <a href="#deferred">Deferred</a>
+          <a href="#questions">Open questions</a>
+          <a href="#sources">Sources</a>
+        </div>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false">
+          Dark theme
+        </button>
+      </div>
+    </nav>
+
+    <div class="hero-content scope-hero-content">
+      <div>
+        <div class="eyebrow"><span class="status-dot"></span> Proposed initial catalog</div>
+        <h1>Initial Policy Store Tool Scope</h1>
+        <p class="lede">
+          A deliberately tight Windows/OpenClaw seed: ten concrete tool identities
+          with actionable policy evidence and enough variety to validate the catalog
+          contract before expanding its coverage.
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="#initial-set">Review the initial set</a>
+          <a class="button secondary" href="../">Back to the architecture</a>
+        </div>
+      </div>
+      <aside class="principle-card">
+        <span class="card-label">Scope decision</span>
+        <strong>10 initial entries across three categories</strong>
+        <ul class="scope-summary">
+          <li><b>5</b> first-party priority tools</li>
+          <li><b>2</b> infrastructure tools</li>
+          <li><b>3</b> third-party tools</li>
+          <li><b>62</b> candidates deferred</li>
+        </ul>
+      </aside>
+    </div>
+  </header>
+
+  <main>
+    <section class="section criteria-section">
+      <div class="section-heading">
+        <div>
+          <span class="kicker">Decision rules</span>
+          <h2>Scoping criteria</h2>
+        </div>
+        <p>The initial set favors reviewable policy shapes over broad catalog coverage.</p>
+      </div>
+      <ol class="criteria-grid">
+        <li><span>1</span><p>Supports the Windows/OpenClaw pilot and has a concrete executable or plugin identity.</p></li>
+        <li><span>2</span><p>Has observed requirements that a sandbox policy floor can address.</p></li>
+        <li><span>3</span><p>Has a Windows installation and execution path, not a macOS-only dependency.</p></li>
+        <li><span>4</span><p>Is a priority scenario, an existing prototype entry, or a distinct contract test case.</p></li>
+        <li><span>5</span><p>Has enough ownership and requirement evidence for an initial review.</p></li>
+      </ol>
+    </section>
+
+    <section id="initial-set" class="section alt">
+      <div class="section-heading">
+        <div>
+          <span class="kicker">Recommended initial set</span>
+          <h2>Ten catalog entries</h2>
+        </div>
+        <p>Capabilities describe requirements only. The consuming agent still decides whether to authorize them.</p>
+      </div>
+
+      <div class="scope-tabs" role="tablist" aria-label="Tool categories">
+        <button class="scope-tab active" type="button" role="tab" data-tab="first" aria-controls="first" aria-selected="true">First-party priority <span>5</span></button>
+        <button class="scope-tab" type="button" role="tab" data-tab="infrastructure" aria-controls="infrastructure" aria-selected="false">Infrastructure <span>2</span></button>
+        <button class="scope-tab" type="button" role="tab" data-tab="third" aria-controls="third" aria-selected="false">Third-party <span>3</span></button>
+      </div>
+      <p class="category-note">“First-party priority” reflects the pilot category, not ownership of every executable.</p>
+
+      <div id="first" class="scope-panel" role="tabpanel">
+        <div class="tool-heading" aria-hidden="true">
+          <span>Tool and source</span><span>Why it is included</span><span>Required policy capabilities</span><span>Evidence</span>
+        </div>
+        <article class="tool-row">
+          <div><h3>WorkIQ plugin</h3><p>Microsoft WorkIQ</p></div>
+          <p>Priority plugin that exercises enterprise authentication and delegated Microsoft 365 access.</p>
+          <ul class="capability-list"><li><b>Network:</b> internet access</li><li><b>Authentication:</b> enterprise authentication and cloud SSO</li><li><b>Files:</b> read/write WorkIQ state and shared workspace</li><li><b>Process:</b> plugin/MCP execution</li></ul>
+          <p class="evidence-text">Internal tool inventory and first-party pilot requirements</p>
+        </article>
+        <article class="tool-row">
+          <div><h3>Teams Graph plugin</h3><p>Microsoft Teams / Graph integration</p></div>
+          <p>Selected Teams identity with a validated Windows path and a distinct Microsoft Graph authentication shape.</p>
+          <ul class="capability-list"><li><b>Network:</b> Microsoft Graph and Teams</li><li><b>Authentication:</b> enterprise authentication and cloud SSO</li><li><b>Files:</b> read/write OpenClaw workspace</li><li><b>Process:</b> plugin execution</li></ul>
+          <p class="evidence-text">Internal tool inventory and first-party pilot requirements</p>
+        </article>
+        <article class="tool-row">
+          <div><h3>Azure CLI</h3><p>Microsoft Azure CLI / Azure MCP</p></div>
+          <p>Priority scenario whose noninteractive authentication and local state make it a high-impact policy case.</p>
+          <ul class="capability-list"><li><b>Network:</b> Azure service endpoints</li><li><b>Authentication:</b> noninteractive sign-in</li><li><b>Files:</b> read CLI installation; read/write Azure CLI state and workspace</li><li><b>Process:</b> execute <code>az</code></li></ul>
+          <p class="evidence-text">Internal tool inventory and first-party pilot requirements</p>
+        </article>
+        <article class="tool-row">
+          <div><h3>GitHub CLI</h3><p>GitHub CLI</p></div>
+          <p>Priority developer scenario covering credentials, repository writes, network access, and a Git dependency.</p>
+          <ul class="capability-list"><li><b>Network:</b> GitHub endpoints</li><li><b>Credentials:</b> read/write GitHub CLI auth and config</li><li><b>Files:</b> read/write repository workspace</li><li><b>Process:</b> execute <code>gh</code> and Git</li></ul>
+          <p class="evidence-text">Internal tool inventory and first-party pilot requirements</p>
+        </article>
+        <article class="tool-row">
+          <div><h3>Git</h3><p>Git upstream</p></div>
+          <p>Priority developer tool with an observed filesystem traversal requirement and an existing prototype entry.</p>
+          <ul class="capability-list"><li><b>Network:</b> remote repository endpoints</li><li><b>Files:</b> read Git installation and user config; read/write repository</li><li><b>Process:</b> execute Git and required child processes</li></ul>
+          <p class="evidence-text">Internal tool inventory and <a href="https://github.com/ChazGo/mxc/pull/1">public prototype</a></p>
+        </article>
+      </div>
+
+      <div id="infrastructure" class="scope-panel" role="tabpanel" hidden>
+        <div class="tool-heading" aria-hidden="true">
+          <span>Tool and source</span><span>Why it is included</span><span>Required policy capabilities</span><span>Evidence</span>
+        </div>
+        <article class="tool-row">
+          <div><h3>Node.js</h3><p>OpenJS Foundation</p></div>
+          <p>Foundational interpreter dependency that validates symbolic installation and project paths.</p>
+          <ul class="capability-list"><li><b>Network:</b> none in the base floor</li><li><b>Files:</b> read Node.js installation and project scripts/modules</li><li><b>Process:</b> execute <code>node</code></li></ul>
+          <p class="evidence-text"><a href="https://github.com/ChazGo/mxc/pull/1">Public prototype catalog</a></p>
+        </article>
+        <article class="tool-row">
+          <div><h3>npm / npx</h3><p>npm ecosystem</p></div>
+          <p>Validates dependency closure, configurable registry endpoints, project writes, cache paths, and Windows launchers.</p>
+          <ul class="capability-list"><li><b>Network:</b> configured npm registry</li><li><b>Files:</b> read npm installation; read/write project and npm cache</li><li><b>Process:</b> execute npm/npx and Node.js</li><li><b>Dependency:</b> include the Node.js floor</li></ul>
+          <p class="evidence-text"><a href="https://github.com/microsoft/mxc/pull/779">Floor proposal</a> and <a href="https://github.com/ChazGo/mxc/pull/1">public prototype</a></p>
+        </article>
+      </div>
+
+      <div id="third" class="scope-panel" role="tabpanel" hidden>
+        <div class="tool-heading" aria-hidden="true">
+          <span>Tool and source</span><span>Why it is included</span><span>Required policy capabilities</span><span>Evidence</span>
+        </div>
+        <article class="tool-row">
+          <div><h3>Notion CLI</h3><p>steipete/notion</p></div>
+          <p>High-priority bundled tool and compact authenticated-network/configuration example.</p>
+          <ul class="capability-list"><li><b>Network:</b> Notion API</li><li><b>Credentials:</b> read Notion token</li><li><b>Files:</b> read CLI installation; read/write <code>.config\ntn</code></li></ul>
+          <p class="evidence-text">Internal tool inventory and Windows compatibility review</p>
+        </article>
+        <article class="tool-row">
+          <div><h3>nano-pdf</h3><p>steipete/nano-pdf</p></div>
+          <p>High-priority bundled tool and a no-network local document transformation case.</p>
+          <ul class="capability-list"><li><b>Network:</b> none</li><li><b>Files:</b> read runtime/tool and selected PDFs; read/write workspace output</li><li><b>Process:</b> execute <code>uv</code> and nano-pdf</li></ul>
+          <p class="evidence-text">Internal tool inventory and Windows compatibility review</p>
+        </article>
+        <article class="tool-row">
+          <div><h3>video-frames</h3><p>steipete/video-frames</p></div>
+          <p>High-priority bundled tool covering a native binary dependency and local media input/output.</p>
+          <ul class="capability-list"><li><b>Network:</b> none</li><li><b>Files:</b> read ffmpeg and input media; write frame output</li><li><b>Process:</b> execute <code>ffmpeg</code></li></ul>
+          <p class="evidence-text">Internal tool inventory and Windows compatibility review</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="deferred" class="section">
+      <details class="deferred-disclosure">
+        <summary>
+          <span><b>Out of scope / deferred</b><small>62 named candidates</small></span>
+          <span class="disclosure-action">Show list</span>
+        </summary>
+        <div class="deferred-content">
+          <h3>Not a per-call MXC catalog tool</h3>
+          <ul>
+            <li><b>canvas</b> — node/host surface, not a per-call tool.</li>
+            <li><b>taskflow</b> — gateway orchestration and state.</li>
+            <li><b>taskflow-inbox-triage</b> — taskflow orchestration rather than a distinct executable.</li>
+            <li><b>discord</b> — gateway channel integration.</li>
+            <li><b>slack</b> — gateway channel integration.</li>
+            <li><b>voice-call</b> — gateway/provider integration.</li>
+            <li><b>healthcheck</b> — gateway-local diagnostics.</li>
+            <li><b>node-connect</b> — paired-node diagnostics.</li>
+            <li><b>weather</b> — agent web capability rather than a stable executable identity.</li>
+          </ul>
+          <h3>Duplicate or wrapper identity</h3>
+          <ul>
+            <li><b>github skill</b> — duplicates the GitHub CLI floor.</li>
+            <li><b>gh-issues</b> — wrapper over GitHub CLI and Git.</li>
+            <li><b>gog</b> — concrete CLI identity and Windows contract are unsettled.</li>
+            <li><b>pdf</b> — abstraction needs a concrete runtime/tool identity.</li>
+            <li><b>docx</b> — abstraction needs a concrete runtime/tool identity.</li>
+            <li><b>xlsx</b> — abstraction needs a concrete runtime/tool identity.</li>
+            <li><b>pptx</b> — abstraction needs a concrete runtime/tool identity.</li>
+          </ul>
+          <h3>Contract or identity too broad for the first cut</h3>
+          <ul>
+            <li><b>clawhub</b> — package installation and mutable trust boundary.</li>
+            <li><b>coding-agent</b> — broad project access and long-running execution.</li>
+            <li><b>gemini</b> — broad authenticated coding-agent state.</li>
+            <li><b>mcporter</b> — can launch arbitrary MCP child processes.</li>
+            <li><b>oracle</b> — lower priority and no initial catalog owner.</li>
+            <li><b>session-logs</b> — consumer-specific OpenClaw state.</li>
+            <li><b>skill-creator</b> — mutable skill-authoring and trust boundary.</li>
+            <li><b>summarize</b> — provider and CLI contract are not stable.</li>
+            <li><b>self-improving-agent</b> — no reviewed executable identity.</li>
+            <li><b>skill-vetter</b> — no reviewed executable identity.</li>
+            <li><b>self-improving</b> — no reviewed executable identity.</li>
+            <li><b>proactive-agent</b> — no reviewed executable/configuration contract.</li>
+            <li><b>multi-search-engine</b> — no stable executable/configuration contract.</li>
+            <li><b>humanizer</b> — no stable executable/configuration contract.</li>
+            <li><b>auto-updater</b> — self-update semantics exceed a simple floor.</li>
+          </ul>
+          <h3>Specialized, sensitive, or lower-priority</h3>
+          <ul>
+            <li><b>trello</b> — credentialed network plus additional CLI dependencies.</li>
+            <li><b>himalaya</b> — sensitive email credentials and protocols.</li>
+            <li><b>wacli</b> — account authentication and mutable local state.</li>
+            <li><b>xurl</b> — lower-priority social-account authentication.</li>
+            <li><b>blucli</b> — internet plus private-network device access.</li>
+            <li><b>camsnap</b> — LAN camera protocols and native media dependency.</li>
+            <li><b>gifgrep</b> — redundant network/download policy shape.</li>
+            <li><b>openai-whisper</b> — model cache and resource-policy requirements.</li>
+            <li><b>openai-whisper-api</b> — API-key variant represented by simpler cases.</li>
+            <li><b>sag</b> — API key plus host audio rendering.</li>
+            <li><b>sherpa-onnx-tts</b> — specialized local models and audio output.</li>
+            <li><b>songsee</b> — specialized media-analysis chain.</li>
+            <li><b>sonoscli</b> — LAN discovery and device control.</li>
+            <li><b>spotify-player</b> — browser-cookie and host-audio access.</li>
+            <li><b>1password</b> — secrets-sensitive integration requiring dedicated review.</li>
+            <li><b>blogwatcher</b> — lower priority and redundant policy shape.</li>
+            <li><b>eightctl</b> — specialized device/account integration.</li>
+            <li><b>goplaces</b> — redundant API-key/network policy shape.</li>
+            <li><b>openhue</b> — private-LAN device control.</li>
+            <li><b>ordercli</b> — no supported Windows CLI path.</li>
+            <li><b>nano-banana-pro</b> — insufficient initial containment evidence.</li>
+            <li><b>openai-image-gen</b> — insufficient initial containment evidence.</li>
+          </ul>
+          <h3>No current native Windows path</h3>
+          <ul>
+            <li><b>bluebubbles</b> — macOS ecosystem dependency.</li>
+            <li><b>model-usage</b> — current tool dependency is unavailable on Windows.</li>
+            <li><b>tmux</b> — no native Windows implementation.</li>
+            <li><b>apple-notes</b> — macOS-only.</li>
+            <li><b>apple-reminders</b> — macOS-only.</li>
+            <li><b>bear-notes</b> — macOS-only.</li>
+            <li><b>things-mac</b> — macOS-only.</li>
+            <li><b>imsg</b> — macOS-only.</li>
+            <li><b>peekaboo</b> — macOS-only.</li>
+          </ul>
+          <p class="deferred-note">Deferred entries require a stable tool identity, a supported Windows path, distinct policy value, and enough evidence for review.</p>
+        </div>
+      </details>
+    </section>
+
+    <section id="questions" class="section alt">
+      <div class="section-heading">
+        <div>
+          <span class="kicker">Still unresolved</span>
+          <h2>Two publication questions</h2>
+        </div>
+      </div>
+      <div class="question-grid scope-questions">
+        <article><span>Catalog warranty</span><h3>Are floors advisory and potentially incomplete, or do they carry a stronger compatibility or security guarantee?</h3></article>
+        <article><span>Schema limits</span><h3>Which selected requirements can be represented safely before merge, diagnostics, networking, and version behavior are settled?</h3></article>
+      </div>
+    </section>
+
+    <section id="sources" class="section sources">
+      <div class="section-heading">
+        <div>
+          <span class="kicker">Evidence boundary</span>
+          <h2>Sources used for this recommendation</h2>
+        </div>
+        <p>Private evidence is summarized without publishing internal links, document titles, comments, or reviewer identities.</p>
+      </div>
+      <div class="source-list">
+        <article class="source-summary"><span>Private evidence</span><strong>Internal tool inventory</strong><small>Tool requirements, validation status, blockers, and Windows compatibility evidence.</small></article>
+        <article class="source-summary"><span>Private evidence</span><strong>Internal pilot prioritization</strong><small>Initial first-party scenarios and high-priority bundled tools.</small></article>
+        <a href="https://github.com/microsoft/mxc/pull/779"><span>Public proposal</span><strong>microsoft/mxc#779 - Sandbox config floors</strong><small>Selection rule, identity/dependency model, symbolic paths, and contract questions.</small></a>
+        <a href="https://github.com/ChazGo/mxc/pull/1"><span>Public prototype</span><strong>ChazGo/mxc#1 - Draft resolver catalog</strong><small>Concrete Git, Node.js, and npm entries used to validate the resolver seam.</small></a>
+      </div>
+      <p class="as-of">Scope status as of September 25, 2026. This is a proposed initial catalog, not shipped MXC behavior.</p>
+    </section>
+  </main>
+
+  <footer>
+    <strong>MXC Policy Store</strong>
+    <span><a href="../">Architecture</a> · Initial tool scope</span>
+  </footer>
+
+  <script src="./app.js"></script>
+</body>
+</html>
