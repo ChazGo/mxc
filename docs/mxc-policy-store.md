@@ -94,10 +94,14 @@ does not re-derive them, and cites the relevant #779 section instead.
 | `entryRevision` | Monotonic revision of a single entry, for cache invalidation and audit comparison. |
 | `sandboxPolicy.version` | The exact registered `SandboxPolicy` contract version used by one platform variant. |
 
-These move independently. A `SandboxPolicy` version bump does not require a new
-catalog revision, and a catalog revision does not require every entry to bump.
-Tool version constraints (`versionRange`, below) are a fifth, orthogonal axis —
-they describe which builds of the *tool* an entry was observed against, not
+These identifiers serve separate purposes and do not advance in lockstep.
+Registering a new `SandboxPolicy` contract does not change existing catalog
+data and therefore does not require a new catalog revision. Migrating a
+platform variant to that contract changes the entry's content, so publication
+of that migration must increment both `entryRevision` and `catalogRevision`.
+A catalog revision may still change without incrementing unaffected entries.
+Tool version constraints (`versionRange`, below) are a fifth, orthogonal axis.
+They describe which builds of a tool an entry was observed against, not
 anything about the catalog.
 
 ### 4.2 Entry shape
@@ -133,10 +137,10 @@ Invariants:
 - `entryId` is stable, unique, namespaced, and is the only key `requires`/
   dependency edges may reference.
 - `entryRevision` increases on every semantic change to the entry.
-- Exactly one most-specific `platformVariants` entry may match a given
-  platform/architecture. No matching variant means the tool is unsupported on
-  that platform — not that it needs an empty policy, and not `undefined`
-  conflated with "requires nothing" (see [#779, "Defaults and
+- Variant selection follows the deterministic rules in
+  [§4.4](#44-platform-variants). No selected variant means the tool is
+  unsupported on that platform, not that it needs an empty policy, and not
+  `undefined` conflated with "requires nothing" (see [#779, "Defaults and
   omission"](https://github.com/microsoft/mxc/pull/779)).
 - Symbols (`${project_root}`, `${npm_cache}`, OS well-known folders) are
   resolved by the resolver before a policy is returned; catalog data never
@@ -162,12 +166,24 @@ kind). This document adds:
 
 ### 4.4 Platform variants
 
-Supported platforms are `windows`, `linux`, and `macos`. A platform variant is
-a complete requirement statement — one full `SandboxPolicy`, not a patch
-applied to a base policy — plus any platform-specific dependencies. Variants
-are never merged. This closes #779's open question about entries that need a
-genuinely different policy per platform, not just different symbol resolution:
-they now can, by declaring more than one variant.
+Supported platforms are `windows`, `linux`, and `macos`. Supported architecture
+selectors are `x64` and `arm64`. A variant selector has this closed shape:
+
+```ts
+interface PlatformVariantSelector {
+  platform: "windows" | "linux" | "macos";
+  architecture?: "x64" | "arm64";
+}
+```
+
+A platform variant is a complete requirement statement: one full
+`SandboxPolicy`, not a patch applied to a base policy, plus any
+platform-specific dependencies. Variants are never merged. Selection first
+filters by `platform`, then prefers an exact `architecture` match over a
+variant that omits `architecture`. Catalog validation rejects duplicate exact
+selectors and more than one architecture-neutral variant for the same
+platform. If neither an exact nor architecture-neutral variant exists, the
+entry is unsupported on that host.
 
 A platform variant must not name a specific MXC containment backend. Policies
 stay backend-neutral; the selected backend still decides whether a stated
@@ -175,27 +191,41 @@ requirement can be realized on that host.
 
 ### 4.5 Dependencies and composition
 
-Dependencies reference another entry's `entryId`, with an optional tool
-`versionRange`, and live inside the platform variant when platform-specific.
-Resolution is transitive, cycle-rejecting, and deterministic, and the resolver
-returns the full dependency chain alongside the result.
+Dependencies reference another entry's `entryId` and live inside the platform
+variant when platform-specific. An optional `versionRange` records which
+dependency versions supplied the reviewed evidence. The v1 resolver has no
+dependency inventory, so it does not evaluate that range or use it for
+matching. It returns the range as unevaluated metadata for consumer inspection.
+Catalog validation checks only that the range is syntactically valid.
+Resolution is otherwise transitive, cycle-rejecting, and deterministic, and
+the resolver returns the full dependency chain alongside the result.
 
 Unlike #779, this document does not treat "union the policies" as sufficient
 composition. Silently unioning arbitrary `SandboxPolicy` objects across a
 dependency chain hides exactly the kind of conflicting-field problem that
 made #779 exclude `proxy` from the embedded object. For the first contract
-version, composition across a dependency chain is limited to fields where the
-merge rule is unambiguous:
+version, cross-entry composition is limited to the exact
+`filesystem.deniedPaths`, `filesystem.readonlyPaths`, and
+`filesystem.readwritePaths` fields:
 
-- filesystem path lists, normalized and de-duplicated;
-- network host lists, normalized and de-duplicated;
-- boolean capability requirements, where `true` always means "this dependency
-  requires the capability."
+1. Every policy in the dependency closure must declare the same
+   `sandboxPolicy.version`.
+2. Paths are resolved, normalized using the selected platform's path rules,
+   and de-duplicated within the same access class.
+3. Catalog validation rejects equal or ancestor/descendant paths that occur in
+   different access classes. It never chooses between denied, read-only, and
+   read-write access implicitly.
+4. The non-conflicting, normalized lists are merged into the returned policy.
 
-Timeout, clipboard, lifecycle, UI, and proxy fields are excluded from
-cross-entry composition until each has an explicit rule; catalog validation
-rejects a dependency combination that would require merging one of them,
-rather than picking an implicit answer.
+The v1 contract does not compose `network`. In particular, it defines no merge
+for `network.egress.default`, `network.egress.allow`,
+`network.egress.deny`, `network.ingress.default`, or
+`network.ingress.hostLoopback`. Catalog validation rejects a dependency closure
+where policies from more than one entry would require composing any `network`
+field. The same rejection applies to timeout, clipboard, lifecycle, UI, proxy,
+and every other policy field without an explicit cross-entry rule. Entries
+without dependencies may still use catalog-supported policy fields because no
+cross-entry merge occurs.
 
 ## 5. API surface
 
@@ -216,7 +246,7 @@ interface ResolveContext {
   projectRoot?: string;
   symbols?: Record<string, string>;
   platform?: "windows" | "linux" | "macos";
-  architecture?: string;
+  architecture?: "x64" | "arm64";
   catalogRevision?: string;
   allowWeakIdentityFallback?: boolean;
 }
@@ -226,7 +256,11 @@ interface ResolvedToolEntry {
   entryRevision: number;
   catalogRevision: string;
   matchedIdentity: { kind: string; strength: "strong" | "weak" };
-  resolvedDependencies: Array<{ entryId: string; entryRevision: number }>;
+  resolvedDependencies: Array<{
+    entryId: string;
+    entryRevision: number;
+    requiredVersionRange?: string;
+  }>;
   policy: SandboxPolicy;
   warnings: string[];
 }
@@ -247,13 +281,39 @@ empty policy (same distinction #779 makes; see [§4.2](#42-entry-shape)).
 ### 5.2 Setup and inspection
 
 ```ts
+type CatalogPlatform = "windows" | "linux" | "macos";
+type CatalogArchitecture = "x64" | "arm64";
+
+type CatalogIdentityMetadata =
+  | { kind: "purl"; value: string; versionRange?: string }
+  | { kind: "invocation-name"; names: string[] };
+
+interface CatalogEntryMetadata {
+  catalogRevision: string;
+  entryId: string;
+  entryRevision: number;
+  displayName: string;
+  identity: CatalogIdentityMetadata[];
+  platformVariants: Array<{
+    platform: CatalogPlatform;
+    architecture?: CatalogArchitecture;
+    dependencyEntryIds: string[];
+    sandboxPolicyVersion: string;
+  }>;
+  provenance: {
+    method: string;
+    sourceRevision: string;
+  };
+}
+
 listCatalogEntries(): CatalogEntryMetadata[];
 getCatalogInfo(): { catalogSchemaVersion: string; catalogRevision: string };
 ```
 
 This supports setup UI, catalog browsing, and update decisions without paying
 the cost of policy resolution, and keeps "give me everything" out of the
-runtime lookup path entirely.
+runtime lookup path entirely. Metadata exposes selectors, dependency IDs, and
+provenance, but not an unresolved or resolved policy body.
 
 ### 5.3 Consumer obligations
 
@@ -326,20 +386,28 @@ evidence. No such hook is proposed here.
 
 ## 9. Trust model
 
-This document tightens #779's trust framing rather than replacing it: entries
-still assert *need*, not authorization, and a wrong or malicious entry can
-only overstate need, which surfaces as a tool that fails under the consumer's
-existing policy — never as an authority the consumer did not already grant.
+This document tightens #779's trust framing rather than replacing it. Entries
+assert *need*, not authorization, but incorrect data has two different
+outcomes:
+
+- An understated floor omits a requirement and can cause the tool or its
+  end-to-end workflow to fail under the resulting policy.
+- An overstated floor can fail against a narrower consumer ceiling. If a
+  consumer instead approves or adopts it and its ceiling permits the request,
+  the effective policy contains unnecessary capability.
 
 What changes from #779 is the review bar. #779 described community-contributed,
 unsigned, unwarranted data. This contract requires named-role approval
 ([§7](#7-contribution-and-review)) before an entry publishes, and publishes
 under an immutable, integrity-validated revision ([§10](#10-immutable-revisions)).
 That raises confidence in the data; it does not change what the data *is*. The
-catalog still carries no security guarantee, and a consumer must still
-intersect a resolved entry with its own policy rather than adopt it as policy
-outright (though nothing prevents that choice — see [#779 §2.1](https://github.com/microsoft/mxc/pull/779)
-for why that layering is honest about what such a choice costs).
+catalog still carries no security guarantee or independent authority. A
+consumer must review the requirement and intersect it with its own policy
+rather than adopt it outright. The catalog can influence a consumer's
+decision, so consumer approval and restrictive ceilings remain required even
+though the catalog cannot grant capability by itself. See
+[#779 §2.1](https://github.com/microsoft/mxc/pull/779) for why that layering is
+honest about what such a choice costs.
 
 ## 10. Immutable revisions
 
@@ -366,11 +434,15 @@ have cached or recorded in an audit trail.
 - single tool → expected entry; unknown tool → `undefined`, never an empty policy
 - identity match strength selection and weak-identity fallback behavior
 - version-range mismatch produces a warning, not a refusal
-- exactly one platform variant selected; no matching variant → `undefined`
+- exact-architecture variant precedes the platform-only variant; duplicate
+  selectors are rejected; no matching variant produces `undefined`
 - dependency chain resolution, including cycles (terminate, no duplication)
+- dependency `versionRange` is returned as unevaluated metadata and never used
+  for v1 resolver matching
 - restricted composition rules ([§4.5](#45-dependencies-and-composition)):
-  path/host de-duplication and boolean-OR merge; a dependency requiring an
-  unsupported composed field is rejected at validation time, not resolved
+  same-class path de-duplication; cross-class path overlap, mixed policy
+  versions, network fields, and other unsupported composed fields are rejected
+  at validation time rather than resolved
 - symbol resolution on Windows, Linux, and macOS
 
 **Data (CI)**
@@ -398,7 +470,7 @@ Recommended answers are proposals for review, not decisions.
 | Is invocation-name-only identity accepted automatically, or does it require explicit consumer opt-in? | Treat it as a fallback requiring explicit opt-in (`allowWeakIdentityFallback`), not the default. |
 | What happens on a detected tool-version mismatch — `undefined`, or a warning-bearing result the consumer may still use? | Return the resolved result with a warning; refusing outright removes information the consumer needs to decide for itself. |
 | Are private or enterprise catalog overlays in scope, and if so with what precedence? | Defer until the shared catalog contract and its API are stable; define precedence explicitly before any SDK implementation adds overlay support. |
-| Should the first contract version's composition vocabulary expand beyond [§4.5](#45-dependencies-and-composition) before implementation? | No — ship the restricted vocabulary first; expand only with an explicit, reviewed composition rule per field. |
+| Should the first contract version's composition vocabulary expand beyond [§4.5](#45-dependencies-and-composition) before implementation? | No. Start with conflict-rejecting filesystem composition and expand only with an explicit, reviewed rule per field. |
 | Who are the named MXC owners for schema/API review vs. policy/security review? | To be assigned before this document is finalized; not a contract-shape question. |
 
 ## 14. Related work
