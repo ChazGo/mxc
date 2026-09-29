@@ -1,30 +1,35 @@
-# Feature Spec: MXC Policy Store
+# Feature Spec: Known-tool Policy Floors
 
-**Status:** Proposed — review-ready draft, targeting sign-off around October 2,
-2026. This is a proposed contract for review, not an approved, shipped, or
-implemented catalog, and October 2 is a review-readiness target rather than a
-delivery or personal commitment.
+**Status:** Proposed experimental stopgap. This is not an approved, shipped, or
+implemented catalog.
+
+**IMPORTANT NOTE:** This is a time-limited bridge, not a long-term supported
+Microsoft product. Applying a published floor does not guarantee that a tool's
+end-to-end workflow will work under process containment. The catalog and its
+dedicated repository are expected to be retired when Learning Mode provides
+the replacement workflow.
 
 ---
 
 ## 1. Problem Statement
 
-[#779](https://github.com/microsoft/mxc/pull/779) proposed **config floors**: a
-repository-hosted table of minimum sandbox requirements per known tool, plus an
-SDK resolver, so a host does not have to discover by hand what a tool needs to
-run inside a sandbox. That proposal intentionally left several things loose —
-one version number for the whole table, name-only identity as the common case,
-one policy per entry regardless of platform, and no distinction between "look up
-one tool's requirement" and "inspect the whole catalog."
+Developers frequently disable process isolation after enabling it breaks tools
+needed for their workflow. This makes the first-run experience for process
+containment poor and reduces adoption before developers can identify the
+missing policy.
 
-Turning that proposal into something MXC can host and consumers can build
-against requires tightening exactly those points into a contract: independently
-versioned catalog and entries, ordered identity strength, complete per-platform
-requirement statements, deterministic dependency resolution, a resolver API
-that is safe to call in a hot path, immutable published revisions, and a
-reviewed contribution pipeline. This document is that contract. It reuses
-[#779](https://github.com/microsoft/mxc/pull/779)'s data model and API shape
-almost entirely; where it diverges, it says so.
+The near-term mitigation is a public, reviewable set of known per-tool policy
+floors. Consumers can apply a candidate floor instead of starting from no tool
+knowledge, and contributors can iterate on the data as failures are found. A
+floor only describes a known minimum requirement. It does not prove that every
+process, dependency, credential, service, or network interaction in an
+end-to-end workflow is covered.
+
+[#779](https://github.com/microsoft/mxc/pull/779) proposed the initial config
+floor data model and SDK resolver. This document narrows that proposal into a
+temporary catalog contract with explicit identity, platform, dependency,
+revision, and inspection behavior. It reuses #779's model where possible and
+calls out differences directly.
 
 This document does not restate general MXC sandboxing concepts already covered
 by [`docs/sandbox-policy/0.8.0/policy.md`](sandbox-policy/0.8.0/policy.md) or
@@ -37,6 +42,8 @@ by [`docs/sandbox-policy/0.8.0/policy.md`](sandbox-policy/0.8.0/policy.md) or
   `SandboxPolicy`; it does not define a parallel vocabulary.
 - This is not a trust or attestation mechanism, and it does not authorize
   anything. See [§9](#9-trust-model).
+- This is not a guarantee that a complete tool workflow will succeed under
+  process containment.
 - This does not define how any specific consumer stores, displays, or lets a
   user approve requirements. See [§2](#2-ownership-boundary).
 - This does not define Learning Mode's candidate-generation or review UX. See
@@ -44,10 +51,13 @@ by [`docs/sandbox-policy/0.8.0/policy.md`](sandbox-policy/0.8.0/policy.md) or
 
 ## 2. Ownership boundary
 
-MXC owns exactly one thing here: an integrity-validated, versioned, read-only
-catalog of known-tool sandbox requirements, and the SDK surface that resolves
-it. The catalog states what a tool needs. It does not grant access, does not
-modify caller state, and does not create a sandbox.
+The proposed dedicated catalog project owns an integrity-validated, versioned,
+read-only data set of known-tool sandbox requirements. MXC continues to own
+`SandboxPolicy`. If an MXC SDK consumption API is approved, MXC also owns that
+API, but not the catalog entries, repository, or publication lifecycle.
+
+The catalog states a candidate minimum that a tool needs. It does not grant
+access, modify caller state, create a sandbox, or guarantee workflow success.
 
 Everything else is a consumer decision:
 
@@ -61,18 +71,19 @@ Everything else is a consumer decision:
   sandbox creation.
 
 A catalog lookup can only ever narrow what a consumer still has to decide for
-itself: MXC returns a candidate requirement or `undefined`; the consumer decides
-whether, and how, to act on it. This mirrors #779's floor/policy distinction,
-discussed further in [§3](#3-relationship-to-the-config-floors-proposal):
-a resolved entry is a lower bound asserted by the tool ecosystem, never an
-upper bound the host is required to grant.
+itself. The resolver returns a candidate requirement or `undefined`; the
+consumer decides whether and how to act on it. This mirrors #779's floor/policy
+distinction, discussed further in
+[§3](#3-relationship-to-the-config-floors-proposal): a resolved entry is a
+lower bound asserted by the tool ecosystem, never an upper bound the host is
+required to grant.
 
 ## 3. Relationship to the config-floors proposal
 
 | #779 (config floors) | This document (policy store) |
 |---|---|
-| One `schemaVersion` for the whole table | Four independent versions: `catalogSchemaVersion`, `catalogRevision`, per-entry `entryRevision`, and per-variant `sandboxPolicy.version` ([§4.1](#41-versions)) |
-| `identity` predicates, unordered | `identity` explicitly ordered strongest → weakest, with defined match/fallback behavior ([§4.3](#43-identity)) |
+| One `schemaVersion` for the whole table | Four separate version dimensions: `catalogSchemaVersion`, `catalogRevision`, per-entry `entryRevision`, and per-variant `sandboxPolicy.version` ([§4.1](#41-versions)) |
+| `identity` predicates, unordered | `identity` explicitly ordered strongest to weakest, with defined match/fallback behavior ([§4.3](#43-identity)) |
 | One `sandboxPolicy` per entry; `when.platform` only conditions dependencies | One complete `SandboxPolicy` per platform variant; a variant cannot name a containment backend ([§4.4](#44-platform-variants)) |
 | `requires` composition unspecified beyond "union" | Composition limited to a small, explicit, field-by-field set for the first contract version; everything else is rejected until a rule exists ([§4.5](#45-dependencies-and-composition)) |
 | Single resolver function, no separate catalog-inspection API | Resolver split from a separate metadata/inspection API ([§5](#5-api-surface)) |
@@ -146,7 +157,7 @@ Invariants:
   resolved by the resolver before a policy is returned; catalog data never
   ships a literal, machine-specific path. This is unchanged from #779.
 - An embedded `sandboxPolicy` is validated against the real `SandboxPolicy`
-  schema for its declared `version` — the catalog schema does not duplicate
+  schema for its declared `version`. The catalog schema does not duplicate
   that validation.
 
 ### 4.3 Identity
@@ -162,7 +173,8 @@ kind). This document adds:
   what to do with the mismatch.
 - Invocation-name-only identity is the always-available fallback, not the
   default outcome. Whether a consumer accepts an invocation-name-only match
-  automatically, or requires opt-in, is unresolved — see [§13](#13-open-questions).
+  automatically, or requires opt-in, is unresolved. See
+  [§13](#13-open-questions).
 
 ### 4.4 Platform variants
 
@@ -275,7 +287,7 @@ resolveCatalogEntry(
 a caller composing and persisting requirements per tool (rather than as one
 opaque merged blob) needs each result independently addressable and
 independently attributable. A caller resolving several tools calls it once
-per tool. `undefined` means no acceptable identity/platform match — never an
+per tool. `undefined` means no acceptable identity/platform match, never an
 empty policy (same distinction #779 makes; see [§4.2](#42-entry-shape)).
 
 ### 5.2 Setup and inspection
@@ -321,16 +333,16 @@ A consumer that uses this API:
 
 1. Decides whether automatic lookup is enabled at all.
 2. Stores any accepted result per tool, keyed by `entryId`, `entryRevision`,
-   and `catalogRevision` — never as an unattributed merged policy blob.
+   and `catalogRevision`, never as an unattributed merged policy blob.
 3. Keeps catalog-derived requirements in a layer separate from its own user,
    learned, and invocation-specific policy.
 4. Applies its own authorization, elevation, and restrictive-composition
    rules on top.
 5. Enforces its OS, enterprise, device, and backend ceilings regardless of
    what the catalog returned.
-6. Fails closed — falls back to its own restrictive baseline, and does not
-   run uncontained — when a required entry cannot be realized on the current
-   host/backend.
+6. Fails closed when a required entry cannot be realized on the current
+   host/backend. It falls back to its own restrictive baseline and does not
+   run uncontained.
 7. Records matched identity, catalog/entry revision, warnings, and approval
    state in its own audit trail.
 
@@ -339,20 +351,25 @@ observation (see [§8](#8-relationship-to-learning-mode)) can produce candidate
 evidence for a future contribution to this catalog; it is not a mechanism for
 mutating the catalog at request time.
 
-## 6. Packaging and repository ownership
+## 6. Intended repository and packaging boundary
 
-Canonical source lives in `microsoft/mxc`, with schema, semantic validation,
-and generated package artifacts, following this repo's existing schema
-codegen model ([`docs/schema-codegen.md`](schema-codegen.md)). Whether the
-catalog ships inside each SDK package or as a separately versioned artifact
-consumed by all SDKs is open; a separately versioned artifact is recommended
-so catalog updates are not coupled to SDK release cadence. See
-[§13](#13-open-questions).
+The catalog is intended to live in a new public repository outside
+`microsoft/mxc`. Its schema, entries, contribution history, validation, and
+publication workflow belong there. This specification remains in MXC only
+while the contract and optional consumption boundary are reviewed. No catalog
+repository is created by this proposal.
+
+MXC retains the existing `SandboxPolicy` contract. If approved, MXC may also
+retain SDK types and resolver code that consume a separately versioned catalog
+artifact. Catalog releases must not require an MXC SDK release, and catalog
+governance must not become part of MXC repository governance. The dedicated
+repository and artifact have the same limited horizon as the stopgap and may
+be retired when Learning Mode replaces them.
 
 ## 7. Contribution and review
 
-- Contributions are pull requests against `microsoft/mxc`. No client or SDK
-  can write a catalog entry at runtime.
+- Catalog contributions are pull requests against the dedicated catalog
+  repository. No client or SDK can write a catalog entry at runtime.
 - Every entry change includes identity evidence, supported tool version
   range(s), platform evidence, a minimized requirement set, test fixtures,
   and provenance.
@@ -360,16 +377,21 @@ so catalog updates are not coupled to SDK release cadence. See
   identity uniqueness, dependency closure and cycle-freedom, symbol validity,
   absence of unsafe user-specific literal paths, unsupported-field rejection,
   deterministic resolution, and package inclusion.
-- A new entry or a requirement expansion requires one MXC SDK/catalog-owner
-  approval and one MXC security/policy-reviewer approval, plus tool- or
-  scenario-owner evidence where available.
+- A new entry or a requirement expansion requires one catalog-owner approval
+  and one security/policy-reviewer approval, plus tool- or scenario-owner
+  evidence where available.
 - A requirement reduction requires regression evidence that every supported
   tool version still functions under the narrower requirement.
+- Any MXC SDK consumption change is reviewed separately in `microsoft/mxc`.
 
 ## 8. Relationship to Learning Mode
 
-MXC's upstream learning-mode capabilities (`learningModeLogging`,
-`permissiveLearningMode`, `captureDenials` — see
+Learning Mode is the intended long-term solution. The known-tool catalog only
+reduces immediate first-run failures while that workflow is completed. It is
+not a parallel long-term policy platform.
+
+MXC's learning-mode capabilities (`learningModeLogging`,
+`permissiveLearningMode`, `captureDenials`; see
 [`docs/learning-mode/capabilities.md`](learning-mode/capabilities.md)) are the
 substrate a contributor can use to observe what a tool actually touches, the
 same way [#779 §5.1](https://github.com/microsoft/mxc/pull/779) describes for
@@ -378,11 +400,11 @@ remains **a contributor step that happens before a pull request**, not
 consumer runtime behavior and not a catalog-mutation path.
 
 Whether and how a consumer turns its own runtime capability observations into
-a candidate catalog contribution, or into a locally-scoped policy suggestion
-for its own user, is that consumer's design — most likely deferred to the
-consumer, and out of scope for the catalog contract itself unless a future
-revision of this contract needs to define hooks for submitting observation
-evidence. No such hook is proposed here.
+a candidate catalog contribution or a locally scoped policy suggestion is
+that consumer's design. No runtime submission hook is proposed here. When
+Learning Mode can provide the required observation and policy-authoring
+experience directly, this catalog should be retired rather than promoted into
+a durable platform.
 
 ## 9. Trust model
 
@@ -411,8 +433,8 @@ honest about what such a choice costs.
 
 ## 10. Immutable revisions
 
-Published catalog revisions are immutable. A correction — including a security
-fix to an over-broad entry — publishes a new `catalogRevision` and bumps the
+Published catalog revisions are immutable. A correction, including a security
+fix to an over-broad entry, publishes a new `catalogRevision` and bumps the
 affected `entryRevision`; it never rewrites a revision a consumer may already
 have cached or recorded in an audit trail.
 
@@ -420,18 +442,18 @@ have cached or recorded in an audit trail.
 
 - No change to `SandboxPolicy` or `ContainerConfig` schema.
 - No change to executor behavior.
-- New SDK surface only; existing callers that never call it see no behavior
-  change.
-- Given the schema is expected to move as open questions resolve, the catalog
-  and resolver should land under the experimental surface and promote through
-  this repo's normal promotion process once the shape has settled, per
-  [`docs/authoring-a-new-feature.md`](authoring-a-new-feature.md).
+- Any SDK consumption surface is opt-in and experimental. Existing callers
+  that never call it see no behavior change.
+- Catalog schema and API compatibility are limited to the stopgap's support
+  horizon. Retirement in favor of Learning Mode is an expected outcome, not a
+  normal promotion milestone.
 
 ## 12. Test plan
 
 **Resolver (SDK unit tests)**
 
-- single tool → expected entry; unknown tool → `undefined`, never an empty policy
+- single tool returns the expected entry; unknown tool returns `undefined`,
+  never an empty policy
 - identity match strength selection and weak-identity fallback behavior
 - version-range mismatch produces a warning, not a refusal
 - exact-architecture variant precedes the platform-only variant; duplicate
@@ -466,22 +488,22 @@ Recommended answers are proposals for review, not decisions.
 
 | Question | Recommended answer |
 |---|---|
-| Repository and package ownership: does the catalog ship inside each SDK package, or as a separately versioned artifact? | Canonical source in `microsoft/mxc`; prefer a separately versioned generated artifact to decouple catalog updates from SDK releases. |
+| What is the dedicated repository name and owning team? | Use a public repository outside `microsoft/mxc`; publish a separately versioned artifact so catalog updates are not coupled to SDK releases. |
 | Is invocation-name-only identity accepted automatically, or does it require explicit consumer opt-in? | Treat it as a fallback requiring explicit opt-in (`allowWeakIdentityFallback`), not the default. |
-| What happens on a detected tool-version mismatch — `undefined`, or a warning-bearing result the consumer may still use? | Return the resolved result with a warning; refusing outright removes information the consumer needs to decide for itself. |
+| What happens on a detected tool-version mismatch: `undefined`, or a warning-bearing result the consumer may still use? | Return the resolved result with a warning; refusing outright removes information the consumer needs to decide for itself. |
 | Are private or enterprise catalog overlays in scope, and if so with what precedence? | Defer until the shared catalog contract and its API are stable; define precedence explicitly before any SDK implementation adds overlay support. |
 | Should the first contract version's composition vocabulary expand beyond [§4.5](#45-dependencies-and-composition) before implementation? | No. Start with conflict-rejecting filesystem composition and expand only with an explicit, reviewed rule per field. |
-| Who are the named MXC owners for schema/API review vs. policy/security review? | To be assigned before this document is finalized; not a contract-shape question. |
+| Who owns catalog schema/data review versus optional MXC SDK integration? | Assign catalog and security owners in the dedicated repository; keep MXC SDK review with existing MXC owners. |
 
 ## 14. Related work
 
-- [`microsoft/mxc#779`](https://github.com/microsoft/mxc/pull/779) — Sandbox
+- [`microsoft/mxc#779`](https://github.com/microsoft/mxc/pull/779) - Sandbox
   Config Floors feature spec. This document's data model, floor/policy
   direction argument, and identity-layering analysis build directly on it.
-- [`ChazGo/mxc#1`](https://github.com/ChazGo/mxc/pull/1) — draft SDK resolver
+- [`ChazGo/mxc#1`](https://github.com/ChazGo/mxc/pull/1) - draft SDK resolver
   and catalog prototype exercising lookup, dependency closure, and symbol
   resolution against an earlier version of this shape.
-- [`docs/sandbox-policy/0.8.0/policy.md`](sandbox-policy/0.8.0/policy.md) —
+- [`docs/sandbox-policy/0.8.0/policy.md`](sandbox-policy/0.8.0/policy.md) -
   the `SandboxPolicy` contract every catalog entry embeds.
-- [`docs/versioning.md`](versioning.md) — the versioning model
+- [`docs/versioning.md`](versioning.md) - the versioning model
   [§4.1](#41-versions) builds on.
