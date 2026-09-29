@@ -1,6 +1,6 @@
 # Feature Spec: Known-tool Policy Floors
 
-**Status:** Proposed experimental stopgap. This is not an approved, shipped, or
+**Status:** Proposed public preview catalog. This is not an approved, shipped, or
 implemented catalog.
 
 **IMPORTANT NOTE:** This is a time-limited bridge, not a long-term supported
@@ -63,8 +63,8 @@ This proposal follows the SDK-only path in
 - **SDK changes:** An optional catalog-consumption API may be added after its
   ownership and packaging boundary are approved.
 
-The word **experimental** in this document describes the catalog's support
-horizon. It does not add an MXC schema feature, activate the
+The proposed **public preview** designation describes the catalog's support
+status. It does not add an MXC schema feature, activate the
 `--experimental` runtime gate, or change executor behavior.
 
 Defaults and omission behavior are:
@@ -479,8 +479,8 @@ have cached or recorded in an audit trail.
 
 - No change to `SandboxPolicy` or `ContainerConfig` schema.
 - No change to executor behavior.
-- Any SDK consumption surface is opt-in and experimental. Existing callers
-  that never call it see no behavior change.
+- Any SDK consumption surface is opt-in and remains subject to approval.
+  Existing callers that never call it see no behavior change.
 - Catalog schema and API compatibility are limited to the stopgap's support
   horizon. Retirement in favor of Learning Mode is an expected outcome, not a
   normal promotion milestone.
