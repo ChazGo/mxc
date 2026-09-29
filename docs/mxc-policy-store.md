@@ -49,6 +49,42 @@ by [`docs/sandbox-policy/0.8.0/policy.md`](sandbox-policy/0.8.0/policy.md) or
 - This does not define Learning Mode's candidate-generation or review UX. See
   [§8](#8-relationship-to-learning-mode).
 
+### MXC feature impact and defaults
+
+This proposal follows the SDK-only path in
+[`docs/authoring-a-new-feature.md`](authoring-a-new-feature.md):
+
+- **Policy changes:** None. Catalog entries embed an existing, registered
+  `SandboxPolicy`.
+- **ContainerConfig changes:** None. The catalog does not add configuration
+  fields or change omission behavior in an existing contract.
+- **OS and backend changes:** None. Backends continue to validate whether they
+  can enforce the resolved policy.
+- **SDK changes:** An optional catalog-consumption API may be added after its
+  ownership and packaging boundary are approved.
+
+The word **experimental** in this document describes the catalog's support
+horizon. It does not add an MXC schema feature, activate the
+`--experimental` runtime gate, or change executor behavior.
+
+Defaults and omission behavior are:
+
+- Existing callers do not perform catalog lookup automatically. A consumer
+  must explicitly enable or invoke it.
+- Omitted `ResolveContext.platform` and `ResolveContext.architecture` use the
+  current host values.
+- Omitted `ResolveContext.catalogRevision` uses the currently installed
+  catalog revision.
+- Omitted `ResolveContext.allowWeakIdentityFallback` is `false`.
+- Omitted `projectRoot` and `symbols` provide no caller overrides. The resolver
+  may use approved host-known symbols, but it does not invent machine-specific
+  values. A selected entry with an unresolved required symbol is not
+  resolvable.
+- Omitted `packageUrl` or `detectedVersion` supplies no matching evidence. The
+  resolver does not fabricate either value.
+- No acceptable or resolvable match returns `undefined`. The consumer's
+  restrictive baseline remains unchanged.
+
 ## 2. Ownership boundary
 
 The proposed dedicated catalog project owns an integrity-validated, versioned,
@@ -287,8 +323,9 @@ resolveCatalogEntry(
 a caller composing and persisting requirements per tool (rather than as one
 opaque merged blob) needs each result independently addressable and
 independently attributable. A caller resolving several tools calls it once
-per tool. `undefined` means no acceptable identity/platform match, never an
-empty policy (same distinction #779 makes; see [§4.2](#42-entry-shape)).
+per tool. `undefined` means no acceptable or resolvable identity/platform
+match, never an empty policy (same distinction #779 makes; see
+[§4.2](#42-entry-shape)).
 
 ### 5.2 Setup and inspection
 
@@ -454,6 +491,9 @@ have cached or recorded in an audit trail.
 
 - single tool returns the expected entry; unknown tool returns `undefined`,
   never an empty policy
+- omitted context uses host platform/architecture, the installed catalog
+  revision, no caller symbol overrides, and no weak-identity fallback
+- an unresolved required symbol returns `undefined`, never a partial policy
 - identity match strength selection and weak-identity fallback behavior
 - version-range mismatch produces a warning, not a refusal
 - exact-architecture variant precedes the platform-only variant; duplicate
