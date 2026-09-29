@@ -51,8 +51,8 @@ by [`docs/sandbox-policy/0.8.0/policy.md`](sandbox-policy/0.8.0/policy.md) or
 
 ### MXC feature impact and defaults
 
-This proposal follows the SDK-only path in
-[`docs/authoring-a-new-feature.md`](authoring-a-new-feature.md):
+This is a standalone catalog and library proposal. Following the feature-impact
+checklist in [`docs/authoring-a-new-feature.md`](authoring-a-new-feature.md):
 
 - **Policy changes:** None. Catalog entries embed an existing, registered
   `SandboxPolicy`.
@@ -60,8 +60,11 @@ This proposal follows the SDK-only path in
   fields or change omission behavior in an existing contract.
 - **OS and backend changes:** None. Backends continue to validate whether they
   can enforce the resolved policy.
-- **SDK changes:** An optional catalog-consumption API may be added after its
-  ownership and packaging boundary are approved.
+- **MXC SDK changes:** None. This proposal does not add catalog lookup, types,
+  or resolver code to the MXC SDKs.
+- **Standalone libraries:** The dedicated catalog repository provides its own
+  library API for TypeScript/JavaScript, Rust, and C#/.NET. See
+  [§6](#6-intended-repository-and-packaging-boundary).
 
 The proposed **public preview** designation describes the catalog's support
 status. It does not add an MXC schema feature, activate the
@@ -88,9 +91,10 @@ Defaults and omission behavior are:
 ## 2. Ownership boundary
 
 The proposed dedicated catalog project owns an integrity-validated, versioned,
-read-only data set of known-tool sandbox requirements. MXC continues to own
-`SandboxPolicy`. If an MXC SDK consumption API is approved, MXC also owns that
-API, but not the catalog entries, repository, or publication lifecycle.
+read-only data set of known-tool sandbox requirements, its resolver libraries,
+and their public APIs. MXC continues to own the existing `SandboxPolicy`
+contract, but not the catalog entries, libraries, repository, or publication
+lifecycle.
 
 The catalog states a candidate minimum that a tool needs. It does not grant
 access, modify caller state, create a sandbox, or guarantee workflow success.
@@ -277,9 +281,15 @@ cross-entry merge occurs.
 
 ## 5. API surface
 
-Two APIs, kept deliberately separate so that "resolve one tool's requirement"
-stays a cheap, hot-path-safe call and never implicitly returns the whole
-catalog.
+The standalone libraries expose two API groups, kept deliberately separate so
+that "resolve one tool's requirement" stays a cheap, hot-path-safe call and
+never implicitly returns the whole catalog. These are in-process library
+calls, not a hosted service or additions to the MXC SDKs.
+
+The signatures below use TypeScript to describe the shared contract. Rust and
+C# expose the same operations and metadata with idiomatic names and types.
+A no-match result is `undefined` in TypeScript/JavaScript, `None` in Rust, and
+`null` in C#. Library failures remain distinct from a no-match result.
 
 ### 5.1 Runtime lookup
 
@@ -383,25 +393,85 @@ A consumer that uses this API:
 7. Records matched identity, catalog/entry revision, warnings, and approval
    state in its own audit trail.
 
-MXC never writes a consumer's policy store. A consumer's own capability
-observation (see [§8](#8-relationship-to-learning-mode)) can produce candidate
-evidence for a future contribution to this catalog; it is not a mechanism for
-mutating the catalog at request time.
+The catalog libraries never write a consumer's policy store. A consumer's own
+capability observation (see [§8](#8-relationship-to-learning-mode)) can produce
+candidate evidence for a future contribution to this catalog; it is not a
+mechanism for mutating the catalog at request time.
 
 ## 6. Intended repository and packaging boundary
 
 The catalog is intended to live in a new public repository outside
-`microsoft/mxc`. Its schema, entries, contribution history, validation, and
-publication workflow belong there. This specification remains in MXC only
-while the contract and optional consumption boundary are reviewed. No catalog
-repository is created by this proposal.
+`microsoft/mxc`. Its schema, entries, resolver libraries, contribution history,
+validation, and publication workflow belong there. This specification remains
+in MXC while the proposed contract is reviewed. No catalog repository or
+package is created by this proposal.
 
-MXC retains the existing `SandboxPolicy` contract. If approved, MXC may also
-retain SDK types and resolver code that consume a separately versioned catalog
-artifact. Catalog releases must not require an MXC SDK release, and catalog
-governance must not become part of MXC repository governance. The dedicated
-repository and artifact have the same limited horizon as the stopgap and may
-be retired when Learning Mode replaces them.
+MXC retains the existing `SandboxPolicy` contract. The catalog libraries
+produce policy data conforming to that contract; they do not require an MXC
+executor or execution library to perform lookup. A consumer that uses MXC
+passes its final, authorized policy to an existing MXC SDK separately.
+Catalog and library releases do not require an MXC SDK release or changes to
+MXC repository governance.
+
+### 6.1 Library distribution and consumption
+
+The initial library language coverage matches MXC's current first-party SDK
+languages, but the packages are owned and released by the catalog project:
+
+| Language | Distribution | API form |
+|---|---|---|
+| TypeScript / JavaScript | npm package | JavaScript library with TypeScript declarations |
+| Rust | Cargo crate | Public Rust library API |
+| C# / .NET | NuGet package | Managed library API |
+
+Repository and package names remain to be selected. This language match does
+not require copying MXC's native-binding architecture or exposing sandbox
+execution operations.
+
+A consumer:
+
+1. Installs and pins the standalone library package for its language. Each
+   package includes a reviewed default catalog revision for local use.
+2. Calls `getCatalogInfo()` or `listCatalogEntries()` for inspection, or
+   `resolveCatalogEntry()` for one tool, using the corresponding language API.
+3. Handles no match without widening its restrictive baseline. For a match,
+   it reviews the returned policy, identity, revisions, and warnings and
+   applies the consumer obligations in [§5.3](#53-consumer-obligations).
+4. Supplies its final policy to its chosen execution integration. The catalog
+   library does not launch a sandbox.
+
+Lookup is local and does not download updates, contact a hosted service, or
+run the candidate tool. `ResolveContext.catalogRevision` selects an available
+local revision, not a network lookup; an explicitly requested revision that
+is unavailable is an error, not a substitution with a different revision.
+An omitted revision uses the library's installed default.
+
+Catalog revisions are also published as immutable, language-neutral data
+artifacts. A library package version identifies the library release, not the
+catalog revision or embedded `SandboxPolicy.version`; it declares the catalog
+schema and policy versions it supports and reports its bundled
+`catalogRevision`. Publishing newer data can update the packages' bundled
+revision without changing resolver behavior. Installing an update does not
+rewrite a consumer's previously accepted per-tool policies.
+
+### 6.2 Cross-language consistency and support
+
+All three libraries use the same catalog format and shared conformance
+fixtures. Given the same catalog revision, candidate, and explicit resolution
+context, they must agree on matching, variant selection, dependency metadata,
+resolved policy, warnings, and failure categories. Language-specific absence
+and error types must preserve those distinctions.
+
+Shared fixtures cover platform path semantics as well as ordinary lookup;
+matching function names alone is not compatibility. Package CI must also
+exercise installation, public API usage, and host-derived defaults on the
+supported platforms. Implementation sharing between languages is a separate
+engineering decision, not a requirement to depend on MXC's engine.
+
+Supporting three languages includes maintaining parity, dependencies,
+documentation, and releases, not only writing the initial implementations.
+The libraries and catalog have the same limited public-preview horizon and
+are intended to retire together when Learning Mode replaces this workflow.
 
 ## 7. Contribution and review
 
@@ -419,7 +489,10 @@ be retired when Learning Mode replaces them.
   evidence where available.
 - A requirement reduction requires regression evidence that every supported
   tool version still functions under the narrower requirement.
-- Any MXC SDK consumption change is reviewed separately in `microsoft/mxc`.
+- Library API and implementation contributions are reviewed in the dedicated
+  catalog repository. These contribution requirements do not require
+  applications to seek maintainer approval to use the public catalog or
+  libraries.
 
 ## 8. Relationship to Learning Mode
 
@@ -479,18 +552,21 @@ have cached or recorded in an audit trail.
 
 - No change to `SandboxPolicy` or `ContainerConfig` schema.
 - No change to executor behavior.
-- Any SDK consumption surface is opt-in and remains subject to approval.
-  Existing callers that never call it see no behavior change.
+- No change to the MXC SDK APIs or dependencies. Catalog lookup requires an
+  explicit call to a standalone library; existing MXC callers see no behavior
+  change.
 - Catalog schema and API compatibility are limited to the stopgap's support
   horizon. Retirement in favor of Learning Mode is an expected outcome, not a
   normal promotion milestone.
 
 ## 12. Test plan
 
-**Resolver (SDK unit tests)**
+**Resolver libraries (TypeScript/JavaScript, Rust, and C#/.NET)**
 
+- shared conformance fixtures produce equivalent results and failure
+  categories in all three languages
 - single tool returns the expected entry; unknown tool returns `undefined`,
-  never an empty policy
+  or the language-equivalent absence value, never an empty policy
 - omitted context uses host platform/architecture, the installed catalog
   revision, no caller symbol overrides, and no weak-identity fallback
 - an unresolved required symbol returns `undefined`, never a partial policy
@@ -517,6 +593,12 @@ have cached or recorded in an audit trail.
 
 **Integration**
 
+- each package installs and performs lookup without an MXC executor or
+  execution library; lookup requires no network access
+- the bundled catalog revision matches `getCatalogInfo()`; selecting an
+  unavailable revision fails explicitly, without falling back to another
+  revision
+- a package update leaves previously accepted consumer policies unchanged
 - a representative tool that fails under a minimal consumer policy succeeds
   once its resolved entry is composed in
 - the same tool still fails when the consumer's policy forbids what the entry
@@ -531,9 +613,10 @@ Recommended answers are proposals for review, not decisions.
 | What is the dedicated repository name and owning team? | Use a public repository outside `microsoft/mxc`; publish a separately versioned artifact so catalog updates are not coupled to SDK releases. |
 | Is invocation-name-only identity accepted automatically, or does it require explicit consumer opt-in? | Treat it as a fallback requiring explicit opt-in (`allowWeakIdentityFallback`), not the default. |
 | What happens on a detected tool-version mismatch: `undefined`, or a warning-bearing result the consumer may still use? | Return the resolved result with a warning; refusing outright removes information the consumer needs to decide for itself. |
-| Are private or enterprise catalog overlays in scope, and if so with what precedence? | Defer until the shared catalog contract and its API are stable; define precedence explicitly before any SDK implementation adds overlay support. |
+| Are private or enterprise catalog overlays in scope, and if so with what precedence? | Defer until the shared catalog contract and its API are stable; define precedence explicitly before any library implementation adds overlay support. |
 | Should the first contract version's composition vocabulary expand beyond [§4.5](#45-dependencies-and-composition) before implementation? | No. Start with conflict-rejecting filesystem composition and expand only with an explicit, reviewed rule per field. |
-| Who owns catalog schema/data review versus optional MXC SDK integration? | Assign catalog and security owners in the dedicated repository; keep MXC SDK review with existing MXC owners. |
+| Who owns catalog schema, data, and library API review? | Assign catalog, library, and security reviewers in the dedicated repository; no MXC SDK integration is proposed. |
+| Should the libraries share a resolver implementation or implement the contract independently? | Choose based on dependency footprint and maintenance cost, with shared conformance fixtures required either way. |
 
 ## 14. Related work
 
