@@ -114,7 +114,8 @@ export function main(argv: string[]): number {
 
 function resolveCommand(args: string[], catalogDir: string | undefined): number {
   const ctx: ResolveContext = {};
-  const symbols: Record<string, string> = {};
+  // Null prototype: a '__proto__' name must stay an ordinary (rejected) key.
+  const symbols: Record<string, string> = Object.create(null);
   const tools: Array<string | ToolCandidate> = [];
   let diagnostics = false;
   let purl: string | undefined;

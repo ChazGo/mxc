@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-import * as path from 'node:path';
 import { PolicyCatalogError } from './errors.js';
 import { nodeHostEnvironment, type HostEnvironment } from './host.js';
 import { parsePurl, type ParsedPurl } from './purl.js';
@@ -15,6 +14,8 @@ import {
   compositionViolation,
   dependencyClosure,
   findCrossClassOverlap,
+  isAbsolutePath,
+  normalizePath,
   pathKeySegments,
   policySymbols,
   selectVariant,
@@ -48,17 +49,6 @@ interface EntryMatch {
 }
 
 const SYMBOL_PATTERN = /\$\{([a-z][a-z0-9_]*)\}/g;
-
-function pathApi(platform: CatalogPlatform): path.PlatformPath {
-  return platform === 'windows' ? path.win32 : path.posix;
-}
-
-function normalizePath(value: string, platform: CatalogPlatform): string {
-  const api = pathApi(platform);
-  const normalized = api.normalize(value);
-  const root = api.parse(normalized).root;
-  return normalized.length > root.length ? normalized.replace(/[\\/]+$/, '') : normalized;
-}
 
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -323,7 +313,7 @@ export class PolicyCatalog {
     }
     const contract = this.store.contract;
     for (const [name, value] of Object.entries(ctx.symbols ?? {})) {
-      const definition = contract.symbols[name];
+      const definition = Object.hasOwn(contract.symbols, name) ? contract.symbols[name] : undefined;
       if (!definition) {
         throw new PolicyCatalogError('invalid_context', `ResolveContext.symbols.${name} is not a catalog symbol`);
       }
@@ -348,7 +338,6 @@ export class PolicyCatalog {
     warnings: string[],
   ): Map<string, string> | undefined {
     const contract = this.store.contract;
-    const api = pathApi(platform);
     const values = new Map<string, string>();
     const missing = new Map<string, string[]>();
     for (const node of nodes) {
@@ -361,7 +350,7 @@ export class PolicyCatalog {
         if (definition.source === 'context') {
           value = ctx.projectRoot;
         } else {
-          value = ctx.symbols?.[name];
+          value = ctx.symbols !== undefined && Object.hasOwn(ctx.symbols, name) ? ctx.symbols[name] : undefined;
           // Host-derived symbols describe the current host only; they are
           // never derived for an explicitly different target platform.
           if (value === undefined && definition.source === 'host' && platform === this.host.platform()) {
@@ -372,7 +361,7 @@ export class PolicyCatalog {
           missing.set(name, [...(missing.get(name) ?? []), node.entry.entryId]);
           continue;
         }
-        if (value.includes('${') || !api.isAbsolute(value)) {
+        if (value.includes('${') || !isAbsolutePath(value, platform)) {
           throw new PolicyCatalogError('invalid_context', `symbol '${name}' must resolve to an absolute ${platform} path`);
         }
         values.set(name, value);

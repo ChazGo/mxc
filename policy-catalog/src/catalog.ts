@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+import * as path from 'node:path';
 import { PolicyCatalogError } from './errors.js';
 import { isValidVersionRange } from './version-range.js';
 import { parsePurl } from './purl.js';
@@ -154,7 +155,7 @@ function validateTemplatePath(value: string, at: string, contract: CatalogContra
     fail(`'${at}' contains malformed symbol syntax`);
   }
   for (const match of value.matchAll(SYMBOL_PATTERN)) {
-    if (!(match[1] in contract.symbols)) {
+    if (!Object.hasOwn(contract.symbols, match[1])) {
       fail(`'${at}' references unknown symbol '${match[1]}'`);
     }
   }
@@ -197,6 +198,24 @@ export function foldsCase(platform: CatalogPlatform): boolean {
 /** Applies {@link foldsCase} to one value (`toLowerCase` when the platform folds case). */
 export function caseKey(value: string, platform: CatalogPlatform): string {
   return foldsCase(platform) ? value.toLowerCase() : value;
+}
+
+/**
+ * Normalizes an absolute resolved path with the platform's path rules (Node
+ * `path.win32` / `path.posix` `normalize`), then removes trailing separators
+ * unless the path is only its root. Other language bindings reproduce this
+ * exactly; `conformance/vectors/paths.json` pins the behavior.
+ */
+export function normalizePath(value: string, platform: CatalogPlatform): string {
+  const api = platform === 'windows' ? path.win32 : path.posix;
+  const normalized = api.normalize(value);
+  const root = api.parse(normalized).root;
+  return normalized.length > root.length ? normalized.replace(/[\\/]+$/, '') : normalized;
+}
+
+/** Whether `value` is absolute under the platform's path rules (Node `isAbsolute`). */
+export function isAbsolutePath(value: string, platform: CatalogPlatform): boolean {
+  return (platform === 'windows' ? path.win32 : path.posix).isAbsolute(value);
 }
 
 /** Splits a path into comparable segments using the platform's path and casing rules. */

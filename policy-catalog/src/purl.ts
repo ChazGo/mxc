@@ -22,7 +22,13 @@ export function parsePurl(value: string): ParsedPurl | undefined {
   const at = rest.lastIndexOf('@');
   let version: string | undefined;
   if (at > lastSlash) {
-    version = decodeURIComponent(rest.slice(at + 1));
+    // Malformed percent-encoding makes the package URL invalid; it must not
+    // escape as a URIError instead of a library result.
+    try {
+      version = decodeURIComponent(rest.slice(at + 1));
+    } catch {
+      return undefined;
+    }
     rest = rest.slice(0, at);
   }
   const segments = rest.split('/');
