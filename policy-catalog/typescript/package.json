@@ -1,0 +1,41 @@
+{
+  "name": "@mxc-prototype/policy-catalog",
+  "version": "0.0.0-prototype",
+  "private": true,
+  "description": "PROTOTYPE of the known-tool policy catalog library (TypeScript/JavaScript). Not published; package name is a placeholder pending the dedicated repository.",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./tooling": {
+      "types": "./dist/tooling.d.ts",
+      "import": "./dist/tooling.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "catalog/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-catalog.mjs",
+    "build:test": "tsc -p tsconfig.test.json",
+    "test": "npm run build && npm run build:test && node --test dist-test/*.test.js",
+    "validate": "npm run build && node scripts/validate-catalog.mjs",
+    "digest": "node scripts/catalog-digest.mjs",
+    "smoke:package": "npm run build && node scripts/package-smoke.mjs"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "24.13.4",
+    "ajv": "8.20.0",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}
