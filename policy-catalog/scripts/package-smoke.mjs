@@ -44,13 +44,16 @@ try {
     assert.equal(r.diagnostics.tools[0].matches[0].entryId, 'tool:git');
     assert.throws(() => getSandboxConfig('git', { catalogRevision: '1999-01-01.1' }), PolicyCatalogError);
     // The packaged CLI runs from the installed tree.
-    const info = JSON.parse(execFileSync(process.execPath, ['node_modules/@mxc-prototype/policy-catalog/dist/cli.js', 'info'], { encoding: 'utf8' }));
-    assert.equal(info.catalogRevision, ${JSON.stringify(manifest.defaultRevision)});
+    const inspected = JSON.parse(execFileSync(process.execPath, ['node_modules/@mxc-prototype/policy-catalog/dist/cli.js', 'inspect'], { encoding: 'utf8' }));
+    assert.equal(inspected.info.catalogRevision, ${JSON.stringify(manifest.defaultRevision)});
     // On POSIX, npm installs the bin as a symlink; running through it must still work.
     if (process.platform !== 'win32') {
-      const viaBin = JSON.parse(execFileSync(process.execPath, ['node_modules/.bin/policy-catalog', 'info'], { encoding: 'utf8' }));
-      assert.equal(viaBin.catalogRevision, info.catalogRevision);
+      const viaBin = JSON.parse(execFileSync(process.execPath, ['node_modules/.bin/policy-catalog', 'inspect'], { encoding: 'utf8' }));
+      assert.deepEqual(viaBin, inspected);
     }
+    // validate checks the installed catalog's integrity and contract.
+    const validated = JSON.parse(execFileSync(process.execPath, ['node_modules/@mxc-prototype/policy-catalog/dist/cli.js', 'validate'], { encoding: 'utf8' }));
+    assert.equal(validated.ok, true);
     console.log('package smoke ok');
   `);
   process.stdout.write(execFileSync(process.execPath, ['smoke.mjs'], { cwd: consumer, encoding: 'utf8' }));

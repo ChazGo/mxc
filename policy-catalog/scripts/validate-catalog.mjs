@@ -13,14 +13,14 @@
 //      backend neutrality, and v1 composition limits.
 //   4. Entry-revision monotonicity across consecutive published revisions.
 //   5. Immutability of already-published revisions against a base git ref
-//      (POLICY_CATALOG_BASE_REF, e.g. origin/main), when provided.
+//      (--base-ref=<ref> or POLICY_CATALOG_BASE_REF, e.g. origin/main), when
+//      provided. Shares its implementation with `policy-catalog validate`.
 //   6. Deterministic resolution: every entry resolves identically twice for
 //      every platform/architecture selector, and the whole-catalog lookup is
 //      independent of input order and of catalog file order.
 //   7. Package inclusion: the bundled default revision equals the repository
 //      manifest default.
 //   8. Every entry has a conformance fixture case.
-import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, relative } from 'node:path';
@@ -30,9 +30,9 @@ import {
   ARCHITECTURES,
   PLATFORMS,
   canonicalSha256,
-  checkPublishedImmutability,
   checkStoreHistory,
   selectVariant,
+  checkAgainstBaseRef,
 } from '../dist/tooling.js';
 
 const require = createRequire(import.meta.url);
@@ -84,33 +84,17 @@ const store = loadCatalogDirectory(pathToFileURL(`${catalogDir}/`));
 step('integrity, contract, and entry-revision history', () => checkStoreHistory(store));
 
 step('published revision immutability', () => {
-  const baseRef = process.env.POLICY_CATALOG_BASE_REF;
+  // Same check as `policy-catalog validate --base-ref <ref>`. An unknown ref is
+  // an error, never a silent pass.
+  const baseRef = process.argv.find(arg => arg.startsWith('--base-ref='))?.slice('--base-ref='.length)
+    ?? process.env.POLICY_CATALOG_BASE_REF;
   if (!baseRef) {
-    console.log('     (skipped: set POLICY_CATALOG_BASE_REF to compare against a base ref)');
+    console.log('     (skipped: pass --base-ref=<ref> or set POLICY_CATALOG_BASE_REF to compare against a base ref)');
     return [];
   }
-  const repoRoot = execFileSync('git', ['-C', root, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
-  const prefix = relative(repoRoot, catalogDir).replaceAll('\\', '/');
-  const show = path => {
-    try {
-      return execFileSync('git', ['-C', repoRoot, 'show', `${baseRef}:${prefix}/${path}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-    } catch {
-      return undefined;
-    }
-  };
-  const baseManifestText = show('manifest.json');
-  if (baseManifestText === undefined) {
-    console.log(`     (no catalog at ${baseRef}; nothing published yet)`);
-    return [];
-  }
-  const baseManifest = JSON.parse(baseManifestText);
-  const baseFiles = new Map();
-  for (const r of baseManifest.revisions) {
-    const text = show(r.file);
-    if (text !== undefined) baseFiles.set(r.file, text);
-  }
-  const proposedFiles = new Map(manifest.revisions.map(r => [r.file, readFileSync(join(catalogDir, r.file), 'utf8')]));
-  return checkPublishedImmutability({ manifest: baseManifest, files: baseFiles }, { manifest, files: proposedFiles });
+  const { comparedRevisions, errors } = checkAgainstBaseRef(catalogDir, manifest, baseRef);
+  console.log(`     (base ref ${baseRef}: ${comparedRevisions} published revision(s) compared)`);
+  return errors;
 });
 
 step('deterministic resolution', () => {

@@ -28,13 +28,14 @@ const required = [
   'dist/tooling.js',
   'dist/tooling.d.ts',
   'dist/cli.js',
+  'dist/validate.js',
   'catalog/contract.v1.json',
   'catalog/manifest.json',
   ...manifest.revisions.map(revision => `catalog/${revision.file}`),
   'schema/catalog.v1.schema.json',
   'schema/manifest.v1.schema.json',
 ];
-const forbidden = [/^src\//, /^tests\//, /^dist-tests\//, /^conformance\//, /^scripts\//, /^docs\//, /^\.github\//, /^node_modules\//, /\.test\.js$/];
+const forbidden = [/^src\//, /^tests\//, /^conformance\//, /^scripts\//, /^docs\//, /^\.github\//, /^node_modules\//, /\.test\.js$/];
 
 const errors = [
   ...required.filter(file => !files.includes(file)).map(file => `missing ${file}`),

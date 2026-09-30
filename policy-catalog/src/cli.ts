@@ -4,24 +4,35 @@
 
 // Command-line harness over the public library API. It is intended for
 // contributors, CI, and functional tests; it is not a sandbox launcher.
+// There are exactly three commands, one per use:
 //
-//   policy-catalog info
-//   policy-catalog list
-//   policy-catalog resolve [--diagnostics] [--platform P] [--architecture A]
-//       [--revision R] [--project-root PATH] [--symbol name=value]...
-//       [--allow-weak] [--purl URL] [--detected-version V] <tool>...
-//   policy-catalog verify [--catalog DIR]
+//   policy-catalog resolve [--catalog DIR] [--diagnostics] [--platform P]
+//       [--architecture A] [--revision R] [--project-root PATH]
+//       [--symbol name=value]... [--allow-weak]
+//       [--purl URL] [--detected-version V] <tool>...
+//   policy-catalog inspect [--catalog DIR]
+//   policy-catalog validate [--catalog DIR] [--base-ref REF]
 //
+// resolve   runs getSandboxConfig / getSandboxConfigWithDiagnostics.
+// inspect   prints getCatalogInfo() and listCatalogEntries() (metadata only).
+// validate  checks integrity, the catalog contract (including dependency
+//           cycles), entry-revision history, and, with --base-ref, that every
+//           revision published at REF is unchanged.
+//
+// --catalog defaults to the catalog bundled with this package.
 // Exit codes: 0 success (including "no policy" for resolve), 1 library
-// failure (PolicyCatalogError), 2 usage error. Output is JSON on stdout.
+// failure (PolicyCatalogError) or failed validation, 2 usage error.
+// Output is JSON on stdout.
 import { realpathSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PolicyCatalogError } from './errors.js';
 import { PolicyCatalog } from './resolver.js';
 import { bundledCatalogStore, loadCatalogDirectory, type CatalogStore } from './store.js';
-import { checkStoreHistory } from './history.js';
+import { validateCatalogDirectory } from './validate.js';
 import type { CatalogArchitecture, CatalogPlatform, ResolveContext, ToolCandidate } from './types.js';
+
+const USAGE = 'usage: policy-catalog <resolve|inspect|validate> [options]';
 
 class UsageError extends Error {}
 
@@ -39,35 +50,49 @@ function storeFrom(catalogDir: string | undefined): CatalogStore {
     : loadCatalogDirectory(pathToFileURL(`${resolvePath(catalogDir)}/`));
 }
 
+function bundledCatalogDir(): string {
+  return fileURLToPath(new URL('../catalog/', import.meta.url));
+}
+
 function print(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function rejectRest(args: string[], command: string): void {
+  if (args.length > 0) {
+    throw new UsageError(`${command}: unexpected argument '${args[0]}'`);
+  }
 }
 
 export function main(argv: string[]): number {
   const [command, ...rest] = argv;
   try {
     let catalogDir: string | undefined;
+    let baseRef: string | undefined;
     const args: string[] = [];
     for (let i = 0; i < rest.length; i += 1) {
       if (rest[i] === '--catalog') {
         catalogDir = takeValue(rest, i, '--catalog');
+        i += 1;
+      } else if (rest[i] === '--base-ref' && command === 'validate') {
+        baseRef = takeValue(rest, i, '--base-ref');
         i += 1;
       } else {
         args.push(rest[i]);
       }
     }
     switch (command) {
-      case 'info':
-        print(new PolicyCatalog(storeFrom(catalogDir)).getCatalogInfo());
+      case 'inspect': {
+        rejectRest(args, command);
+        const catalog = new PolicyCatalog(storeFrom(catalogDir));
+        print({ info: catalog.getCatalogInfo(), entries: catalog.listCatalogEntries() });
         return 0;
-      case 'list':
-        print(new PolicyCatalog(storeFrom(catalogDir)).listCatalogEntries());
-        return 0;
-      case 'verify': {
-        const store = storeFrom(catalogDir);
-        const errors = checkStoreHistory(store);
-        print({ ok: errors.length === 0, defaultRevision: store.defaultRevision, revisions: store.availableRevisions, errors });
-        return errors.length === 0 ? 0 : 1;
+      }
+      case 'validate': {
+        rejectRest(args, command);
+        const report = validateCatalogDirectory(catalogDir ?? bundledCatalogDir(), baseRef === undefined ? {} : { baseRef });
+        print(report);
+        return report.ok ? 0 : 1;
       }
       case 'resolve':
         return resolveCommand(args, catalogDir);
@@ -76,7 +101,7 @@ export function main(argv: string[]): number {
     }
   } catch (error) {
     if (error instanceof UsageError) {
-      process.stderr.write(`policy-catalog: ${error.message}\nusage: policy-catalog <info|list|verify|resolve> [options]\n`);
+      process.stderr.write(`policy-catalog: ${error.message}\n${USAGE}\n`);
       return 2;
     }
     if (error instanceof PolicyCatalogError) {

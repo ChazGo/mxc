@@ -4,8 +4,8 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022"],
-    "outDir": "../../dist-tests",
-    "rootDir": "../..",
+    "outDir": "./dist",
+    "rootDir": ".",
     "strict": true,
     "noUnusedLocals": true,
     "skipLibCheck": true,
@@ -13,5 +13,6 @@
     "declaration": false,
     "types": ["node"]
   },
-  "include": ["./**/*.ts"]
+  "include": ["*.ts"],
+  "exclude": ["node_modules", "dist"]
 }

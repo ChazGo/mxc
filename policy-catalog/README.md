@@ -22,7 +22,7 @@ git filter-repo --subdirectory-filter policy-catalog
 
 | Path | Contents |
 |---|---|
-| `docs/design.md` | Copy of the design proposal (authoritative). |
+| `docs/design.md` | Verbatim copy of the design proposal (authoritative). Its relative links point into the MXC repository; the header lists absolute equivalents. |
 | `docs/architecture.md` | How this prototype implements the design. |
 | `docs/contributing.md` | Catalog and library contribution flow, validation rules, and test layout. |
 | `catalog/contract.v1.json` | Catalog contract v1: registered `SandboxPolicy` versions and the symbol vocabulary. |
@@ -31,8 +31,8 @@ git filter-repo --subdirectory-filter policy-catalog
 | `schema/` | JSON Schemas for revisions and the manifest. |
 | `conformance/fixtures/` | Language-neutral conformance cases that every language binding must pass. |
 | `src/` | TypeScript/JavaScript library and the `policy-catalog` CLI. |
-| `tests/unit/` | Unit and conformance tests (`node:test`). |
-| `tests/functional/` | End-to-end tests that drive the compiled CLI against the real catalog and tampered copies. |
+| `tests/unit/` | Unit and conformance tests (`node:test`), with their own `tsconfig.json` and `run-tests.js`. |
+| `tests/functional/` | End-to-end tests against the packed and installed tarball: the installed CLI and library, the real catalog, and tampered or synthetic catalogs. Own `tsconfig.json` and `run-tests.js`. |
 | `scripts/` | Validation, digest, package, and extractability checks. |
 | `.github/workflows/ci.yml` | CI for the standalone repository. |
 
@@ -64,11 +64,23 @@ getCatalogInfo();      // { catalogSchemaVersion: '1', catalogRevision: '2026-09
 listCatalogEntries();  // metadata only, never policy bodies
 ```
 
-The same operations are available from the command line:
+The same operations are available from the command line. The CLI has
+exactly three commands:
+
+| Command | Purpose |
+|---|---|
+| `policy-catalog resolve [options] <tool>...` | `getSandboxConfig`, or `getSandboxConfigWithDiagnostics` with `--diagnostics`. Options: `--platform`, `--architecture`, `--revision`, `--project-root`, `--symbol name=value`, `--allow-weak`, and `--purl` / `--detected-version` for the next tool. |
+| `policy-catalog inspect` | `getCatalogInfo()` and `listCatalogEntries()`: metadata only, never a policy body. |
+| `policy-catalog validate [--base-ref REF]` | Integrity, the catalog contract (including dependency cycles), and entry-revision history. With `--base-ref`, also checks that every revision published at `REF` is unchanged. |
+
+Every command accepts `--catalog DIR` to use a catalog directory instead of the
+bundled one. Output is JSON on stdout. Exit codes: `0` success (including "no
+policy"), `1` library failure or failed validation, `2` usage error.
 
 ```text
 npx policy-catalog resolve --diagnostics --allow-weak --project-root /work/app \
   --symbol git_prefix=/usr/bin git
+npx policy-catalog validate --catalog ./catalog --base-ref origin/main
 ```
 
 ### Results
@@ -106,10 +118,10 @@ Requires Node.js 24 or later.
 
 ```text
 npm ci
-npm run check             # typecheck, unit, functional, catalog validation, pack contents, install smoke
+npm run check             # typecheck, unit, functional (installed tarball), catalog validation, pack contents, install smoke
 npm run test:unit
-npm run test:functional
-npm run validate          # add POLICY_CATALOG_BASE_REF=<ref> to enforce published-revision immutability
+npm run test:functional   # packs, installs the tarball in a temp project, and tests the installed CLI and library
+npm run validate          # add -- --base-ref=<ref> (or POLICY_CATALOG_BASE_REF=<ref>) to enforce published-revision immutability
 npm run check:pack
 npm run check:extract     # build and test HEAD's copy of this directory as a standalone repository
 ```
@@ -131,7 +143,7 @@ See [docs/contributing.md](docs/contributing.md) before changing catalog data.
 - v1 filesystem-only composition across inputs and dependencies
 - the policy-only and diagnostics APIs (single tool or array)
 - metadata inspection
-- the CLI harness
+- the CLI harness (`resolve | inspect | validate`)
 - the contribution validation pipeline
 - package inclusion and offline install checks
 - the extractability check

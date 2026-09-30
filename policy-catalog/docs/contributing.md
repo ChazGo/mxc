@@ -31,7 +31,8 @@ includes corrections and security fixes: publish a new revision instead.
 
    ```text
    npm run check
-   POLICY_CATALOG_BASE_REF=origin/main npm run validate
+   npm run validate -- --base-ref=origin/main
+   npx policy-catalog validate --base-ref origin/main   # same check through the CLI
    ```
 
 ### Entry requirements
@@ -70,7 +71,7 @@ enforce this; the repository's branch rules and CODEOWNERS must.
 - unsupported-field rejection
 - v1 composition limits within every dependency closure
 - `entryRevision` monotonicity across consecutive revisions
-- published-revision immutability against `POLICY_CATALOG_BASE_REF`
+- published-revision immutability against `--base-ref=<ref>` (or `POLICY_CATALOG_BASE_REF`); an unknown ref fails
 - deterministic, file-order-independent resolution for every selector
 - package inclusion
 - fixture coverage
@@ -84,22 +85,36 @@ Changes to the library API or behavior must keep the shared contract intact:
   ([design §6.2](design.md#62-cross-language-consistency-and-support)).
 - Failure categories and absence semantics are part of the contract. Changing
   them is a breaking change.
-- Run `npm run check`, `npm run test:functional`, and
-  `npm run check:extract -- --worktree` before opening a pull request.
+- Run `npm run check` and `npm run check:extract -- --worktree` before
+  opening a pull request.
 
 ## Test layout
 
 | Suite | Location | Command |
 |---|---|---|
 | Unit and conformance | `tests/unit/*.test.ts` | `npm run test:unit` |
-| Functional (CLI end-to-end) | `tests/functional/*.test.ts` | `npm run test:functional` |
+| Functional (installed package, end to end) | `tests/functional/*.test.ts` | `npm run test:functional` |
 | Catalog validation | `scripts/validate-catalog.mjs` | `npm run validate` |
 | Package contents | `scripts/check-pack.mjs` | `npm run check:pack` |
 | Offline install smoke test | `scripts/package-smoke.mjs` | `npm run smoke:package` |
 | Standalone extraction | `scripts/check-extractable.mjs` | `npm run check:extract` |
 
-Tests use Node's built-in `node:test` runner with the spec reporter, compiled
-by `tsc` into `dist-tests/`. This mirrors the layout of the MXC TypeScript SDK
-(`sdk/node/tests/unit`, `sdk/node/tests/integration`). Unit tests import the
-package through its own name, so they exercise the same compiled `dist/`
-output that ships.
+The layout mirrors MXC's `sdk/node/tests/integration`. Each suite directory
+has its own `tsconfig.json` that compiles `*.test.ts` into that directory's
+`dist/`, and a `run-tests.js` that runs the compiled `*.test.js` files with
+`node --test --test-reporter spec --test-force-exit`. Before either runner,
+`scripts/check-tests-present.mjs` (after MXC's
+`scripts/versioning/check-tests-present.js`) fails the run when the compiled
+directory holds no test files.
+
+- Unit tests import the package by its own name, so they exercise the
+  compiled `dist/` output that ships.
+- Functional tests never use the repository's `dist/` or `catalog/`.
+  `tests/functional/run-tests.js` runs `npm pack`, installs the tarball
+  offline into a new consumer project in a temporary directory outside the
+  repository, and passes that directory to the tests. The tests load the
+  library through the installed package's `exports` and run the installed
+  `bin`, in a separate process. `helpers.ts` refuses to run if the
+  installed package resolves inside the source tree.
+- Functional tests that need a defective catalog write a synthetic or
+  tampered copy into a temporary directory and pass it with `--catalog`.

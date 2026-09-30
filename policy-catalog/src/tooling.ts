@@ -25,6 +25,12 @@ export {
   checkPublishedImmutability,
   type PublishedState,
 } from './history.js';
+export {
+  validateCatalogDirectory,
+  checkAgainstBaseRef,
+  readPublishedStateAtRef,
+  type CatalogValidationReport,
+} from './validate.js';
 export { isValidVersionRange, satisfiesVersionRange } from './version-range.js';
 export { architectureFromMachine } from './host.js';
 export { parsePurl } from './purl.js';

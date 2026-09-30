@@ -37,15 +37,17 @@ jobs:
 
       - run: npm ci
 
-      # typecheck, unit, functional, catalog validation, pack contents, install smoke
+      # typecheck, unit, functional (from the packed tarball), catalog validation,
+      # pack contents, install smoke
       - run: npm run check
 
       - name: Published-revision immutability
         if: github.event_name == 'pull_request'
         shell: bash
+        # Passed through env, never interpolated into the script.
         env:
           POLICY_CATALOG_BASE_REF: origin/${{ github.base_ref }}
-        run: npm run validate
+        run: npm run validate -- "--base-ref=$POLICY_CATALOG_BASE_REF"
 
       - name: Extractability (HEAD tree as a standalone repository)
         if: matrix.os_label == 'linux'

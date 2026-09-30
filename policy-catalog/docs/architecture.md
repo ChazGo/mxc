@@ -35,7 +35,8 @@ layers and ceilings, approval, audit, and the final sandbox creation.
 | `src/host.ts` | Host platform, native system architecture, and approved host symbols. |
 | `src/resolver.ts` | `getSandboxConfig`, `getSandboxConfigWithDiagnostics`, `getCatalogInfo`, `listCatalogEntries`. |
 | `src/history.ts` | `entryRevision` monotonicity and published-revision immutability checks. |
-| `src/cli.ts` | `policy-catalog` command-line harness over the public API (functional tests, CI, contributors). |
+| `src/validate.ts` | Catalog-directory validation and the `--base-ref` immutability check, shared by `policy-catalog validate` and `scripts/validate-catalog.mjs`. Tooling only; the runtime lookup path never runs git. |
+| `src/cli.ts` | `policy-catalog resolve \| inspect \| validate` command-line harness over the public API (functional tests, CI, contributors). |
 | `src/tooling.ts` | `./tooling` subpath exports for validation scripts and tests. It is not part of the runtime API. |
 
 ## Resolution pipeline
