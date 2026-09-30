@@ -28,7 +28,7 @@ layers and ceilings, approval, audit, and the final sandbox creation.
 | Module | Responsibility |
 |---|---|
 | `src/types.ts` | Public types from design §5 (`ToolInput`, `ResolveContext`, `SandboxConfigResolution`, metadata). |
-| `src/errors.ts` | `PolicyCatalogError` and its stable failure categories. |
+| `src/errors.ts` | `PolicyCatalogError`: MXC error `code` plus stable `details.reason`. |
 | `src/canonical-json.ts` | Canonical JSON and SHA-256 used for revision integrity. |
 | `src/catalog.ts` | Contract and revision validation, variant selection, dependency closure, composition limits. |
 | `src/store.ts` | Manifest validation; lazy, digest-checked, deep-frozen revision loading. |
@@ -44,18 +44,19 @@ layers and ceilings, approval, audit, and the final sandbox creation.
 One call resolves one input or an array of inputs in a single pass. A single
 input is treated exactly like a one-element array.
 
-1. **Validate inputs and context.** Invalid input throws `invalid-context`. It
+1. **Validate inputs and context.** Invalid input throws `malformed_request`
+   (`invalid_context`). It
    is never reported as absence.
 2. **Load the revision.** Use the requested `catalogRevision`, or the
-   installed default. A missing revision is `revision-unavailable`, never a
-   substitution. A digest mismatch is `integrity`.
+   installed default. A missing revision is `backend_error`
+   (`revision_unavailable`), never a substitution. A digest mismatch is
+   `backend_error` (`integrity`).
 3. **Match each input additively** (design §4.3). Entries are visited in
    `entryId` order, so catalog file order is irrelevant. For each entry, every
    satisfied predicate is collected in declaration order:
    - A `purl` match is strong.
    - An `invocation-name` match is weak and needs `allowWeakIdentityFallback`.
-   - Invocation names compare case-insensitively on Windows and macOS, and
-     case-sensitively on Linux.
+   - Invocation names follow the per-OS casing rule below.
    - A strong match never suppresses another entry's eligible weak match.
 4. **Select a variant** (design §4.4). The exact architecture wins over the
    architecture-neutral variant, and another architecture is never used as a
@@ -75,8 +76,33 @@ input is treated exactly like a one-element array.
    returns a partial policy.
 8. **Compose.** Paths are substituted, normalized with the platform's path
    rules, and de-duplicated per access class in first-seen order. Equal or
-   ancestor/descendant paths in different classes throw
-   `composition-conflict`. The resolver never picks an access class.
+   ancestor/descendant paths in different classes throw `policy_validation`
+   (`composition_conflict`). The resolver never picks an access class.
+
+## Casing
+
+One rule per target platform (`foldsCase` in `src/catalog.ts`), used for both
+invocation-name matching and path comparison (de-duplication and
+cross-class overlap):
+
+- **Windows and macOS:** case-insensitive. Default NTFS and APFS/HFS+
+  volumes resolve names this way.
+- **Linux:** exact. `gh` and `GH` are different tools and different paths.
+
+Catalog validation intentionally differs: it treats invocation names
+case-insensitively on every platform when it looks for a repeated identity
+within an entry, so `["gh", "GH"]` is rejected even in a Linux-only entry.
+
+## Identity strength and the caller's verification duty
+
+Name-only (`invocation-name`) matching is **off by default**. A caller opts
+in per call with `allowWeakIdentityFallback: true` (CLI `--allow-weak`).
+
+The catalog records *strong* evidence (package URL today; signer or package
+ID where the design adds them). It cannot check that the binary about to run
+actually carries that evidence. **Verifying that the executable really has
+the strong identity passed in `packageUrl` is the caller's job.** A
+`packageUrl` the caller did not verify is no stronger than a name.
 
 Diagnostics follow the design exactly:
 
@@ -105,7 +131,7 @@ architecture ([design §4.4](design.md#44-platform-variants)).
 - **Linux:** `os.machine()`, the kernel machine type.
 
 Executables are invoked by absolute path. An unknown or unreadable value throws
-`unsupported-host`. The resolver never guesses. The result is cached for the
+`unsupported_containment` (`unsupported_host`). The resolver never guesses. The result is cached for the
 process.
 
 ## Integrity and immutability
@@ -117,16 +143,27 @@ are deep-frozen. The validation pipeline compares proposed changes against a
 base git ref and rejects any change to a published revision's manifest entry
 or content ([design §10](design.md#10-immutable-revisions)).
 
-## Failure categories
+## Failure codes
 
-| Category | Meaning |
-|---|---|
-| `integrity` | Catalog data cannot be read or does not match its published digest. |
-| `validation` | Catalog, manifest, or contract data violates the catalog contract. |
-| `revision-unavailable` | An explicitly requested revision is not installed. |
-| `invalid-context` | The caller's inputs or `ResolveContext` are invalid. |
-| `unsupported-host` | The host platform or native architecture cannot be mapped or determined. |
-| `composition-conflict` | The selected entries cannot be composed under the v1 rules. |
+Failures reuse MXC's existing `MxcError` codes (MXC `sdk/node/src/errors.ts`,
+Rust `MxcErrorCode`) where the meaning fits; the library adds no new code.
+A stable, snake_case sub-reason is carried in `details.reason`, following
+MXC's convention of putting structured information in `details`. Conformance
+fixtures and the cross-language check assert on both. Warnings are plain
+strings, as they are everywhere in MXC.
+
+| `code` | `details.reason` | Meaning |
+|---|---|---|
+| `policy_validation` | `invalid_catalog` | Catalog, manifest, or contract data violates the catalog contract: shape, unknown symbol, dependency cycle, missing dependency, base-ref check. |
+| `policy_validation` | `composition_conflict` | The selected entries, or their resolved paths, cannot be composed under the v1 rules. |
+| `malformed_request` | `invalid_context` | The caller's inputs or `ResolveContext` are invalid. |
+| `unsupported_containment` | `unsupported_host` | The host platform or native architecture cannot be mapped or determined. The resolver never guesses. |
+| `backend_error` | `integrity` | Catalog data cannot be read, or does not match its published digest (tamper). |
+| `backend_error` | `revision_unavailable` | An explicitly requested revision is not installed. |
+
+The CLI prints a failure as
+`{"error": {"code": "...", "message": "...", "details": {"reason": "..."}}}`
+and exits 1.
 
 Absence is not a failure. `getSandboxConfig` returns `undefined`, and
 `getSandboxConfigWithDiagnostics` returns `policy: undefined` with its

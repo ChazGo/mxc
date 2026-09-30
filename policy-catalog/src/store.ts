@@ -40,7 +40,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function invalid(message: string): never {
-  throw new PolicyCatalogError('validation', message);
+  throw new PolicyCatalogError('invalid_catalog', message);
 }
 
 function deepFreeze<T>(value: T): T {
@@ -141,7 +141,7 @@ export class CatalogStore {
     }
     const listed = this.manifest.revisions.find(revision => revision.catalogRevision === id);
     if (!listed) {
-      throw new PolicyCatalogError('revision-unavailable', `catalog revision '${id}' is not installed`);
+      throw new PolicyCatalogError('revision_unavailable', `catalog revision '${id}' is not installed`);
     }
     let raw: unknown;
     try {

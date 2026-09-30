@@ -271,13 +271,13 @@
       "name": "network fields cannot compose across entries selected by different inputs",
       "tools": ["APP.cmd", "base"],
       "context": { "platform": "windows", "architecture": "x64", "allowWeakIdentityFallback": true, "projectRoot": "C:\\p", "symbols": { "git_prefix": "C:\\g" } },
-      "expectError": "composition-conflict"
+      "expectError": { "code": "policy_validation", "reason": "composition_conflict" }
     },
     {
       "name": "symbol values that make access classes overlap are a composition conflict",
       "tools": { "invocationName": "app", "packageUrl": "pkg:npm/app" },
       "context": { "platform": "linux", "architecture": "x64", "projectRoot": "/g", "symbols": { "git_prefix": "/g" } },
-      "expectError": "composition-conflict"
+      "expectError": { "code": "policy_validation", "reason": "composition_conflict" }
     }
   ]
 }

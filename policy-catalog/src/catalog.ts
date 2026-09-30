@@ -63,7 +63,7 @@ const SYMBOL_PATTERN = /\$\{([a-z][a-z0-9_]*)\}/g;
 const ANCHORED_SYMBOL = /^\$\{([a-z][a-z0-9_]*)\}(?:[\\/]|$)/;
 
 function fail(message: string): never {
-  throw new PolicyCatalogError('validation', message);
+  throw new PolicyCatalogError('invalid_catalog', message);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -181,12 +181,30 @@ export function policySymbols(policy: CatalogSandboxPolicy): string[] {
   return [...seen];
 }
 
-/** Splits a path into comparable segments using the platform's path rules. */
+/**
+ * The one casing rule for a target platform, shared by invocation-name
+ * matching and path comparison: Windows and macOS (default APFS/HFS+ volumes)
+ * resolve names case-insensitively; Linux resolves them exactly.
+ *
+ * Catalog validation deliberately does not use this rule. It folds invocation
+ * names on every platform, so a repeated name is caught even for an entry that
+ * is only ever served to a case-sensitive host.
+ */
+export function foldsCase(platform: CatalogPlatform): boolean {
+  return platform !== 'linux';
+}
+
+/** Applies {@link foldsCase} to one value (`toLowerCase` when the platform folds case). */
+export function caseKey(value: string, platform: CatalogPlatform): string {
+  return foldsCase(platform) ? value.toLowerCase() : value;
+}
+
+/** Splits a path into comparable segments using the platform's path and casing rules. */
 export function pathKeySegments(value: string, platform: CatalogPlatform): string[] {
   const separators = platform === 'windows' ? /[\\/]+/ : /\/+/;
   const segments = value.split(separators).filter((segment, index) => segment !== '.' && (segment !== '' || index === 0));
   const normalized = segments.length > 1 && segments[segments.length - 1] === '' ? segments.slice(0, -1) : segments;
-  return platform === 'windows' ? normalized.map(segment => segment.toLowerCase()) : normalized;
+  return normalized.map(segment => caseKey(segment, platform));
 }
 
 function isSameOrNested(left: string[], right: string[]): boolean {

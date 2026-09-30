@@ -146,12 +146,12 @@ describe('unknown tools', () => {
 });
 
 describe('composition conflicts', () => {
-  it('overlapping resolved paths across access classes are a composition-conflict failure, not a choice', () => {
+  it('overlapping resolved paths across access classes are a policy_validation (composition_conflict) failure, not a choice', () => {
     // project_root=/opt (read-write for git) contains node_prefix=/opt/node (read-only for node).
     const result = cli('resolve', '--platform', 'linux', '--architecture', 'x64', '--allow-weak', '--project-root', '/opt',
       '--symbol', 'git_prefix=/usr/bin', '--symbol', 'node_prefix=/opt/node', 'git', 'node');
     assert.equal(result.status, 1, result.stderr);
-    assert.equal(result.json.error.category, 'composition-conflict');
+    assert.equal(result.json.error.details.reason, 'composition_conflict');
     assert.match(result.json.error.message, /overlap across access classes/);
   });
 
@@ -172,7 +172,7 @@ describe('composition conflicts', () => {
     assert.deepEqual(alone.json.network, { egress: { default: 'deny' } });
     const both = cli('resolve', '--catalog', dir, '--platform', 'linux', '--architecture', 'x64', '--allow-weak', '--symbol', 'git_prefix=/opt', 'a', 'b');
     assert.equal(both.status, 1, both.stderr);
-    assert.equal(both.json.error.category, 'composition-conflict');
+    assert.equal(both.json.error.details.reason, 'composition_conflict');
     assert.match(both.json.error.message, /'tool:b' uses 'network', which has no v1 cross-entry composition rule/);
   });
 
@@ -185,20 +185,20 @@ describe('composition conflicts', () => {
     ])]);
     const both = cli('resolve', '--catalog', dir, '--platform', 'linux', '--architecture', 'x64', '--allow-weak', '--symbol', 'git_prefix=/opt', 'a', 'b');
     assert.equal(both.status, 1, both.stderr);
-    assert.equal(both.json.error.category, 'composition-conflict');
+    assert.equal(both.json.error.details.reason, 'composition_conflict');
     assert.match(both.json.error.message, /mixed sandboxPolicy\.version values/);
   });
 });
 
 describe('catalog revisions', () => {
-  it('an unavailable explicit revision is a revision-unavailable failure, never a substitution', () => {
+  it('an unavailable explicit revision is a backend_error (revision_unavailable) failure, never a substitution', () => {
     const result = cli('resolve', '--revision', '1999-01-01.1', ...fullContext('linux', 'x64'), 'git');
     assert.equal(result.status, 1, result.stderr);
-    assert.equal(result.json.error.category, 'revision-unavailable');
+    assert.equal(result.json.error.details.reason, 'revision_unavailable');
     assert.match(result.json.error.message, /'1999-01-01\.1' is not installed/);
     assert.throws(
       () => lib.getSandboxConfig('git', { catalogRevision: '1999-01-01.1', platform: 'linux', architecture: 'x64' }),
-      (error: any) => error instanceof lib.PolicyCatalogError && error.category === 'revision-unavailable',
+      (error: any) => error instanceof lib.PolicyCatalogError && error.reason === 'revision_unavailable',
     );
   });
 
@@ -218,7 +218,7 @@ describe('catalog revisions', () => {
     assert.equal(older.json.diagnostics.catalogRevision, '2000-01-01.1');
     assert.deepEqual(older.json.policy.filesystem.readonlyPaths, ['/opt/a']);
     const missing = cli('resolve', '--revision', '2000-01-03.1', ...args);
-    assert.equal(missing.json.error.category, 'revision-unavailable');
+    assert.equal(missing.json.error.details.reason, 'revision_unavailable');
   });
 });
 

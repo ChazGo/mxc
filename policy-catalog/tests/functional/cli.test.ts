@@ -108,7 +108,7 @@ describe('installed CLI: resolve against the bundled catalog', () => {
     assert.deepEqual(empty.json, { diagnostics: { catalogRevision: installedManifest.defaultRevision, tools: [], resolvedDependencies: [], warnings: [] } });
   });
 
-  it('invalid caller input is an invalid-context library failure (exit 1)', () => {
+  it('invalid caller input is a malformed_request (invalid_context) library failure (exit 1)', () => {
     const cases: string[][] = [
       ['resolve', '--platform', 'plan9', 'git'],
       ['resolve', '--architecture', 'mips', 'git'],
@@ -120,7 +120,7 @@ describe('installed CLI: resolve against the bundled catalog', () => {
     for (const args of cases) {
       const result = cli(...args);
       assert.equal(result.status, 1, `${args.join(' ')} -> ${result.stderr}`);
-      assert.equal(result.json.error.category, 'invalid-context', args.join(' '));
+      assert.equal(result.json.error.details.reason, 'invalid_context', args.join(' '));
     }
   });
 });

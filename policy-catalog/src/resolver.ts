@@ -11,6 +11,7 @@ import {
   COMPOSABLE_FILESYSTEM_FIELDS,
   IDENTITY_STRENGTH,
   PLATFORMS,
+  caseKey,
   compositionViolation,
   dependencyClosure,
   findCrossClassOverlap,
@@ -66,17 +67,17 @@ function compareStrings(left: string, right: string): number {
 function toCandidate(input: ToolInput, index: number): ToolCandidate {
   const candidate = typeof input === 'string' ? { invocationName: input } : input;
   if (candidate === null || typeof candidate !== 'object') {
-    throw new PolicyCatalogError('invalid-context', `tool input ${index} must be a string or a ToolCandidate`);
+    throw new PolicyCatalogError('invalid_context', `tool input ${index} must be a string or a ToolCandidate`);
   }
   if (typeof candidate.invocationName !== 'string' || candidate.invocationName.length === 0) {
-    throw new PolicyCatalogError('invalid-context', `tool input ${index}: invocationName must be a non-empty string`);
+    throw new PolicyCatalogError('invalid_context', `tool input ${index}: invocationName must be a non-empty string`);
   }
   if (/[\\/]/.test(candidate.invocationName)) {
-    throw new PolicyCatalogError('invalid-context', `tool input ${index}: invocationName must be a bare name, not a path`);
+    throw new PolicyCatalogError('invalid_context', `tool input ${index}: invocationName must be a bare name, not a path`);
   }
   for (const key of ['packageUrl', 'detectedVersion'] as const) {
     if (candidate[key] !== undefined && (typeof candidate[key] !== 'string' || candidate[key].length === 0)) {
-      throw new PolicyCatalogError('invalid-context', `tool input ${index}: ${key} must be a non-empty string when present`);
+      throw new PolicyCatalogError('invalid_context', `tool input ${index}: ${key} must be a non-empty string when present`);
     }
   }
   return candidate;
@@ -198,7 +199,7 @@ export class PolicyCatalog {
         const closure = dependencyClosure(match.entry, match.selection, byId, platform, effectiveArchitecture());
         if (!closure.ok) {
           // A validated revision cannot reach this; treat it as corrupt data.
-          throw new PolicyCatalogError('validation', `dependency resolution failed: ${closure.reason} (${closure.detail})`);
+          throw new PolicyCatalogError('invalid_catalog', `dependency resolution failed: ${closure.reason} (${closure.detail})`);
         }
         for (const node of closure.nodes) {
           if (!selected.has(node.entry.entryId)) {
@@ -230,7 +231,7 @@ export class PolicyCatalog {
 
     const violation = compositionViolation(nodes);
     if (violation) {
-      throw new PolicyCatalogError('composition-conflict', `selected entries cannot be composed: ${violation}`);
+      throw new PolicyCatalogError('composition_conflict', `selected entries cannot be composed: ${violation}`);
     }
 
     const symbols = this.resolveSymbols(nodes, ctx, platform, warnings);
@@ -258,20 +259,18 @@ export class PolicyCatalog {
     if (tool.packageUrl !== undefined) {
       purl = parsePurl(tool.packageUrl);
       if (!purl) {
-        throw new PolicyCatalogError('invalid-context', `${describeInput(inputIndex, tool)}: '${tool.packageUrl}' is not a valid package URL`);
+        throw new PolicyCatalogError('invalid_context', `${describeInput(inputIndex, tool)}: '${tool.packageUrl}' is not a valid package URL`);
       }
     }
-    // Windows and default macOS volumes resolve executables case-insensitively;
-    // Linux does not.
-    const fold = platform === 'linux' ? (value: string) => value : (value: string) => value.toLowerCase();
-    const invocation = fold(tool.invocationName);
+    // The same casing rule as path comparison (catalog.ts `foldsCase`).
+    const invocation = caseKey(tool.invocationName, platform);
 
     const matches: EntryMatch[] = [];
     const skipped: string[] = [];
     for (const entry of ordered) {
       const satisfied = entry.identity.filter(predicate => (predicate.kind === 'purl'
         ? purl !== undefined && parsePurl(predicate.value)?.key === purl.key
-        : predicate.names.some(name => fold(name) === invocation)));
+        : predicate.names.some(name => caseKey(name, platform) === invocation)));
       if (satisfied.length === 0) {
         continue;
       }
@@ -311,28 +310,28 @@ export class PolicyCatalog {
 
   private validateContext(ctx: ResolveContext): void {
     if (ctx === null || typeof ctx !== 'object') {
-      throw new PolicyCatalogError('invalid-context', 'ResolveContext must be an object');
+      throw new PolicyCatalogError('invalid_context', 'ResolveContext must be an object');
     }
     if (ctx.platform !== undefined && !PLATFORMS.includes(ctx.platform)) {
-      throw new PolicyCatalogError('invalid-context', `ResolveContext.platform '${String(ctx.platform)}' is unsupported`);
+      throw new PolicyCatalogError('invalid_context', `ResolveContext.platform '${String(ctx.platform)}' is unsupported`);
     }
     if (ctx.architecture !== undefined && !ARCHITECTURES.includes(ctx.architecture)) {
-      throw new PolicyCatalogError('invalid-context', `ResolveContext.architecture '${String(ctx.architecture)}' is unsupported`);
+      throw new PolicyCatalogError('invalid_context', `ResolveContext.architecture '${String(ctx.architecture)}' is unsupported`);
     }
     if (ctx.projectRoot !== undefined && (typeof ctx.projectRoot !== 'string' || ctx.projectRoot.length === 0)) {
-      throw new PolicyCatalogError('invalid-context', 'ResolveContext.projectRoot must be a non-empty string when present');
+      throw new PolicyCatalogError('invalid_context', 'ResolveContext.projectRoot must be a non-empty string when present');
     }
     const contract = this.store.contract;
     for (const [name, value] of Object.entries(ctx.symbols ?? {})) {
       const definition = contract.symbols[name];
       if (!definition) {
-        throw new PolicyCatalogError('invalid-context', `ResolveContext.symbols.${name} is not a catalog symbol`);
+        throw new PolicyCatalogError('invalid_context', `ResolveContext.symbols.${name} is not a catalog symbol`);
       }
       if (definition.source === 'context') {
-        throw new PolicyCatalogError('invalid-context', `symbol '${name}' is supplied through ResolveContext.projectRoot, not symbols`);
+        throw new PolicyCatalogError('invalid_context', `symbol '${name}' is supplied through ResolveContext.projectRoot, not symbols`);
       }
       if (typeof value !== 'string') {
-        throw new PolicyCatalogError('invalid-context', `ResolveContext.symbols.${name} must be a string`);
+        throw new PolicyCatalogError('invalid_context', `ResolveContext.symbols.${name} must be a string`);
       }
     }
   }
@@ -374,7 +373,7 @@ export class PolicyCatalog {
           continue;
         }
         if (value.includes('${') || !api.isAbsolute(value)) {
-          throw new PolicyCatalogError('invalid-context', `symbol '${name}' must resolve to an absolute ${platform} path`);
+          throw new PolicyCatalogError('invalid_context', `symbol '${name}' must resolve to an absolute ${platform} path`);
         }
         values.set(name, value);
       }
@@ -441,7 +440,7 @@ function composePolicy(
   if (overlap) {
     // Symbol values can make distinct templates collide. The resolver never
     // chooses an access class implicitly.
-    throw new PolicyCatalogError('composition-conflict', `resolved paths overlap across access classes: ${overlap}`);
+    throw new PolicyCatalogError('composition_conflict', `resolved paths overlap across access classes: ${overlap}`);
   }
 
   const root = nodes[0].variant.sandboxPolicy;

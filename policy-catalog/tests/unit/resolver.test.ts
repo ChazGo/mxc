@@ -11,7 +11,7 @@ import {
   listCatalogEntries,
 } from '@mxc-prototype/policy-catalog';
 import { architectureFromMachine } from '@mxc-prototype/policy-catalog/tooling';
-import { bundledCatalog, catalogFor, entry, errorCategory, fixedHost, revisionWith, storeFor } from './helpers.js';
+import { bundledCatalog, catalogFor, entry, errorReason, fixedHost, revisionWith, storeFor } from './helpers.js';
 
 const v = '0.9.0-alpha';
 const weak = { allowWeakIdentityFallback: true } as const;
@@ -124,7 +124,7 @@ describe('runtime lookup: inputs and failures (design §5.1)', () => {
       ['git', { projectRoot: '' }],
     ];
     for (const [tools, ctx] of cases) {
-      assert.equal(errorCategory(() => catalog.getSandboxConfig(tools as any, ctx as any)), 'invalid-context', JSON.stringify([tools, ctx]));
+      assert.equal(errorReason(() => catalog.getSandboxConfig(tools as any, ctx as any)), 'invalid_context', JSON.stringify([tools, ctx]));
     }
   });
 
@@ -155,6 +155,37 @@ describe('runtime lookup: inputs and failures (design §5.1)', () => {
       entry('tool:l', { platformVariants: [{ when: { platform: 'linux' }, sandboxPolicy: { version: v, filesystem: { readonlyPaths: ['${git_prefix}', '${node_prefix}/'] } } }] }),
     ]));
     assert.deepEqual(linux.getSandboxConfig('l', { ...weak, symbols: { git_prefix: '/Tools', node_prefix: '/tools' } })?.filesystem, { readonlyPaths: ['/Tools', '/tools'] });
+  });
+
+  it('macOS folds path case like Windows (one casing rule per OS)', () => {
+    const mac = catalogFor(revisionWith([
+      entry('tool:m', { platformVariants: [{ when: { platform: 'macos' }, sandboxPolicy: { version: v, filesystem: { readonlyPaths: ['${git_prefix}', '${node_prefix}/'] } } }] }),
+    ]));
+    const ctx = { platform: 'macos', architecture: 'arm64', ...weak, symbols: { git_prefix: '/Tools', node_prefix: '/tools' } } as const;
+    assert.deepEqual(mac.getSandboxConfig('m', ctx)?.filesystem, { readonlyPaths: ['/Tools'] });
+    // Overlap across access classes is also detected case-insensitively on macOS.
+    const overlap = catalogFor(revisionWith([
+      entry('tool:m', { platformVariants: [{ when: { platform: 'macos' }, sandboxPolicy: { version: v, filesystem: { readonlyPaths: ['${git_prefix}'], readwritePaths: ['${project_root}'] } } }] }),
+    ]));
+    assert.equal(errorReason(() => overlap.getSandboxConfig('m', { ...ctx, projectRoot: '/tools/work' })), 'composition_conflict');
+    // The same values on Linux are distinct paths, so there is no overlap.
+    const linux = catalogFor(revisionWith([
+      entry('tool:m', { platformVariants: [{ when: { platform: 'linux' }, sandboxPolicy: { version: v, filesystem: { readonlyPaths: ['${git_prefix}'], readwritePaths: ['${project_root}'] } } }] }),
+    ]));
+    assert.deepEqual(linux.getSandboxConfig('m', { ...weak, platform: 'linux', architecture: 'x64', projectRoot: '/tools/work', symbols: { git_prefix: '/Tools' } })?.filesystem,
+      { readonlyPaths: ['/Tools'], readwritePaths: ['/tools/work'] });
+  });
+
+  it('invocation names: Linux is exact (gh is not GH); Windows and macOS fold case', () => {
+    const catalog = catalogFor(revisionWith([
+      entry('tool:gh', { platformVariants: ['linux', 'macos', 'windows'].map(platform => ({ when: { platform }, sandboxPolicy: { version: v } })) }),
+    ]));
+    const on = (platform: 'linux' | 'macos' | 'windows', name: string) =>
+      catalog.getSandboxConfigWithDiagnostics(name, { ...weak, platform, architecture: 'x64' }).diagnostics.tools[0].matches.map(m => m.entryId);
+    assert.deepEqual(on('linux', 'gh'), ['tool:gh']);
+    assert.deepEqual(on('linux', 'GH'), []);
+    assert.deepEqual(on('macos', 'GH'), ['tool:gh']);
+    assert.deepEqual(on('windows', 'Gh'), ['tool:gh']);
   });
 
   it('dependency chain resolution composes each entry once, in deterministic order', () => {
@@ -205,7 +236,7 @@ describe('runtime lookup: inputs and failures (design §5.1)', () => {
       entry('tool:a', { platformVariants: [{ when: { platform: 'linux' }, sandboxPolicy: { version: '0.8.0-alpha' } }] }),
       entry('tool:b', { platformVariants: [{ when: { platform: 'linux' }, sandboxPolicy: { version: v } }] }),
     ]));
-    assert.equal(errorCategory(() => catalog.getSandboxConfig(['a', 'b'], weak)), 'composition-conflict');
+    assert.equal(errorReason(() => catalog.getSandboxConfig(['a', 'b'], weak)), 'composition_conflict');
     // Each tool on its own is fine.
     assert.deepEqual(catalog.getSandboxConfig('a', weak), { version: '0.8.0-alpha' });
   });

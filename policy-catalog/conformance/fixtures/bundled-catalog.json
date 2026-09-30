@@ -1,5 +1,5 @@
 {
-  "$comment": "Language-neutral conformance cases against the bundled catalog. Every language binding (TypeScript, Rust, C#) must produce the same `expect` for each case from getSandboxConfigWithDiagnostics(tools, context), and getSandboxConfig must return `expect.policy`. `policy: null` is the language's absence value (undefined / None / null). `expectError` names a PolicyCatalogError category. `tools` is a single input or an array.",
+  "$comment": "Language-neutral conformance cases against the bundled catalog. Every language binding (TypeScript, Rust, C#) must produce the same `expect` for each case from getSandboxConfigWithDiagnostics(tools, context), and getSandboxConfig must return `expect.policy`. `policy: null` is the language's absence value (undefined / None / null). `expectError` is the failure's MXC error `code` and stable `details.reason`. `tools` is a single input or an array.",
   "catalog": "bundled",
   "cases": [
     {
@@ -199,19 +199,19 @@
       "name": "unavailable explicit revision is an error, not a substitution",
       "tools": "git",
       "context": { "platform": "linux", "architecture": "x64", "catalogRevision": "2099-01-01.1" },
-      "expectError": "revision-unavailable"
+      "expectError": { "code": "backend_error", "reason": "revision_unavailable" }
     },
     {
       "name": "relative symbol value is rejected",
       "tools": "node",
       "context": { "platform": "linux", "architecture": "x64", "allowWeakIdentityFallback": true, "symbols": { "node_prefix": "bin" } },
-      "expectError": "invalid-context"
+      "expectError": { "code": "malformed_request", "reason": "invalid_context" }
     },
     {
       "name": "symbol values that make access classes overlap across tools are a composition conflict",
       "tools": ["git", "node"],
       "context": { "platform": "linux", "architecture": "x64", "allowWeakIdentityFallback": true, "projectRoot": "/opt", "symbols": { "git_prefix": "/usr/bin", "node_prefix": "/opt/node" } },
-      "expectError": "composition-conflict"
+      "expectError": { "code": "policy_validation", "reason": "composition_conflict" }
     }
   ]
 }

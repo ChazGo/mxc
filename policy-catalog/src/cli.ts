@@ -105,7 +105,7 @@ export function main(argv: string[]): number {
       return 2;
     }
     if (error instanceof PolicyCatalogError) {
-      print({ error: { category: error.category, message: error.message } });
+      print({ error: { code: error.code, message: error.message, details: { reason: error.reason } } });
       return 1;
     }
     throw error;

@@ -83,8 +83,8 @@ Changes to the library API or behavior must keep the shared contract intact:
 - Any behavior visible across languages goes into `conformance/fixtures/`,
   and the change must describe what the Rust and C# bindings need to match
   ([design §6.2](design.md#62-cross-language-consistency-and-support)).
-- Failure categories and absence semantics are part of the contract. Changing
-  them is a breaking change.
+- Error codes, `details.reason` values, and absence semantics are part of the
+  contract. Changing them is a breaking change.
 - Run `npm run check` and `npm run check:extract -- --worktree` before
   opening a pull request.
 

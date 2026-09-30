@@ -23,7 +23,12 @@ export {
   type ManifestRevision,
 } from './store.js';
 
-export { PolicyCatalogError, type PolicyCatalogErrorCategory } from './errors.js';
+export {
+  PolicyCatalogError,
+  ERROR_CODE_FOR_REASON,
+  type PolicyCatalogErrorCode,
+  type PolicyCatalogErrorReason,
+} from './errors.js';
 
 export type {
   CatalogArchitecture,

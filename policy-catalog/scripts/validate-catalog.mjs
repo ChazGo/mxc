@@ -174,7 +174,7 @@ step('order independence', () => {
         try {
           return JSON.stringify(new PolicyCatalog(catalogStore).getSandboxConfig(tools, ctx));
         } catch (error) {
-          return `error:${error.category ?? error.message}`;
+          return `error:${error.reason ?? error.message}`;
         }
       };
       const a = run(store, names);

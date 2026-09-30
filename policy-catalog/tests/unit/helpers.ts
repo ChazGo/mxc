@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import {
   CatalogStore,
+  ERROR_CODE_FOR_REASON,
   PolicyCatalog,
   PolicyCatalogError,
   bundledCatalogStore,
@@ -68,12 +70,14 @@ export function fixtureFiles(): string[] {
   return readdirSync(fixturesDir).filter(name => name.endsWith('.json')).sort();
 }
 
-export function errorCategory(fn: () => unknown): string | undefined {
+/** The failure's stable `details.reason`, after checking that `code` is the reason's MXC code. */
+export function errorReason(fn: () => unknown): string | undefined {
   try {
     fn();
   } catch (error) {
     if (error instanceof PolicyCatalogError) {
-      return error.category;
+      assert.equal(error.code, ERROR_CODE_FOR_REASON[error.reason]);
+      return error.reason;
     }
     throw error;
   }

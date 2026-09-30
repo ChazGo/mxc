@@ -95,15 +95,25 @@ npx policy-catalog validate --catalog ./catalog --base-ref origin/main
   an empty input, when no input matched, or when a selected entry has an
   unresolved required symbol. `getSandboxConfigWithDiagnostics` returns
   `policy: undefined` with the diagnostics.
-- Library failures throw `PolicyCatalogError` with a stable `category`. See
-  [architecture](docs/architecture.md#failure-categories).
+- Library failures throw `PolicyCatalogError` with an MXC error `code`
+  (`policy_validation`, `malformed_request`, `unsupported_containment`,
+  `backend_error`) and a stable `details.reason`. Warnings are plain strings.
+  See [architecture](docs/architecture.md#failure-codes).
 
 ### Matching and selection
 
 - Matching is additive: every eligible matching entry contributes, and each
   contributes once.
-- `purl` identity is strong. Invocation-name-only identity is weak and
-  participates only with `allowWeakIdentityFallback: true`.
+- `purl` identity is strong. Invocation-name-only identity is weak and is
+  **off by default**; a caller opts in per call with
+  `allowWeakIdentityFallback: true` (CLI `--allow-weak`).
+- The catalog records strong evidence (package URL, signer). **Verifying that
+  the binary about to run actually has that strong identity is the caller's
+  job**; the library cannot see the binary.
+- Casing follows the target OS: Windows and macOS compare invocation names and
+  paths case-insensitively; Linux compares them exactly (`gh` is not `GH`).
+  Catalog validation always treats names case-insensitively when it checks for
+  duplicates.
 - An omitted `platform` uses the host. An omitted `architecture` uses the
   device's native system architecture, not the process architecture, and
   diagnostics warn that the tool's architecture was not verified. An omitted

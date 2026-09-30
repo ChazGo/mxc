@@ -29,7 +29,7 @@ function hostPlatform(): CatalogPlatform {
     case 'linux':
       return 'linux';
     default:
-      throw new PolicyCatalogError('unsupported-host', `host platform '${os.platform()}' has no catalog selector`);
+      throw new PolicyCatalogError('unsupported_host', `host platform '${os.platform()}' has no catalog selector`);
   }
 }
 
@@ -90,11 +90,11 @@ function detectNativeArchitecture(): CatalogArchitecture {
       reported = os.machine();
     }
   } catch (error) {
-    throw new PolicyCatalogError('unsupported-host', `native system architecture could not be determined: ${(error as Error).message}`);
+    throw new PolicyCatalogError('unsupported_host', `native system architecture could not be determined: ${(error as Error).message}`);
   }
   const architecture = reported === undefined ? undefined : architectureFromMachine(reported);
   if (!architecture) {
-    throw new PolicyCatalogError('unsupported-host', `native system architecture '${reported ?? 'unknown'}' has no catalog selector`);
+    throw new PolicyCatalogError('unsupported_host', `native system architecture '${reported ?? 'unknown'}' has no catalog selector`);
   }
   return architecture;
 }

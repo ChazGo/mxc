@@ -13,7 +13,7 @@ import {
   validateContract,
   validateCatalogRevision,
 } from '@mxc-prototype/policy-catalog/tooling';
-import { contract, entry, errorCategory, fixedHost, revisionWith, storeFor } from './helpers.js';
+import { contract, entry, errorReason, fixedHost, revisionWith, storeFor } from './helpers.js';
 
 const parsedContract = validateContract(contract);
 
@@ -33,12 +33,12 @@ describe('integrity', () => {
   it('a tampered revision fails with an integrity error, never a no-match', () => {
     const revision = revisionWith([entry('tool:a')]);
     const store = storeFor([revision], { digests: { '2000-01-01.1': '0'.repeat(64) } });
-    assert.equal(errorCategory(() => store.revision()), 'integrity');
+    assert.equal(errorReason(() => store.revision()), 'integrity');
     const catalog = new PolicyCatalog(store, fixedHost());
-    assert.equal(errorCategory(() => catalog.getSandboxConfig('a', { allowWeakIdentityFallback: true })), 'integrity');
-    assert.equal(errorCategory(() => catalog.getSandboxConfigWithDiagnostics('a', { allowWeakIdentityFallback: true })), 'integrity');
-    assert.equal(errorCategory(() => catalog.listCatalogEntries()), 'integrity');
-    assert.equal(errorCategory(() => catalog.getCatalogInfo()), 'integrity');
+    assert.equal(errorReason(() => catalog.getSandboxConfig('a', { allowWeakIdentityFallback: true })), 'integrity');
+    assert.equal(errorReason(() => catalog.getSandboxConfigWithDiagnostics('a', { allowWeakIdentityFallback: true })), 'integrity');
+    assert.equal(errorReason(() => catalog.listCatalogEntries()), 'integrity');
+    assert.equal(errorReason(() => catalog.getCatalogInfo()), 'integrity');
   });
 
   it('a revision file that declares a different revision id fails integrity', () => {
@@ -46,13 +46,13 @@ describe('integrity', () => {
     const digest = canonicalSha256(revision);
     const store = storeFor([{ ...revision, catalogRevision: '2000-01-01.1' }], { digests: { '2000-01-01.1': digest } });
     // The digest was computed for other content, so this is caught as tampering first.
-    assert.equal(errorCategory(() => store.revision()), 'integrity');
+    assert.equal(errorReason(() => store.revision()), 'integrity');
   });
 
   it('invalid manifest data is a validation error', () => {
     const revision = revisionWith([entry('tool:a')]);
-    assert.equal(errorCategory(() => storeFor([revision], { defaultRevision: '2001-01-01.1' })), 'validation');
-    assert.equal(errorCategory(() => storeFor([revisionWith([entry('tool:a')], '2000-01-02.1'), revision])), 'validation');
+    assert.equal(errorReason(() => storeFor([revision], { defaultRevision: '2001-01-01.1' })), 'invalid_catalog');
+    assert.equal(errorReason(() => storeFor([revisionWith([entry('tool:a')], '2000-01-02.1'), revision])), 'invalid_catalog');
   });
 });
 
@@ -69,7 +69,7 @@ describe('versioning and immutable revisions', () => {
     };
     assert.deepEqual(revisionOf(), ['2000-01-02.1', 2]);
     assert.deepEqual(revisionOf({ catalogRevision: '2000-01-01.1' }), ['2000-01-01.1', 1]);
-    assert.equal(errorCategory(() => catalog.getSandboxConfig('a', { ...ctx, catalogRevision: '2000-01-03.1' })), 'revision-unavailable');
+    assert.equal(errorReason(() => catalog.getSandboxConfig('a', { ...ctx, catalogRevision: '2000-01-03.1' })), 'revision_unavailable');
   });
 
   it('loaded revisions are deeply frozen (read-only)', () => {

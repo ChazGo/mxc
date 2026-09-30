@@ -51,7 +51,7 @@ export function readPublishedStateAtRef(catalogDir: string, baseRef: string): Pu
   // git receives the ref as an argument; one that starts with '-' would be
   // parsed as an option, so it is rejected rather than passed through.
   if (baseRef.length === 0 || baseRef.startsWith('-') || /[\s\0]/.test(baseRef)) {
-    throw new PolicyCatalogError('validation', `base-ref check: '${baseRef}' is not a valid git ref`);
+    throw new PolicyCatalogError('invalid_catalog', `base-ref check: '${baseRef}' is not a valid git ref`);
   }
   // .native expands Windows 8.3 short names (e.g. RUNNER~1 in CI temp dirs),
   // so the path compares correctly with git's long-form top-level path.
@@ -60,14 +60,14 @@ export function readPublishedStateAtRef(catalogDir: string, baseRef: string): Pu
   try {
     top = realpathSync.native(git(['rev-parse', '--show-toplevel'], dir).trim());
   } catch {
-    throw new PolicyCatalogError('validation', `base-ref check: '${catalogDir}' is not inside a git work tree`);
+    throw new PolicyCatalogError('invalid_catalog', `base-ref check: '${catalogDir}' is not inside a git work tree`);
   }
   if (!gitSucceeds(['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`], top)) {
-    throw new PolicyCatalogError('validation', `base-ref check: '${baseRef}' does not name a commit`);
+    throw new PolicyCatalogError('invalid_catalog', `base-ref check: '${baseRef}' does not name a commit`);
   }
   const prefix = relative(top, dir).replaceAll('\\', '/');
   if (prefix.startsWith('..') || isAbsolute(prefix)) {
-    throw new PolicyCatalogError('validation', `base-ref check: '${catalogDir}' is outside its git work tree`);
+    throw new PolicyCatalogError('invalid_catalog', `base-ref check: '${catalogDir}' is outside its git work tree`);
   }
   const at = (file: string): string => `${baseRef}:${prefix === '' ? '' : `${prefix}/`}${file}`;
   if (!gitSucceeds(['cat-file', '-e', at('manifest.json')], top)) {
@@ -120,7 +120,7 @@ export function checkAgainstBaseRef(
 }
 
 function describeError(error: unknown): string {
-  return error instanceof PolicyCatalogError ? error.message : `[validation] ${(error as Error).message}`;
+  return error instanceof PolicyCatalogError ? error.message : `[policy_validation] ${(error as Error).message}`;
 }
 
 /**

@@ -56,12 +56,12 @@ describe('integrity of a copied catalog', () => {
     const validate = cli('validate', '--catalog', dir);
     assert.equal(validate.status, 1, validate.stderr);
     assert.equal(validate.json?.ok, false, `validate produced no JSON report; stderr: ${validate.stderr}`);
-    assert.match(validate.json.errors.join('\n'), /\[integrity\] catalog revision '[^']+' digest [0-9a-f]{64} does not match the published digest/);
+    assert.match(validate.json.errors.join('\n'), /\[backend_error\] catalog revision '[^']+' digest [0-9a-f]{64} does not match the published digest/);
 
     const resolve = cli('resolve', '--catalog', dir, ...fullContext('windows', 'x64'), 'git');
     assert.equal(resolve.status, 1, resolve.stderr);
-    assert.equal(resolve.json.error.category, 'integrity');
-    assert.equal(cli('inspect', '--catalog', dir).json.error.category, 'integrity');
+    assert.equal(resolve.json.error.details.reason, 'integrity');
+    assert.equal(cli('inspect', '--catalog', dir).json.error.details.reason, 'integrity');
   });
 
   it('a missing revision file is an integrity failure', () => {
@@ -69,8 +69,8 @@ describe('integrity of a copied catalog', () => {
     rmSync(latestFile(dir));
     const result = cli('inspect', '--catalog', dir);
     assert.equal(result.status, 1);
-    assert.equal(result.json.error.category, 'integrity');
-    assert.match(cli('validate', '--catalog', dir).json.errors.join('\n'), /\[integrity\].*could not be read/);
+    assert.equal(result.json.error.details.reason, 'integrity');
+    assert.match(cli('validate', '--catalog', dir).json.errors.join('\n'), /\[backend_error\].*could not be read/);
   });
 
   it('a manifest whose default names an unlisted revision is a validation failure', () => {
@@ -78,10 +78,10 @@ describe('integrity of a copied catalog', () => {
     writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ ...installedManifest, defaultRevision: '2099-01-01.1' }));
     const result = cli('inspect', '--catalog', dir);
     assert.equal(result.status, 1);
-    assert.equal(result.json.error.category, 'validation');
+    assert.equal(result.json.error.details.reason, 'invalid_catalog');
     const validate = cli('validate', '--catalog', dir);
     assert.equal(validate.status, 1);
-    assert.match(validate.json.errors.join('\n'), /\[validation\] manifest\.defaultRevision must name a listed revision/);
+    assert.match(validate.json.errors.join('\n'), /\[policy_validation\] manifest\.defaultRevision must name a listed revision/);
   });
 });
 
@@ -104,7 +104,7 @@ describe('dependency cycles', () => {
     const result = cli('validate', '--catalog', dir);
     assert.equal(result.status, 1, result.stderr);
     assert.equal(result.json?.ok, false, `validate produced no JSON report; stderr: ${result.stderr}`);
-    assert.match(result.json.errors.join('\n'), /\[validation\] 'tool:a' on linux\/x64: cycle \(tool:a -> tool:b -> tool:c -> tool:a\)/);
+    assert.match(result.json.errors.join('\n'), /\[policy_validation\] 'tool:a' on linux\/x64: cycle \(tool:a -> tool:b -> tool:c -> tool:a\)/);
   });
 
   it('resolve never returns a policy from a cyclic catalog', () => {
@@ -114,7 +114,7 @@ describe('dependency cycles', () => {
     ])]);
     const result = cli('resolve', '--catalog', dir, '--platform', 'linux', '--architecture', 'x64', '--allow-weak', '--symbol', 'git_prefix=/opt', 'a');
     assert.equal(result.status, 1, result.stderr);
-    assert.equal(result.json?.error?.category, 'validation', `stderr: ${result.stderr}`);
+    assert.equal(result.json?.error?.details?.reason, 'invalid_catalog', `stderr: ${result.stderr}`);
     assert.match(result.json.error.message, /cycle \(tool:a -> tool:b -> tool:a\)/);
   });
 

@@ -5,7 +5,20 @@
 // Other language bindings must run the same files with the same expectations.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bundledCatalog, catalogFor, errorCategory, fixedHost, fixtureFiles, fixturesDir, readJson } from './helpers.js';
+import { PolicyCatalogError } from '@mxc-prototype/policy-catalog';
+import { bundledCatalog, catalogFor, fixedHost, fixtureFiles, fixturesDir, readJson } from './helpers.js';
+
+function failure(fn: () => unknown): { code: string; reason: string } | undefined {
+  try {
+    fn();
+  } catch (error) {
+    if (error instanceof PolicyCatalogError) {
+      return { code: error.code, reason: error.details.reason };
+    }
+    throw error;
+  }
+  return undefined;
+}
 
 function toExpected(expect: any): any {
   return { ...expect, policy: expect.policy ?? undefined };
@@ -19,8 +32,8 @@ for (const name of fixtureFiles()) {
         const host = fixedHost(testCase.host?.platform ?? 'linux', testCase.host?.nativeArchitecture ?? 'x64');
         const catalog = fixture.catalog === 'bundled' ? bundledCatalog(host) : catalogFor(fixture.catalog, host);
         if (testCase.expectError !== undefined) {
-          assert.equal(errorCategory(() => catalog.getSandboxConfigWithDiagnostics(testCase.tools, testCase.context)), testCase.expectError);
-          assert.equal(errorCategory(() => catalog.getSandboxConfig(testCase.tools, testCase.context)), testCase.expectError);
+          assert.deepEqual(failure(() => catalog.getSandboxConfigWithDiagnostics(testCase.tools, testCase.context)), testCase.expectError);
+          assert.deepEqual(failure(() => catalog.getSandboxConfig(testCase.tools, testCase.context)), testCase.expectError);
           return;
         }
         const expected = toExpected(testCase.expect);
