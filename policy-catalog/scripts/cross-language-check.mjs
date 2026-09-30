@@ -29,7 +29,7 @@
 //     the shared usage line.
 // Exit code must match exactly.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -109,6 +109,10 @@ function writeCatalog(name, revisions, { tamper, dropFile } = {}) {
     writeFileSync(join(dir, file), `${JSON.stringify(body, null, 2)}\n`);
   }
   placeholders.set(dir, `<${name}>`);
+  // Runtimes may report the same directory in another spelling (on Windows,
+  // an 8.3 short temp path such as RUNNER~1 versus its long form).
+  const real = realpathSync.native(dir);
+  if (real !== dir) placeholders.set(real, `<${name}>`);
   return dir;
 }
 
