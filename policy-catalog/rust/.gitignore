@@ -1,0 +1,7 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+target/
+# Copy of ../catalog made by scripts/sync-catalog.mjs for `cargo package`.
+/catalog/
+*.crate

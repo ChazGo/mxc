@@ -1,3 +1,14 @@
 node_modules/
 dist/
 *.tgz
+# Rust build output and packages (see also rust/.gitignore)
+/rust/target/
+*.crate
+# .NET build output and packages (see also dotnet/.gitignore; bin/ and obj/
+# are scoped there so rust/src/bin/ stays tracked)
+*.nupkg
+*.snupkg
+TestResults/
+# The enclosing MXC repository ignores every `[Bb]in/`; Cargo binary targets
+# live in rust/src/bin/, so re-include it (no effect once extracted).
+!/rust/src/bin/
