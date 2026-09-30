@@ -1,0 +1,41 @@
+# CI for the standalone policy catalog repository. Inactive while this
+# directory is nested inside microsoft/mxc-derived trees; it becomes the
+# repository's workflow after `git filter-repo --subdirectory-filter`.
+name: Policy Catalog CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm test
+      - name: Validate catalog (including published-revision immutability)
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            export POLICY_CATALOG_BASE_REF="origin/${{ github.base_ref }}"
+          fi
+          npm run validate
+      - run: npm run smoke:package
