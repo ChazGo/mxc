@@ -30,10 +30,13 @@ git filter-repo --subdirectory-filter policy-catalog
 | `catalog/revisions/<YYYY-MM-DD.N>.json` | Immutable published catalog revisions. |
 | `schema/` | JSON Schemas for revisions and the manifest. |
 | `conformance/fixtures/` | Language-neutral conformance cases that every language binding must pass. |
+| `conformance/vectors/` | Generated path-normalization and canonical-JSON vectors (`scripts/generate-vectors.mjs`) shared by every language. |
 | `src/` | TypeScript/JavaScript library and the `policy-catalog` CLI. |
+| `rust/` | Rust crate `mxc-policy-catalog` (library and `policy-catalog` binary). Its own Cargo `[workspace]`. |
+| `dotnet/` | .NET library `Microsoft.Mxc.PolicyCatalog` (net8.0), its CLI, and tests. |
 | `tests/unit/` | Unit and conformance tests (`node:test`), with their own `tsconfig.json` and `run-tests.js`. |
 | `tests/functional/` | End-to-end tests against the packed and installed tarball: the installed CLI and library, the real catalog, and tampered or synthetic catalogs. Own `tsconfig.json` and `run-tests.js`. |
-| `scripts/` | Validation, digest, package, and extractability checks. |
+| `scripts/` | Validation, digest, package, extractability, per-language functional, and cross-language checks. |
 | `.github/workflows/ci.yml` | CI for the standalone repository. |
 
 ## Library API
@@ -136,11 +139,21 @@ npm run check:pack
 npm run check:extract     # build and test HEAD's copy of this directory as a standalone repository
 ```
 
+The Rust and .NET libraries are developed with their own toolchains; see
+[docs/contributing.md](docs/contributing.md) for their commands. The
+cross-language check builds all three CLIs and requires identical normalized
+JSON output from each:
+
+```text
+npm run build
+node scripts/cross-language-check.mjs
+```
+
 See [docs/contributing.md](docs/contributing.md) before changing catalog data.
 
 ## Status: implemented and deferred
 
-**Implemented (TypeScript):**
+**Implemented (TypeScript, Rust, and C#/.NET):**
 
 - the four version dimensions
 - canonical-digest integrity
@@ -157,20 +170,27 @@ See [docs/contributing.md](docs/contributing.md) before changing catalog data.
 - the contribution validation pipeline
 - package inclusion and offline install checks
 - the extractability check
+- native Rust (crate `mxc-policy-catalog`, `rust/`) and C#/.NET (NuGet
+  `Microsoft.Mxc.PolicyCatalog`, net8.0, `dotnet/`) libraries and CLIs, each
+  with unit, conformance, and packaged-artifact functional tests
+- a cross-language check that requires byte-identical normalized CLI output
+  from all three languages, run on Linux, macOS, and Windows (x64 and arm64)
+  in CI
 
 **Deferred:**
 
-- Rust (Cargo) and C#/.NET (NuGet) libraries
+- Publishing to crates.io or NuGet, signing, and versioning policy for the
+  Rust and .NET packages
   ([design §6.1](docs/design.md#61-library-distribution-and-consumption)).
-  `conformance/fixtures/` is the shared contract they must pass.
+  Both are packaged and consumed only from local artifacts here.
 - Validation of embedded policies against MXC's real released `SandboxPolicy`
   schemas ([design §4.2](docs/design.md#42-entry-shape)). The prototype
   validates a catalog-supported subset and pins `0.8.0-alpha` and
   `0.9.0-alpha` in `catalog/contract.v1.json`.
 - Integration tests that run a real tool under an MXC sandbox
   ([design §12](docs/design.md#12-test-plan), "Integration").
-- Verification on real ARM64 and emulated hosts. Native-architecture detection
-  is covered with an injected host.
+- Verification on emulated hosts (x64 code on ARM64). CI runs natively on
+  ARM64 runners; emulation is covered only with an injected host.
 - Private or enterprise overlays
   ([design §13](docs/design.md#13-open-questions)).
 - Named-role review enforcement. That belongs to repository governance, not

@@ -1,5 +1,7 @@
-# CI for the standalone policy catalog repository. Mirrors the MXC SDK unit
-# and integration test jobs: Node 24, npm ci, and a per-OS matrix.
+# CI for the standalone policy catalog repository. Mirrors the in-repo
+# prototype workflow (.github/workflows/PolicyCatalog.Prototype.yml in MXC):
+# one job per OS x architecture runs TypeScript, Rust, and .NET, then the
+# cross-language check with the binaries built on that host.
 name: Policy Catalog CI
 
 on:
@@ -12,18 +14,27 @@ permissions:
 
 jobs:
   check:
-    name: Check (${{ matrix.os_label }})
+    name: Check (${{ matrix.label }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os_label: windows
-            runner: windows-latest
-          - os_label: linux
+          - label: linux-x64
             runner: ubuntu-latest
-          - os_label: macos
+          - label: linux-arm64
+            runner: ubuntu-24.04-arm
+          - label: macos-arm64
             runner: macos-latest
+          - label: macos-x64
+            runner: macos-13
+          - label: windows-x64
+            runner: windows-latest
+          - label: windows-arm64
+            runner: windows-11-arm
     runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,20 +46,58 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: dotnet/global.json
+
+      - name: Rust toolchain
+        run: node scripts/ci-ensure-rustup.mjs
+
+      - name: Host facts
+        run: |
+          echo "runner.arch=${{ runner.arch }} uname=$(uname -m)"
+          node -p "process.arch + ' ' + require('os').machine()"
+          (cd rust && rustc -vV)
+          dotnet --info | head -n 20
+
+      # --- TypeScript -------------------------------------------------------
       - run: npm ci
-
-      # typecheck, unit, functional (from the packed tarball), catalog validation,
-      # pack contents, install smoke
-      - run: npm run check
-
+      - name: TypeScript check (typecheck, unit, functional from the tarball, validate, pack, smoke)
+        run: npm run check
       - name: Published-revision immutability
         if: github.event_name == 'pull_request'
-        shell: bash
         # Passed through env, never interpolated into the script.
         env:
           POLICY_CATALOG_BASE_REF: origin/${{ github.base_ref }}
         run: npm run validate -- "--base-ref=$POLICY_CATALOG_BASE_REF"
 
+      # --- Rust -------------------------------------------------------------
+      - name: Rust fmt
+        working-directory: rust
+        run: cargo fmt --check
+      - name: Rust clippy
+        working-directory: rust
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Rust test
+        working-directory: rust
+        run: cargo test --locked
+      - name: Rust functional (packaged .crate in a consumer outside the repo)
+        run: node scripts/rust-functional.mjs
+
+      # --- .NET -------------------------------------------------------------
+      - name: .NET build
+        working-directory: dotnet
+        run: dotnet build Microsoft.Mxc.PolicyCatalog.slnx -c Release
+      - name: .NET test
+        working-directory: dotnet
+        run: dotnet test --solution Microsoft.Mxc.PolicyCatalog.slnx -c Release --no-build
+      - name: .NET functional (packed .nupkg from a local feed, consumer outside the repo)
+        run: node scripts/dotnet-functional.mjs
+
+      # --- Cross-language ---------------------------------------------------
+      - name: Cross-language check (TS, Rust, C# CLIs byte-identical)
+        run: node scripts/cross-language-check.mjs
+
       - name: Extractability (HEAD tree as a standalone repository)
-        if: matrix.os_label == 'linux'
+        if: matrix.label == 'linux-x64'
         run: npm run check:extract

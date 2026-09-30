@@ -86,7 +86,43 @@ Changes to the library API or behavior must keep the shared contract intact:
 - Error codes, `details.reason` values, and absence semantics are part of the
   contract. Changing them is a breaking change.
 - Run `npm run check` and `npm run check:extract -- --worktree` before
-  opening a pull request.
+  opening a pull request. If you touch `rust/`, `dotnet/`, or anything the
+  CLIs print, also run the Rust and .NET commands below and
+  `node scripts/cross-language-check.mjs` (after `npm run build`).
+
+## Rust and .NET bindings
+
+The Rust crate `mxc-policy-catalog` (`rust/`, its own Cargo `[workspace]`)
+and the .NET package `Microsoft.Mxc.PolicyCatalog` (`dotnet/`, net8.0) are
+native implementations of the same behavior, not wrappers around the
+TypeScript library. Each one embeds the bundled catalog, passes every case in
+`conformance/fixtures/` and `conformance/vectors/`, and ships a
+`policy-catalog` CLI whose output must match the TypeScript CLI.
+
+```text
+# Rust (toolchain pinned by rust/rust-toolchain.toml)
+cd rust
+cargo fmt --check
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo test --locked
+cd ..
+node scripts/rust-functional.mjs      # cargo package, then a consumer crate outside the repo
+
+# .NET (SDK pinned by dotnet/global.json)
+cd dotnet
+dotnet build Microsoft.Mxc.PolicyCatalog.slnx -c Release
+dotnet test --solution Microsoft.Mxc.PolicyCatalog.slnx -c Release --no-build
+cd ..
+node scripts/dotnet-functional.mjs    # dotnet pack, then a consumer project on a local feed outside the repo
+
+# All three CLIs must print byte-identical normalized JSON
+npm run build
+node scripts/cross-language-check.mjs
+```
+
+When `src/` behavior changes, change the Rust and .NET code in the same pull
+request, add or update a conformance fixture, and add a cross-language case
+if the CLI output changes.
 
 ## Test layout
 
@@ -98,6 +134,11 @@ Changes to the library API or behavior must keep the shared contract intact:
 | Package contents | `scripts/check-pack.mjs` | `npm run check:pack` |
 | Offline install smoke test | `scripts/package-smoke.mjs` | `npm run smoke:package` |
 | Standalone extraction | `scripts/check-extractable.mjs` | `npm run check:extract` |
+| Rust unit and conformance | `rust/src`, `rust/tests` | `cargo test --locked` (in `rust/`) |
+| Rust functional (packaged `.crate`) | `scripts/rust-functional.mjs` | `node scripts/rust-functional.mjs` |
+| .NET unit and conformance | `dotnet/Microsoft.Mxc.PolicyCatalog.Tests` | `dotnet test` (in `dotnet/`) |
+| .NET functional (packed `.nupkg`) | `scripts/dotnet-functional.mjs` | `node scripts/dotnet-functional.mjs` |
+| Cross-language CLI parity | `scripts/cross-language-check.mjs` | `node scripts/cross-language-check.mjs` |
 
 The layout mirrors MXC's `sdk/node/tests/integration`. Each suite directory
 has its own `tsconfig.json` that compiles `*.test.ts` into that directory's

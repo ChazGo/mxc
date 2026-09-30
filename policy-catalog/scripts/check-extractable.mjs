@@ -26,13 +26,14 @@ const work = mkdtempSync(join(tmpdir(), 'policy-catalog-extract-'));
 const target = join(work, 'repo');
 try {
   if (useWorktree) {
-    const files = git(['ls-files', '-z', '--', '.'], packageDir).split('\0').filter(Boolean);
+    // Tracked plus untracked-but-not-ignored: exactly what the next commit holds.
+    const files = git(['ls-files', '-co', '--exclude-standard', '-z', '--', '.'], packageDir).split('\0').filter(Boolean);
     for (const file of files) {
       const destination = join(target, file);
       mkdirSync(dirname(destination), { recursive: true });
       copyFileSync(join(packageDir, file), destination);
     }
-    console.log(`Copied ${files.length} tracked files from the working tree.`);
+    console.log(`Copied ${files.length} files from the working tree.`);
   } else {
     // `git archive HEAD:<prefix>` yields exactly the subdirectory-filtered tree.
     const tar = join(work, 'tree.tar');
@@ -97,7 +98,20 @@ try {
     // `check` includes typecheck, unit, functional (from the packed tarball),
     // validation, pack contents, and the install smoke test.
     npm(['run', 'check']);
-    console.log('\nExtractability check OK: the directory builds, tests, validates, and packs as a standalone repository.');
+    // The Rust and .NET libraries, their packaged-artifact functional tests,
+    // and the cross-language check must also work from the extracted tree.
+    const run = (file, args, cwd = target) => execFileSync(file, args, { cwd, stdio: 'inherit' });
+    const rustDir = join(target, 'rust');
+    run('cargo', ['fmt', '--check'], rustDir);
+    run('cargo', ['clippy', '--locked', '--all-targets', '--all-features', '--', '-D', 'warnings'], rustDir);
+    run('cargo', ['test', '--locked'], rustDir);
+    run(process.execPath, ['scripts/rust-functional.mjs']);
+    const dotnetDir = join(target, 'dotnet');
+    run('dotnet', ['build', 'Microsoft.Mxc.PolicyCatalog.slnx', '-c', 'Release'], dotnetDir);
+    run('dotnet', ['test', '--solution', 'Microsoft.Mxc.PolicyCatalog.slnx', '-c', 'Release', '--no-build'], dotnetDir);
+    run(process.execPath, ['scripts/dotnet-functional.mjs']);
+    run(process.execPath, ['scripts/cross-language-check.mjs']);
+    console.log('\nExtractability check OK: the directory builds, tests, validates, and packs as a standalone repository (TypeScript, Rust, .NET, cross-language).');
   }
 } finally {
   rmSync(work, { recursive: true, force: true });

@@ -1,8 +1,10 @@
 # Architecture
 
-This page describes how the TypeScript prototype implements the
-[design proposal](design.md). The design is authoritative. Where this page and
-the design disagree, the design wins and this page is a bug.
+This page describes how the prototype implements the
+[design proposal](design.md): the TypeScript library in `src/`, and the native
+Rust (`rust/`) and .NET (`dotnet/`) libraries that match it (see
+[Language bindings](#language-bindings)). The design is authoritative. Where
+this page and the design disagree, the design wins and this page is a bug.
 
 ## Boundary
 
@@ -168,3 +170,33 @@ and exits 1.
 Absence is not a failure. `getSandboxConfig` returns `undefined`, and
 `getSandboxConfigWithDiagnostics` returns `policy: undefined` with its
 diagnostics.
+
+## Language bindings
+
+"The policy catalog library" has three native implementations with one
+behavior ([design §6.2](design.md#62-cross-language-consistency-and-support)):
+
+| Language | Location | Package | Entry points |
+|---|---|---|---|
+| TypeScript | `src/` | npm `@mxc-prototype/policy-catalog` | `getSandboxConfig`, `getSandboxConfigWithDiagnostics` |
+| Rust | `rust/` (own `[workspace]`) | crate `mxc-policy-catalog` | `get_sandbox_config`, `get_sandbox_config_with_diagnostics` |
+| C# | `dotnet/` (net8.0) | NuGet `Microsoft.Mxc.PolicyCatalog` | `GetSandboxConfig`, `GetSandboxConfigWithDiagnostics` |
+
+The Rust and .NET libraries are not wrappers. Each one embeds the bundled
+catalog and reimplements canonical JSON, digest checks, path normalization
+(Node `path.win32`/`path.posix` semantics), purl and version-range parsing,
+variant selection, dependency closure, composition, and the error mapping
+above. Parity is enforced at three levels:
+
+- `conformance/fixtures/*.json`: resolution cases, including expected
+  warnings and `{code, reason}` errors, run by every language's unit tests.
+- `conformance/vectors/*.json`: path-normalization and canonical-JSON
+  vectors generated from the TypeScript implementation.
+- `scripts/cross-language-check.mjs`: runs the three `policy-catalog` CLIs
+  with identical arguments (resolve, inspect, validate, library failures,
+  and usage errors) and requires byte-identical JSON after sorting keys and
+  replacing temporary directory paths. CI runs it on every OS and
+  architecture in the matrix.
+
+Warning and error message text is part of that contract, so a wording change
+in one language is a change in all three.
