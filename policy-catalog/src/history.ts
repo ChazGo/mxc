@@ -13,7 +13,7 @@ function entrySemanticKey(entry: CatalogEntry): string {
 
 /**
  * Checks entry-revision monotonicity between two consecutive published
- * catalog revisions (spec §4.1, §10): a semantically changed entry must bump
+ * catalog revisions (design §4.1, §10): a semantically changed entry must bump
  * `entryRevision`; an unchanged entry must keep it; it never decreases.
  */
 export function checkEntryRevisions(previous: CatalogRevision, next: CatalogRevision): string[] {
@@ -70,7 +70,7 @@ export interface PublishedState {
 
 /**
  * Enforces immutability of published revisions across a proposed change
- * (spec §10): previously published revisions keep their manifest entry,
+ * (design §10): previously published revisions keep their manifest entry,
  * digest, and file bytes, and new revisions are only appended.
  */
 export function checkPublishedImmutability(base: PublishedState, proposed: PublishedState): string[] {

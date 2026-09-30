@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-// Contribution/CI validation pipeline for the catalog (spec §7, §12 "Data").
+// Contribution/CI validation pipeline for the catalog (design §7, §12 "Data").
 //
 //   1. JSON Schema conformance of contract, manifest, and every revision.
 //   2. Integrity: every revision matches its published canonical SHA-256.
 //   3. Semantic validation shared with the resolver: registered
-//      SandboxPolicy versions, identity uniqueness/ordering, selectors,
+//      SandboxPolicy versions, entry-ID uniqueness, per-entry identity
+//      predicates, selectors,
 //      dependency closure and cycle freedom, symbol validity, no literal or
 //      user-specific paths, no wildcard grants, unsupported-field rejection,
 //      backend neutrality, and v1 composition limits.
@@ -14,7 +15,8 @@
 //   5. Immutability of already-published revisions against a base git ref
 //      (POLICY_CATALOG_BASE_REF, e.g. origin/main), when provided.
 //   6. Deterministic resolution: every entry resolves identically twice for
-//      every platform/architecture selector.
+//      every platform/architecture selector, and the whole-catalog lookup is
+//      independent of input order and of catalog file order.
 //   7. Package inclusion: the bundled default revision equals the repository
 //      manifest default.
 //   8. Every entry has a conformance fixture case.
@@ -23,10 +25,11 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { PolicyCatalog, loadCatalogDirectory, bundledCatalogStore } from '../dist/index.js';
+import { CatalogStore, PolicyCatalog, loadCatalogDirectory, bundledCatalogStore } from '../dist/index.js';
 import {
   ARCHITECTURES,
   PLATFORMS,
+  canonicalSha256,
   checkPublishedImmutability,
   checkStoreHistory,
   selectVariant,
@@ -35,7 +38,7 @@ import {
 const require = createRequire(import.meta.url);
 const Ajv2020 = require('ajv/dist/2020');
 
-const root = fileURLToPath(new URL('../../', import.meta.url));
+const root = fileURLToPath(new URL('../', import.meta.url));
 const catalogDir = join(root, 'catalog');
 const schemaDir = join(root, 'schema');
 const readJson = file => JSON.parse(readFileSync(file, 'utf8'));
@@ -134,10 +137,14 @@ step('deterministic resolution', () => {
             symbols: Object.fromEntries(Object.keys(symbols).map(s => [s, `${base}${sep}${s}`])),
           };
           const tool = { invocationName: name ?? 'unused', ...(purl ? { packageUrl: purl } : {}) };
-          const first = JSON.stringify(catalog.resolveCatalogEntry(tool, ctx));
-          const second = JSON.stringify(catalog.resolveCatalogEntry(tool, ctx));
-          if (first === undefined || first !== second) {
+          const first = catalog.getSandboxConfigWithDiagnostics(tool, ctx);
+          const second = catalog.getSandboxConfigWithDiagnostics(tool, ctx);
+          if (first.policy === undefined) {
+            found.push(`${revisionId} ${entry.entryId} ${platform}/${architecture} produced no policy: ${first.diagnostics.warnings.join('; ')}`);
+          } else if (JSON.stringify(first) !== JSON.stringify(second)) {
             found.push(`${revisionId} ${entry.entryId} ${platform}/${architecture} did not resolve deterministically`);
+          } else if (!first.diagnostics.tools[0].matches.some(match => match.entryId === entry.entryId)) {
+            found.push(`${revisionId} ${entry.entryId} ${platform}/${architecture} was not matched by its own identity`);
           }
         }
       }
@@ -147,11 +154,57 @@ step('deterministic resolution', () => {
 });
 
 step('package inclusion', () => {
+  // The package ships `catalog/` itself; the bundled loader must see exactly
+  // the revisions this pipeline validated.
   const bundled = bundledCatalogStore();
   return bundled.defaultRevision === store.defaultRevision
     && JSON.stringify(bundled.availableRevisions) === JSON.stringify(store.availableRevisions)
     ? []
-    : ['bundled package catalog does not match the repository catalog; rebuild the package'];
+    : ['bundled catalog does not match the repository catalog'];
+});
+
+step('order independence', () => {
+  // Catalog file order and input order must not change the composed policy.
+  const revision = store.revision();
+  const reversed = { ...structuredClone(revision), entries: [...structuredClone(revision.entries)].reverse() };
+  const digest = canonicalSha256(reversed);
+  const reversedStore = new CatalogStore({
+    contract: store.contract,
+    manifest: { catalogSchemaVersion: '1', defaultRevision: revision.catalogRevision, revisions: [{ catalogRevision: revision.catalogRevision, file: `revisions/${revision.catalogRevision}.json`, sha256: digest }] },
+    readRevision: () => structuredClone(reversed),
+  });
+  const names = revision.entries.map(e => e.identity.find(p => p.kind === 'invocation-name')?.names[0]).filter(Boolean);
+  const found = [];
+  for (const platform of PLATFORMS) {
+    for (const architecture of ARCHITECTURES) {
+      const sep = platform === 'windows' ? '\\' : '/';
+      const base = platform === 'windows' ? 'C:\\ci' : '/ci';
+      const ctx = {
+        platform,
+        architecture,
+        allowWeakIdentityFallback: true,
+        projectRoot: `${base}${sep}project`,
+        symbols: Object.fromEntries(Object.entries(store.contract.symbols).filter(([, d]) => d.source !== 'context').map(([s]) => [s, `${base}${sep}${s}`])),
+      };
+      const run = (catalogStore, tools) => {
+        try {
+          return JSON.stringify(new PolicyCatalog(catalogStore).getSandboxConfig(tools, ctx));
+        } catch (error) {
+          return `error:${error.category ?? error.message}`;
+        }
+      };
+      const a = run(store, names);
+      const b = run(reversedStore, names);
+      const c = run(store, [...names].reverse());
+      if (a !== b) found.push(`${platform}/${architecture}: catalog file order changed the result`);
+      if (a !== c && !a.startsWith('error:')) {
+        // Paths keep first-seen order, so only set equality is required across input order.
+        const set = s => JSON.stringify(Object.fromEntries(Object.entries(JSON.parse(s)?.filesystem ?? {}).map(([k, v]) => [k, [...v].sort()])));
+        if (set(a) !== set(c)) found.push(`${platform}/${architecture}: input order changed the composed requirement set`);
+      }
+    }
+  }
+  return found;
 });
 
 step('entry fixtures', () => {
@@ -161,7 +214,9 @@ step('entry fixtures', () => {
     const fixture = readJson(join(fixtureDir, name));
     if (fixture.catalog !== 'bundled') continue;
     for (const c of fixture.cases) {
-      if (c.expect?.entryId) covered.add(c.expect.entryId);
+      for (const tool of c.expect?.diagnostics?.tools ?? []) {
+        for (const match of tool.matches) covered.add(match.entryId);
+      }
     }
   }
   const found = [];

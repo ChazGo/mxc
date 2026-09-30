@@ -1,18 +1,18 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-/** Catalog platform selector values (spec §4.4). */
+/** Catalog platform selector values (design §4.4). */
 export type CatalogPlatform = 'windows' | 'linux' | 'macos';
 
-/** Catalog architecture selector values (spec §4.4). */
+/** Catalog architecture selector values (design §4.4). */
 export type CatalogArchitecture = 'x64' | 'arm64';
 
 /**
  * The catalog-supported subset of MXC's `SandboxPolicy` authoring contract.
  *
  * This library deliberately does not import the MXC SDK. The shape is
- * structurally compatible with the MXC SDK `SandboxPolicy` type so a consumer
- * can pass a (reviewed, authorized) result to `createConfigFromPolicy()`.
+ * structurally compatible with the MXC SDK `SandboxPolicy` type, so a consumer
+ * can pass a reviewed, authorized result to `createConfigFromPolicy()`.
  * Backend-specific keys are not part of the catalog vocabulary.
  */
 export interface CatalogSandboxPolicy {
@@ -46,14 +46,17 @@ export interface CatalogNetworkRule {
   ports?: Array<{ protocol?: 'tcp' | 'udp' | 'icmp' | 'any'; port?: number; endPort?: number }>;
 }
 
-/** Runtime lookup input (spec §5.1). */
+/** Runtime lookup input (design §5.1). */
 export interface ToolCandidate {
   invocationName: string;
   packageUrl?: string;
   detectedVersion?: string;
 }
 
-/** Runtime lookup context (spec §5.1). */
+/** A string is shorthand for `{ invocationName: tool }` (design §5.1). */
+export type ToolInput = string | ToolCandidate;
+
+/** Runtime lookup context, shared by every input in one lookup (design §5.1). */
 export interface ResolveContext {
   projectRoot?: string;
   symbols?: Record<string, string>;
@@ -63,27 +66,40 @@ export interface ResolveContext {
   allowWeakIdentityFallback?: boolean;
 }
 
-/** Runtime lookup result (spec §5.1). */
-export interface ResolvedToolEntry {
-  entryId: string;
-  entryRevision: number;
-  catalogRevision: string;
-  matchedIdentity: { kind: string; strength: 'strong' | 'weak' };
-  resolvedDependencies: Array<{
-    entryId: string;
-    entryRevision: number;
-    requiredVersionRange?: string;
-  }>;
-  policy: CatalogSandboxPolicy;
-  warnings: string[];
+/** Strength of a matched identity predicate. */
+export type IdentityStrength = 'strong' | 'weak';
+
+/** Result of `getSandboxConfigWithDiagnostics` (design §5.1). */
+export interface SandboxConfigResolution {
+  policy: CatalogSandboxPolicy | undefined;
+  diagnostics: {
+    catalogRevision: string;
+    tools: Array<{
+      inputIndex: number;
+      matches: Array<{
+        entryId: string;
+        entryRevision: number;
+        matchedIdentities: Array<{
+          kind: string;
+          strength: IdentityStrength;
+        }>;
+      }>;
+    }>;
+    resolvedDependencies: Array<{
+      entryId: string;
+      entryRevision: number;
+      requiredVersionRange?: string;
+    }>;
+    warnings: string[];
+  };
 }
 
-/** Inspection metadata (spec §5.2). */
+/** Inspection metadata (design §5.2). */
 export type CatalogIdentityMetadata =
   | { kind: 'purl'; value: string; versionRange?: string }
   | { kind: 'invocation-name'; names: string[] };
 
-/** Inspection metadata (spec §5.2). No policy body is exposed. */
+/** Inspection metadata (design §5.2). It never exposes a policy body. */
 export interface CatalogEntryMetadata {
   catalogRevision: string;
   entryId: string;
@@ -102,7 +118,7 @@ export interface CatalogEntryMetadata {
   };
 }
 
-/** Result of `getCatalogInfo()` (spec §5.2). */
+/** Result of `getCatalogInfo()` (design §5.2). */
 export interface CatalogInfo {
   catalogSchemaVersion: string;
   catalogRevision: string;

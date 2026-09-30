@@ -191,8 +191,9 @@ export function loadCatalogDirectory(directory: URL): CatalogStore {
 let bundled: CatalogStore | undefined;
 
 /**
- * The catalog bundled with this package. The build copies the repository's
- * `catalog/` directory next to the compiled output (`<out>/../catalog/`).
+ * The catalog bundled with this package: `<package>/catalog/`, resolved
+ * relative to the compiled `dist/` output. The package ships the same
+ * directory the repository validates, so there is no copy step.
  */
 export function bundledCatalogStore(): CatalogStore {
   bundled ??= loadCatalogDirectory(new URL('../catalog/', import.meta.url));

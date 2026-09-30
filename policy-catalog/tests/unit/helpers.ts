@@ -8,11 +8,11 @@ import {
   PolicyCatalogError,
   bundledCatalogStore,
   type HostEnvironment,
-} from '../dist/index.js';
-import { canonicalSha256 } from '../dist/tooling.js';
+} from '@mxc-prototype/policy-catalog';
+import { canonicalSha256 } from '@mxc-prototype/policy-catalog/tooling';
 
-export const fixturesDir = new URL('../../conformance/fixtures/', import.meta.url);
-export const catalogDir = new URL('../../catalog/', import.meta.url);
+export const fixturesDir = new URL('../../../conformance/fixtures/', import.meta.url);
+export const catalogDir = new URL('../../../catalog/', import.meta.url);
 
 export function readJson(url: URL): any {
   return JSON.parse(readFileSync(url, 'utf8'));
@@ -28,7 +28,7 @@ export function fixedHost(
 ): HostEnvironment {
   return {
     platform: () => platform,
-    architecture: () => architecture,
+    nativeArchitecture: () => architecture,
     symbol: name => symbols[name],
   };
 }

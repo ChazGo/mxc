@@ -14,7 +14,7 @@ export const CATALOG_SCHEMA_VERSION = '1';
 export const PLATFORMS: readonly CatalogPlatform[] = ['windows', 'linux', 'macos'];
 export const ARCHITECTURES: readonly CatalogArchitecture[] = ['x64', 'arm64'];
 
-/** Fields that the v1 contract can compose across entries (spec §4.5). */
+/** Fields that the v1 contract can compose across entries (design §4.5). */
 export const COMPOSABLE_FILESYSTEM_FIELDS = ['deniedPaths', 'readonlyPaths', 'readwritePaths'] as const;
 export type AccessClass = (typeof COMPOSABLE_FILESYSTEM_FIELDS)[number];
 
@@ -158,7 +158,7 @@ function validateTemplatePath(value: string, at: string, contract: CatalogContra
       fail(`'${at}' references unknown symbol '${match[1]}'`);
     }
   }
-  // Catalog data never ships a literal, machine-specific path (spec §4.2):
+  // Catalog data never ships a literal, machine-specific path (design §4.2):
   // every filesystem requirement must be anchored at a declared symbol.
   if (!ANCHORED_SYMBOL.test(value)) {
     fail(`'${at}' must start with a declared symbol; literal paths are not allowed`);
@@ -404,15 +404,16 @@ function validateIdentity(raw: unknown, at: string): IdentityPredicate[] {
     }
     fail(`'${itemAt}.kind' is not a supported identity kind`);
   });
-  // identity is ordered strongest to weakest (spec §4.3).
-  let sawWeak = false;
-  predicates.forEach((predicate, index) => {
-    const weak = IDENTITY_STRENGTH[predicate.kind] === 'weak';
-    if (!weak && sawWeak) {
-      fail(`'${at}[${index}]' is a strong predicate after a weak one; identity must be ordered strongest first`);
+  // Matching is additive (design §4.3): predicates of different entries may
+  // overlap, but one entry must not repeat a predicate, because that would
+  // make its matched-identity diagnostics ambiguous.
+  const seen = new Set<string>();
+  for (const key of predicates.flatMap(identityKeys)) {
+    if (seen.has(key)) {
+      fail(`'${at}' repeats identity '${key}'`);
     }
-    sawWeak ||= weak;
-  });
+    seen.add(key);
+  }
   return predicates;
 }
 
@@ -511,12 +512,26 @@ function validateEntry(raw: unknown, at: string, contract: CatalogContract): Cat
 // Variant selection and dependency closure (shared by validation and resolver)
 // ---------------------------------------------------------------------------
 
+/**
+ * Stable comparison keys for one predicate. Invocation names are folded
+ * case-insensitively so a repeat is caught on every platform.
+ */
+function identityKeys(predicate: IdentityPredicate): string[] {
+  return predicate.kind === 'purl'
+    ? [`purl:${parsePurl(predicate.value)!.key}`]
+    : predicate.names.map(name => `invocation-name:${name.toLowerCase()}`);
+}
+
 export interface VariantSelection {
   variant: PlatformVariant;
   exact: boolean;
 }
 
-/** Selects the variant for a host: exact architecture first, then neutral (spec §4.4). */
+/**
+ * Selects the variant for a host (design §4.4): the exact architecture first,
+ * then the platform's architecture-neutral variant. A different architecture's
+ * variant is never a fallback.
+ */
 export function selectVariant(
   entry: CatalogEntry,
   platform: CatalogPlatform,
@@ -534,8 +549,8 @@ export function selectVariant(
 export interface ClosureNode {
   entry: CatalogEntry;
   variant: PlatformVariant;
-  /** Range from the first edge that reached this node, in traversal order. */
-  requiredVersionRange?: string;
+  /** False when the architecture-neutral variant was selected as a fallback. */
+  exact: boolean;
 }
 
 export type ClosureResult =
@@ -549,7 +564,7 @@ export type ClosureResult =
  */
 export function dependencyClosure(
   root: CatalogEntry,
-  rootVariant: PlatformVariant,
+  rootSelection: VariantSelection,
   byId: ReadonlyMap<string, CatalogEntry>,
   platform: CatalogPlatform,
   architecture: CatalogArchitecture,
@@ -559,7 +574,7 @@ export function dependencyClosure(
   const stack: string[] = [];
   let failure: ClosureResult | undefined;
 
-  const visit = (entry: CatalogEntry, variant: PlatformVariant, range: string | undefined): void => {
+  const visit = (entry: CatalogEntry, selection: VariantSelection): void => {
     if (failure) {
       return;
     }
@@ -571,8 +586,8 @@ export function dependencyClosure(
       return;
     }
     stack.push(entry.entryId);
-    nodes.push({ entry, variant, ...(range !== undefined ? { requiredVersionRange: range } : {}) });
-    for (const dependency of variant.dependencies ?? []) {
+    nodes.push({ entry, variant: selection.variant, exact: selection.exact });
+    for (const dependency of selection.variant.dependencies ?? []) {
       const target = byId.get(dependency.entryId);
       if (!target) {
         failure = { ok: false, reason: 'missing-entry', detail: `${entry.entryId} -> ${dependency.entryId}` };
@@ -587,19 +602,24 @@ export function dependencyClosure(
         };
         return;
       }
-      visit(target, selected.variant, dependency.versionRange);
+      visit(target, selected);
+      if (failure) {
+        return;
+      }
     }
     stack.pop();
     done.add(entry.entryId);
   };
 
-  visit(root, rootVariant, undefined);
+  visit(root, rootSelection);
   return failure ?? { ok: true, nodes };
 }
 
 /**
- * Composition limits for the v1 vocabulary (spec §4.5): returns a violation
- * description, or `undefined` when the closure can be composed.
+ * Composition limits for the v1 vocabulary (design §4.5). Applies to any set
+ * of selected entries: one entry's dependency closure, several entries matched
+ * by one input, or entries matched by several inputs. Returns a violation
+ * description, or `undefined` when the set can be composed.
  */
 export function compositionViolation(nodes: readonly ClosureNode[]): string | undefined {
   const versions = new Set(nodes.map(node => node.variant.sandboxPolicy.version));
@@ -624,25 +644,14 @@ export function compositionViolation(nodes: readonly ClosureNode[]): string | un
 // Revision-level validation
 // ---------------------------------------------------------------------------
 
-function identityKeys(entry: CatalogEntry): string[] {
-  const keys: string[] = [];
-  for (const predicate of entry.identity) {
-    if (predicate.kind === 'purl') {
-      keys.push(`purl:${parsePurl(predicate.value)!.key}`);
-    } else {
-      // Invocation names are unique case-insensitively so matching is
-      // unambiguous on every platform, including Windows.
-      keys.push(...predicate.names.map(name => `invocation-name:${name.toLowerCase()}`));
-    }
-  }
-  return keys;
-}
-
 /**
- * Validates one catalog revision against the v1 contract: shape, identity
- * uniqueness and ordering, platform selectors, symbols, unsafe paths, backend
- * neutrality, dependency closure and cycle-freedom for every supported
- * platform/architecture, and the v1 composition limits.
+ * Validates one catalog revision against the v1 contract (design §7): shape,
+ * entry-ID uniqueness, per-entry identity predicates, platform selectors,
+ * registered policy versions, symbols, unsafe paths, backend neutrality,
+ * dependency closure and cycle-freedom for every supported
+ * platform/architecture, and the v1 composition limits within each closure.
+ * Composition across independently matched entries depends on the caller's
+ * inputs and is checked by the resolver.
  */
 export function validateCatalogRevision(raw: unknown, contract: CatalogContract): CatalogRevision {
   if (!isRecord(raw)) {
@@ -662,19 +671,11 @@ export function validateCatalogRevision(raw: unknown, contract: CatalogContract)
   const entries = raw.entries.map((entry, index) => validateEntry(entry, `entries[${index}]`, contract));
 
   const byId = new Map<string, CatalogEntry>();
-  const identityOwners = new Map<string, string>();
   for (const entry of entries) {
     if (byId.has(entry.entryId)) {
       fail(`duplicate entryId '${entry.entryId}'`);
     }
     byId.set(entry.entryId, entry);
-    for (const key of identityKeys(entry)) {
-      const owner = identityOwners.get(key);
-      if (owner !== undefined && owner !== entry.entryId) {
-        fail(`identity '${key}' is claimed by both '${owner}' and '${entry.entryId}'`);
-      }
-      identityOwners.set(key, entry.entryId);
-    }
   }
 
   for (const entry of entries) {
@@ -694,7 +695,7 @@ export function validateCatalogRevision(raw: unknown, contract: CatalogContract)
         if (!selected) {
           continue;
         }
-        const closure = dependencyClosure(entry, selected.variant, byId, platform, architecture);
+        const closure = dependencyClosure(entry, selected, byId, platform, architecture);
         if (!closure.ok) {
           fail(`'${entry.entryId}' on ${platform}/${architecture}: ${closure.reason} (${closure.detail})`);
         }

@@ -3,7 +3,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { PolicyCatalog, bundledCatalogStore } from '../dist/index.js';
+import { PolicyCatalog, bundledCatalogStore } from '@mxc-prototype/policy-catalog';
 import {
   canonicalJson,
   canonicalSha256,
@@ -12,7 +12,7 @@ import {
   checkStoreHistory,
   validateContract,
   validateCatalogRevision,
-} from '../dist/tooling.js';
+} from '@mxc-prototype/policy-catalog/tooling';
 import { contract, entry, errorCategory, fixedHost, revisionWith, storeFor } from './helpers.js';
 
 const parsedContract = validateContract(contract);
@@ -35,7 +35,9 @@ describe('integrity', () => {
     const store = storeFor([revision], { digests: { '2000-01-01.1': '0'.repeat(64) } });
     assert.equal(errorCategory(() => store.revision()), 'integrity');
     const catalog = new PolicyCatalog(store, fixedHost());
-    assert.equal(errorCategory(() => catalog.resolveCatalogEntry({ invocationName: 'a' }, { allowWeakIdentityFallback: true })), 'integrity');
+    assert.equal(errorCategory(() => catalog.getSandboxConfig('a', { allowWeakIdentityFallback: true })), 'integrity');
+    assert.equal(errorCategory(() => catalog.getSandboxConfigWithDiagnostics('a', { allowWeakIdentityFallback: true })), 'integrity');
+    assert.equal(errorCategory(() => catalog.listCatalogEntries()), 'integrity');
     assert.equal(errorCategory(() => catalog.getCatalogInfo()), 'integrity');
   });
 
@@ -61,9 +63,13 @@ describe('versioning and immutable revisions', () => {
     const r2 = revisionWith([entry('tool:a', { entryRevision: 2, displayName: 'renamed' }), entry('tool:b')], '2000-01-02.1');
     const catalog = new PolicyCatalog(storeFor([r1, r2]), fixedHost());
     const ctx = { allowWeakIdentityFallback: true, projectRoot: '/p' };
-    assert.equal(catalog.resolveCatalogEntry({ invocationName: 'a' }, ctx)?.entryRevision, 2);
-    assert.equal(catalog.resolveCatalogEntry({ invocationName: 'a' }, { ...ctx, catalogRevision: '2000-01-01.1' })?.entryRevision, 1);
-    assert.equal(errorCategory(() => catalog.resolveCatalogEntry({ invocationName: 'a' }, { ...ctx, catalogRevision: '2000-01-03.1' })), 'revision-unavailable');
+    const revisionOf = (extra = {}) => {
+      const result = catalog.getSandboxConfigWithDiagnostics('a', { ...ctx, ...extra });
+      return [result.diagnostics.catalogRevision, result.diagnostics.tools[0].matches[0]?.entryRevision];
+    };
+    assert.deepEqual(revisionOf(), ['2000-01-02.1', 2]);
+    assert.deepEqual(revisionOf({ catalogRevision: '2000-01-01.1' }), ['2000-01-01.1', 1]);
+    assert.equal(errorCategory(() => catalog.getSandboxConfig('a', { ...ctx, catalogRevision: '2000-01-03.1' })), 'revision-unavailable');
   });
 
   it('loaded revisions are deeply frozen (read-only)', () => {

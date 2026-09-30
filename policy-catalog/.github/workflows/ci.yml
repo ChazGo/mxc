@@ -1,6 +1,5 @@
-# CI for the standalone policy catalog repository. Inactive while this
-# directory is nested inside microsoft/mxc-derived trees; it becomes the
-# repository's workflow after `git filter-repo --subdirectory-filter`.
+# CI for the standalone policy catalog repository. Mirrors the MXC SDK unit
+# and integration test jobs: Node 24, npm ci, and a per-OS matrix.
 name: Policy Catalog CI
 
 on:
@@ -12,30 +11,42 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Test (${{ matrix.os }})
+  check:
+    name: Check (${{ matrix.os_label }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: typescript
+        include:
+          - os_label: windows
+            runner: windows-latest
+          - os_label: linux
+            runner: ubuntu-latest
+          - os_label: macos
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
       - run: npm ci
-      - run: npm test
-      - name: Validate catalog (including published-revision immutability)
+
+      # typecheck, unit, functional, catalog validation, pack contents, install smoke
+      - run: npm run check
+
+      - name: Published-revision immutability
+        if: github.event_name == 'pull_request'
         shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            export POLICY_CATALOG_BASE_REF="origin/${{ github.base_ref }}"
-          fi
-          npm run validate
-      - run: npm run smoke:package
+        env:
+          POLICY_CATALOG_BASE_REF: origin/${{ github.base_ref }}
+        run: npm run validate
+
+      - name: Extractability (HEAD tree as a standalone repository)
+        if: matrix.os_label == 'linux'
+        run: npm run check:extract

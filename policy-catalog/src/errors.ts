@@ -4,7 +4,7 @@
 /**
  * Language-neutral library failure categories. Shared conformance fixtures
  * assert on these values, so every language binding must preserve them.
- * A library failure is never a "no match" result (spec §5).
+ * A library failure is never a "no match" result (design §5).
  */
 export type PolicyCatalogErrorCategory =
   /** Bundled data does not match its published integrity digest. */

@@ -3,7 +3,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateCatalogRevision, validateContract } from '../dist/tooling.js';
+import { validateCatalogRevision, validateContract } from '@mxc-prototype/policy-catalog/tooling';
 import { contract, entry, revisionWith } from './helpers.js';
 
 const parsedContract = validateContract(contract);
@@ -83,13 +83,17 @@ describe('catalog validation (contribution/CI rules)', () => {
     assert.doesNotThrow(net({ egress: { default: 'deny', allow: [{ to: [{ cidr: '192.0.2.0/24' }], ports: [{ protocol: 'tcp', port: 443 }] }] } }));
   });
 
-  it('enforces identity uniqueness across entries and strongest-first ordering', () => {
-    assert.throws(validate([entry('tool:a'), entry('tool:b', { identity: [{ kind: 'invocation-name', names: ['A'] }] })]), /claimed by both/);
-    assert.throws(validate([
+  it('allows overlapping identities across entries (additive matching) but not repeats within one entry', () => {
+    // Design §4.3: equal-strength matches to different entries both contribute.
+    assert.doesNotThrow(validate([entry('tool:a'), entry('tool:b', { identity: [{ kind: 'invocation-name', names: ['A'] }] })]));
+    assert.doesNotThrow(validate([
       entry('tool:a', { identity: [{ kind: 'purl', value: 'pkg:npm/x' }] }),
       entry('tool:b', { identity: [{ kind: 'purl', value: 'pkg:NPM/x' }] }),
-    ]), /claimed by both/);
-    assert.throws(validate([entry('tool:a', { identity: [{ kind: 'invocation-name', names: ['a'] }, { kind: 'purl', value: 'pkg:npm/a' }] })]), /ordered strongest first/);
+    ]));
+    // Predicate order within an entry carries no precedence.
+    assert.doesNotThrow(validate([entry('tool:a', { identity: [{ kind: 'invocation-name', names: ['a'] }, { kind: 'purl', value: 'pkg:npm/a' }] })]));
+    assert.throws(validate([entry('tool:a', { identity: [{ kind: 'invocation-name', names: ['a', 'A'] }] })]), /repeats identity/);
+    assert.throws(validate([entry('tool:a', { identity: [{ kind: 'purl', value: 'pkg:npm/a' }, { kind: 'purl', value: 'pkg:npm/a' }] })]), /repeats identity/);
     assert.throws(validate([entry('tool:a', { identity: [{ kind: 'purl', value: 'pkg:npm/a@1.0.0' }] })]), /must not pin a version/);
     assert.throws(validate([entry('tool:a', { identity: [{ kind: 'invocation-name', names: ['bin/a'] }] })]), /bare invocation name/);
     assert.throws(validate([entry('tool:a', { identity: [{ kind: 'sha256', value: 'x' }] })]), /not a supported identity kind/);

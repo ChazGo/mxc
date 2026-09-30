@@ -1,0 +1,105 @@
+# Contributing
+
+This page describes the contribution flow for catalog data and for the library
+([design §7](design.md#7-contribution-and-review)). No client or library can
+write a catalog entry at runtime. Every change is a pull request.
+
+## Catalog changes
+
+Published revisions are immutable
+([design §10](design.md#10-immutable-revisions)). Never edit a file under
+`catalog/revisions/` that is already listed in `catalog/manifest.json`. That
+includes corrections and security fixes: publish a new revision instead.
+
+1. Copy the latest revision to `catalog/revisions/<YYYY-MM-DD.N>.json` and set
+   `catalogRevision` to the same identifier.
+2. Make the change. Bump `entryRevision` for every entry that changes
+   semantically, and leave unchanged entries alone. Validation enforces both
+   rules.
+3. Build, compute the new file's digest, and append it to the manifest:
+
+   ```text
+   npm run build
+   npm run digest -- catalog/revisions/<YYYY-MM-DD.N>.json
+   ```
+
+   Add `{ catalogRevision, file, sha256 }` to the end of `revisions` and point
+   `defaultRevision` at it.
+4. Add or update cases in `conformance/fixtures/`. Every entry in the default
+   revision must appear in at least one bundled-catalog case.
+5. Run the full check:
+
+   ```text
+   npm run check
+   POLICY_CATALOG_BASE_REF=origin/main npm run validate
+   ```
+
+### Entry requirements
+
+Each new entry, or each requirement expansion, needs the following
+([design §7](design.md#7-contribution-and-review)):
+
+- identity evidence and the supported tool version ranges
+- evidence for each platform variant
+- a minimized requirement set; capture it with MXC Learning Mode before the
+  pull request ([design §8](design.md#8-relationship-to-learning-mode))
+- test fixtures
+- `provenance` that references the review evidence
+
+A requirement reduction needs regression evidence that every supported tool
+version still works under the narrower requirement.
+
+Review requires one catalog-owner approval and one security/policy-reviewer
+approval, plus tool- or scenario-owner evidence where available. CI cannot
+enforce this; the repository's branch rules and CODEOWNERS must.
+
+### Rules enforced by `npm run validate`
+
+- JSON Schema conformance (`schema/`)
+- digest integrity for every revision in the manifest
+- exact registered `SandboxPolicy` versions (`catalog/contract.v1.json`)
+- entry-ID uniqueness, with no repeated identity predicate within one entry
+- valid platform and architecture selectors: no duplicate exact selector and
+  at most one architecture-neutral variant per platform
+- no backend-specific keys in a variant
+- dependency closure within the same revision, with cycles rejected
+- only declared symbols; every path is anchored at a symbol, with no literal,
+  user-specific, wildcard, or `..` paths
+- no wildcard network grants: no default-allow, no allow rule without `to`,
+  no `/0` CIDR
+- unsupported-field rejection
+- v1 composition limits within every dependency closure
+- `entryRevision` monotonicity across consecutive revisions
+- published-revision immutability against `POLICY_CATALOG_BASE_REF`
+- deterministic, file-order-independent resolution for every selector
+- package inclusion
+- fixture coverage
+
+## Library changes
+
+Changes to the library API or behavior must keep the shared contract intact:
+
+- Any behavior visible across languages goes into `conformance/fixtures/`,
+  and the change must describe what the Rust and C# bindings need to match
+  ([design §6.2](design.md#62-cross-language-consistency-and-support)).
+- Failure categories and absence semantics are part of the contract. Changing
+  them is a breaking change.
+- Run `npm run check`, `npm run test:functional`, and
+  `npm run check:extract -- --worktree` before opening a pull request.
+
+## Test layout
+
+| Suite | Location | Command |
+|---|---|---|
+| Unit and conformance | `tests/unit/*.test.ts` | `npm run test:unit` |
+| Functional (CLI end-to-end) | `tests/functional/*.test.ts` | `npm run test:functional` |
+| Catalog validation | `scripts/validate-catalog.mjs` | `npm run validate` |
+| Package contents | `scripts/check-pack.mjs` | `npm run check:pack` |
+| Offline install smoke test | `scripts/package-smoke.mjs` | `npm run smoke:package` |
+| Standalone extraction | `scripts/check-extractable.mjs` | `npm run check:extract` |
+
+Tests use Node's built-in `node:test` runner with the spec reporter, compiled
+by `tsc` into `dist-tests/`. This mirrors the layout of the MXC TypeScript SDK
+(`sdk/node/tests/unit`, `sdk/node/tests/integration`). Unit tests import the
+package through its own name, so they exercise the same compiled `dist/`
+output that ships.

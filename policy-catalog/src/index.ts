@@ -1,17 +1,18 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-// Runtime lookup (spec §5.1) and setup/inspection (spec §5.2) are separate
-// entry points. Neither launches a sandbox, contacts a network service, or
-// writes consumer state.
+// Runtime lookup (design §5.1) and setup/inspection (design §5.2) are
+// separate entry points. None of them launches a sandbox, contacts a network
+// service, or writes consumer state.
 export {
-  resolveCatalogEntry,
+  getSandboxConfig,
+  getSandboxConfigWithDiagnostics,
   listCatalogEntries,
   getCatalogInfo,
   PolicyCatalog,
-  nodeHostEnvironment,
-  type HostEnvironment,
 } from './resolver.js';
+
+export { nodeHostEnvironment, type HostEnvironment } from './host.js';
 
 export {
   CatalogStore,
@@ -32,7 +33,9 @@ export type {
   CatalogNetworkRule,
   CatalogPlatform,
   CatalogSandboxPolicy,
+  IdentityStrength,
   ResolveContext,
-  ResolvedToolEntry,
+  SandboxConfigResolution,
   ToolCandidate,
+  ToolInput,
 } from './types.js';

@@ -3,7 +3,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidVersionRange, parsePurl, satisfiesVersionRange } from '../dist/tooling.js';
+import { isValidVersionRange, parsePurl, satisfiesVersionRange } from '@mxc-prototype/policy-catalog/tooling';
 
 describe('version ranges', () => {
   it('accepts the v1 grammar and rejects everything else', () => {

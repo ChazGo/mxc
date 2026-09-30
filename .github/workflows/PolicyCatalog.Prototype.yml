@@ -1,6 +1,6 @@
 # Runs the self-contained policy-catalog prototype checks while it is nested
-# in this repository. The directory carries its own workflow
-# (policy-catalog/.github/workflows/ci.yml) for after extraction.
+# in this repository. After extraction, the directory's own workflow
+# (policy-catalog/.github/workflows/ci.yml) takes over.
 name: Policy Catalog Prototype
 
 on:
@@ -15,29 +15,43 @@ permissions:
 
 jobs:
   policy-catalog:
-    name: Policy catalog (${{ matrix.os }})
+    name: Policy catalog (${{ matrix.os_label }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+        include:
+          - os_label: windows
+            runner: windows-latest
+          - os_label: linux
+            runner: ubuntu-latest
+          - os_label: macos
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
     defaults:
       run:
-        working-directory: policy-catalog/typescript
+        working-directory: policy-catalog
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: policy-catalog/package-lock.json
+
       - run: npm ci
-      - run: npm test
-      - name: Validate catalog (including published-revision immutability)
+
+      - run: npm run check
+
+      - name: Published-revision immutability
+        if: github.event_name == 'pull_request'
         shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            export POLICY_CATALOG_BASE_REF="origin/${{ github.base_ref }}"
-          fi
-          npm run validate
-      - run: npm run smoke:package
+        env:
+          POLICY_CATALOG_BASE_REF: origin/${{ github.base_ref }}
+        run: npm run validate
+
+      - name: Extractability (policy-catalog/ as a standalone repository)
+        if: matrix.os_label == 'linux'
+        run: npm run check:extract
