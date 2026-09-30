@@ -84,9 +84,21 @@ export function checkPublishedImmutability(base: PublishedState, proposed: Publi
     if (now.file !== published.file || now.sha256 !== published.sha256) {
       errors.push(`published revision '${published.catalogRevision}' manifest entry was modified`);
     }
-    const baseBytes = base.files.get(published.file);
-    const proposedBytes = proposed.files.get(published.file);
-    if (baseBytes !== undefined && proposedBytes !== baseBytes) {
+    // Compare canonical content, not raw bytes, so checkout line-ending
+    // conversion cannot produce a false positive.
+    const canonical = (text: string | undefined): string | undefined => {
+      if (text === undefined) {
+        return undefined;
+      }
+      try {
+        return canonicalJson(JSON.parse(text));
+      } catch {
+        return `invalid:${text}`;
+      }
+    };
+    const baseContent = canonical(base.files.get(published.file));
+    const proposedContent = canonical(proposed.files.get(published.file));
+    if (baseContent !== undefined && proposedContent !== baseContent) {
       errors.push(`published revision file '${published.file}' was modified; publish a new revision instead`);
     }
   });
