@@ -181,6 +181,40 @@ if (network.proxyEnforcement !== 'supported') {
 
 It is reported **fail closed**: if the probe cannot run, the result is `'unsupported'` with the reason in `warnings`, never absent. The check is advisory — the runner still verifies the dependencies at launch, since the probe runs in a different process at an earlier time. See [the Bubblewrap backend guide](../../docs/bwrap-support/bubblewrap-backend.md#checking-host-support-before-you-run).
 
+For request-specific Windows ProcessContainer diagnostics, call
+`probeSandboxSupport(config)`. It accepts the same `ContainerConfig` used by
+`spawnSandboxFromConfig` and calls the packaged `mxc_ffi` native library in
+process:
+
+```typescript
+import {
+  createConfigFromPolicy,
+  probeSandboxSupport,
+  type SandboxPolicy,
+} from '@microsoft/mxc-sdk';
+
+const policy: SandboxPolicy = {
+  version: '0.9.0-alpha',
+  filesystem: {
+    readonlyPaths: ['C:\\Program Files\\MyTool'],
+  },
+};
+const config = createConfigFromPolicy(policy, 'process');
+config.process!.commandLine = 'cmd /c exit 0';
+const result = probeSandboxSupport(config);
+console.log(result.tier, result.warnings, result.probes.uiCapabilities);
+```
+
+This API is synchronous, Windows-only, and does not create a sandbox. Native
+probe failures, non-ProcessContainer requests, and malformed JSON throw errors;
+they are not reported as successful unsupported results. Request-aware probing
+is ProcessContainer-only because its output selects among ProcessContainer
+isolation tiers using that backend's host detector. Other backends have
+different capability models; use `getPlatformSupport().availableMethods` for
+Node host availability, then rely on normal request validation when launching
+them rather than interpreting ProcessContainer tier facts as cross-backend
+support.
+
 ---
 
 ## Three Ways to Spawn
@@ -599,13 +633,16 @@ getAvailableToolsPolicy(env?, options?) → FilesystemPolicyResult
 getUserProfilePolicy()                  → FilesystemPolicyResult
 getTemporaryFilesPolicy(env?)           → FilesystemPolicyResult
 
+// Request-aware Windows ProcessContainer probing
+probeSandboxSupport(config?) → ProbeOutput
+
 // Telemetry consent (Windows-only; see Telemetry Consent section below)
 queryTelemetryConsentAsync()      → Promise<{ state, storedState, effectiveState, needsPrompt, policy, error? }>
 requestTelemetryConsent(presenter, locale?) → Promise<TelemetryConsentOutcome>
 withdrawTelemetryConsentAsync()   → Promise<TelemetryConsentOutcome>
 
 // Capability types
-UiCapabilitySupport, BubblewrapNetworkSupport
+ProbeOutput, ProbeFacts, UiCapabilitySupport, BubblewrapNetworkSupport
 
 // Errors (typed wire-format errors from wxc-exec)
 ErrorCode, MxcError, MxcErrorFields

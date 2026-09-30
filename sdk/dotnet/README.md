@@ -166,6 +166,20 @@ Discovery is advisory. Availability can change before launch, and a backend in
 Cross-check `GetPlatformSupport()` and continue handling
 `ErrorCode.BackendUnavailable`.
 
+For request-specific Windows ProcessContainer diagnostics, call the static
+request probe:
+
+```csharp
+ProbeOutput probe = MxcSandbox.Probe(request);
+Console.WriteLine($"tier={probe.Tier}");
+```
+
+`Probe` serializes the `SandboxRequest` through the same canonical binding
+interchange used by `Run` and `Spawn`, then calls the packaged `mxc_ffi` native
+library in process. It is Windows-only and does not create a sandbox. The
+method is deliberately not part of `ISandboxRunner`, preserving compatibility
+for existing adapter implementations.
+
 #### Bubblewrap proxy-only egress (Linux)
 
 Schema `0.8.0-alpha`+ `network.proxy` needs host tooling and kernel permissions
