@@ -1,0 +1,110 @@
+{
+  "$comment": "Language-neutral conformance cases against the bundled catalog. Every binding (TypeScript, Rust, C#) must produce the same `expect` for each case. `expect: null` is the language's no-match value (undefined / None / null). `expectError` names a PolicyCatalogError category.",
+  "catalog": "bundled",
+  "cases": [
+    {
+      "name": "git by invocation name with weak fallback on windows",
+      "tool": { "invocationName": "git.exe" },
+      "context": {
+        "platform": "windows",
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "projectRoot": "C:\\work\\repo",
+        "symbols": { "git_prefix": "C:\\Program Files\\Git\\cmd" }
+      },
+      "expect": {
+        "entryId": "tool:git",
+        "entryRevision": 1,
+        "catalogRevision": "2026-09-29.1",
+        "matchedIdentity": { "kind": "invocation-name", "strength": "weak" },
+        "resolvedDependencies": [],
+        "policy": {
+          "version": "0.9.0-alpha",
+          "filesystem": {
+            "readonlyPaths": ["C:\\Program Files\\Git\\cmd"],
+            "readwritePaths": ["C:\\work\\repo"]
+          }
+        },
+        "warnings": ["tool:git matched only by invocation name 'git.exe' (weak identity)"]
+      }
+    },
+    {
+      "name": "node by invocation name on linux",
+      "tool": { "invocationName": "node" },
+      "context": {
+        "platform": "linux",
+        "architecture": "arm64",
+        "allowWeakIdentityFallback": true,
+        "symbols": { "node_prefix": "/usr/local/bin" }
+      },
+      "expect": {
+        "entryId": "tool:node",
+        "entryRevision": 1,
+        "catalogRevision": "2026-09-29.1",
+        "matchedIdentity": { "kind": "invocation-name", "strength": "weak" },
+        "resolvedDependencies": [],
+        "policy": { "version": "0.9.0-alpha", "filesystem": { "readonlyPaths": ["/usr/local/bin"] } },
+        "warnings": ["tool:node matched only by invocation name 'node' (weak identity)"]
+      }
+    },
+    {
+      "name": "npm by package URL composes the node dependency on macos",
+      "tool": { "invocationName": "npx", "packageUrl": "pkg:npm/npm@10.9.0" },
+      "context": {
+        "platform": "macos",
+        "architecture": "arm64",
+        "projectRoot": "/Users/dev/app/",
+        "symbols": {
+          "npm_prefix": "/opt/homebrew/bin",
+          "npm_cache": "/Users/dev/.npm",
+          "node_prefix": "/opt/homebrew/bin"
+        }
+      },
+      "expect": {
+        "entryId": "tool:npm",
+        "entryRevision": 1,
+        "catalogRevision": "2026-09-29.1",
+        "matchedIdentity": { "kind": "purl", "strength": "strong" },
+        "resolvedDependencies": [{ "entryId": "tool:node", "entryRevision": 1 }],
+        "policy": {
+          "version": "0.9.0-alpha",
+          "filesystem": {
+            "readonlyPaths": ["/opt/homebrew/bin"],
+            "readwritePaths": ["/Users/dev/app", "/Users/dev/.npm"]
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "name": "invocation name alone is not accepted without opt-in",
+      "tool": { "invocationName": "npm" },
+      "context": { "platform": "linux", "architecture": "x64", "projectRoot": "/w", "symbols": { "npm_prefix": "/p", "npm_cache": "/c", "node_prefix": "/n" } },
+      "expect": null
+    },
+    {
+      "name": "unknown tool is no match, never an empty policy",
+      "tool": { "invocationName": "cargo" },
+      "context": { "platform": "linux", "architecture": "x64", "allowWeakIdentityFallback": true },
+      "expect": null
+    },
+    {
+      "name": "unresolved required symbol is no match, never a partial policy",
+      "tool": { "invocationName": "git" },
+      "context": { "platform": "linux", "architecture": "x64", "allowWeakIdentityFallback": true, "symbols": { "git_prefix": "/usr/bin" } },
+      "expect": null
+    },
+    {
+      "name": "unavailable explicit revision is an error, not a substitution",
+      "tool": { "invocationName": "git" },
+      "context": { "platform": "linux", "architecture": "x64", "catalogRevision": "2099-01-01.1" },
+      "expectError": "revision-unavailable"
+    },
+    {
+      "name": "relative symbol value is rejected",
+      "tool": { "invocationName": "node" },
+      "context": { "platform": "linux", "architecture": "x64", "allowWeakIdentityFallback": true, "symbols": { "node_prefix": "bin" } },
+      "expectError": "invalid-context"
+    }
+  ]
+}

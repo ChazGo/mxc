@@ -1,0 +1,187 @@
+{
+  "$comment": "Language-neutral conformance cases against an inline synthetic catalog revision (not published). Covers identity strength, version-range warnings, architecture variants, dependency metadata, and composition. See bundled-catalog.json for the case format.",
+  "catalog": {
+    "catalogSchemaVersion": "1",
+    "catalogRevision": "2000-01-01.1",
+    "entries": [
+      {
+        "entryId": "tool:base",
+        "entryRevision": 2,
+        "displayName": "Base runtime",
+        "identity": [{ "kind": "invocation-name", "names": ["base"] }],
+        "platformVariants": [
+          {
+            "when": { "platform": "linux" },
+            "sandboxPolicy": { "version": "0.9.0-alpha", "filesystem": { "readonlyPaths": ["${git_prefix}/lib", "${git_prefix}/share"] } }
+          },
+          {
+            "when": { "platform": "windows", "architecture": "arm64" },
+            "sandboxPolicy": { "version": "0.9.0-alpha", "filesystem": { "readonlyPaths": ["${git_prefix}\\arm64"] } }
+          },
+          {
+            "when": { "platform": "windows", "architecture": "x64" },
+            "sandboxPolicy": { "version": "0.9.0-alpha", "filesystem": { "readonlyPaths": ["${git_prefix}\\x64"] } }
+          }
+        ],
+        "provenance": { "method": "fixture", "sourceRevision": "fixture" }
+      },
+      {
+        "entryId": "tool:app",
+        "entryRevision": 5,
+        "displayName": "App",
+        "identity": [
+          { "kind": "purl", "value": "pkg:npm/app", "versionRange": ">=2 <3" },
+          { "kind": "invocation-name", "names": ["app", "app.cmd"] }
+        ],
+        "platformVariants": [
+          {
+            "when": { "platform": "linux", "architecture": "arm64" },
+            "dependencies": [{ "entryId": "tool:base", "versionRange": ">=22" }],
+            "sandboxPolicy": {
+              "version": "0.9.0-alpha",
+              "filesystem": { "readwritePaths": ["${project_root}"], "readonlyPaths": ["${git_prefix}/lib"] }
+            }
+          },
+          {
+            "when": { "platform": "linux" },
+            "dependencies": [{ "entryId": "tool:base" }],
+            "sandboxPolicy": { "version": "0.9.0-alpha", "filesystem": { "readwritePaths": ["${project_root}"] } }
+          },
+          {
+            "when": { "platform": "windows" },
+            "sandboxPolicy": {
+              "version": "0.9.0-alpha",
+              "filesystem": { "readwritePaths": ["${project_root}"] },
+              "network": { "egress": { "default": "deny", "allow": [{ "to": [{ "cidr": "192.0.2.0/24" }], "ports": [{ "protocol": "tcp", "port": 443 }] }] } }
+            }
+          }
+        ],
+        "provenance": { "method": "fixture", "sourceRevision": "fixture" }
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "exact architecture variant precedes the neutral variant; dependency range is unevaluated metadata",
+      "tool": { "invocationName": "app", "packageUrl": "pkg:npm/app", "detectedVersion": "2.4.1" },
+      "context": { "platform": "linux", "architecture": "arm64", "projectRoot": "/w/proj", "symbols": { "git_prefix": "/opt/g" } },
+      "expect": {
+        "entryId": "tool:app",
+        "entryRevision": 5,
+        "catalogRevision": "2000-01-01.1",
+        "matchedIdentity": { "kind": "purl", "strength": "strong" },
+        "resolvedDependencies": [{ "entryId": "tool:base", "entryRevision": 2, "requiredVersionRange": ">=22" }],
+        "policy": {
+          "version": "0.9.0-alpha",
+          "filesystem": { "readonlyPaths": ["/opt/g/lib", "/opt/g/share"], "readwritePaths": ["/w/proj"] }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "name": "neutral variant is the fallback when no exact architecture exists",
+      "tool": { "invocationName": "app", "packageUrl": "pkg:npm/app" },
+      "context": { "platform": "linux", "architecture": "x64", "projectRoot": "/w", "symbols": { "git_prefix": "/g" } },
+      "expect": {
+        "entryId": "tool:app",
+        "entryRevision": 5,
+        "catalogRevision": "2000-01-01.1",
+        "matchedIdentity": { "kind": "purl", "strength": "strong" },
+        "resolvedDependencies": [{ "entryId": "tool:base", "entryRevision": 2 }],
+        "policy": {
+          "version": "0.9.0-alpha",
+          "filesystem": { "readonlyPaths": ["/g/lib", "/g/share"], "readwritePaths": ["/w"] }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "name": "version-range mismatch is a warning, not a refusal",
+      "tool": { "invocationName": "app", "packageUrl": "pkg:npm/app@3.0.0" },
+      "context": { "platform": "windows", "architecture": "x64", "projectRoot": "D:\\src" },
+      "expect": {
+        "entryId": "tool:app",
+        "entryRevision": 5,
+        "catalogRevision": "2000-01-01.1",
+        "matchedIdentity": { "kind": "purl", "strength": "strong" },
+        "resolvedDependencies": [],
+        "policy": {
+          "version": "0.9.0-alpha",
+          "filesystem": { "readwritePaths": ["D:\\src"] },
+          "network": { "egress": { "default": "deny", "allow": [{ "to": [{ "cidr": "192.0.2.0/24" }], "ports": [{ "protocol": "tcp", "port": 443 }] }] } }
+        },
+        "warnings": ["detected version '3.0.0' is outside the reviewed range '>=2 <3' for tool:app"]
+      }
+    },
+    {
+      "name": "no platform variant is no match",
+      "tool": { "invocationName": "app", "packageUrl": "pkg:npm/app" },
+      "context": { "platform": "macos", "architecture": "arm64", "projectRoot": "/w" },
+      "expect": null
+    },
+    {
+      "name": "explicit x64 selects the x64 variant when an arm64 variant also exists",
+      "tool": { "invocationName": "base" },
+      "context": { "platform": "windows", "architecture": "x64", "allowWeakIdentityFallback": true, "symbols": { "git_prefix": "C:\\g" } },
+      "expect": {
+        "entryId": "tool:base",
+        "entryRevision": 2,
+        "catalogRevision": "2000-01-01.1",
+        "matchedIdentity": { "kind": "invocation-name", "strength": "weak" },
+        "resolvedDependencies": [],
+        "policy": { "version": "0.9.0-alpha", "filesystem": { "readonlyPaths": ["C:\\g\\x64"] } },
+        "warnings": ["tool:base matched only by invocation name 'base' (weak identity)"]
+      }
+    },
+    {
+      "name": "invocation names are case-insensitive on windows",
+      "tool": { "invocationName": "APP.CMD" },
+      "context": { "platform": "windows", "architecture": "arm64", "allowWeakIdentityFallback": true, "projectRoot": "C:\\p" },
+      "expect": {
+        "entryId": "tool:app",
+        "entryRevision": 5,
+        "catalogRevision": "2000-01-01.1",
+        "matchedIdentity": { "kind": "invocation-name", "strength": "weak" },
+        "resolvedDependencies": [],
+        "policy": {
+          "version": "0.9.0-alpha",
+          "filesystem": { "readwritePaths": ["C:\\p"] },
+          "network": { "egress": { "default": "deny", "allow": [{ "to": [{ "cidr": "192.0.2.0/24" }], "ports": [{ "protocol": "tcp", "port": 443 }] }] } }
+        },
+        "warnings": ["tool:app matched only by invocation name 'APP.CMD' (weak identity)"]
+      }
+    },
+    {
+      "name": "invocation names are case-sensitive on linux",
+      "tool": { "invocationName": "APP" },
+      "context": { "platform": "linux", "architecture": "x64", "allowWeakIdentityFallback": true, "projectRoot": "/p", "symbols": { "git_prefix": "/g" } },
+      "expect": null
+    },
+    {
+      "name": "unmatched package URL falls back to weak identity only with opt-in",
+      "tool": { "invocationName": "app", "packageUrl": "pkg:npm/other" },
+      "context": { "platform": "linux", "architecture": "x64", "allowWeakIdentityFallback": true, "projectRoot": "/w", "symbols": { "git_prefix": "/g" } },
+      "expect": {
+        "entryId": "tool:app",
+        "entryRevision": 5,
+        "catalogRevision": "2000-01-01.1",
+        "matchedIdentity": { "kind": "invocation-name", "strength": "weak" },
+        "resolvedDependencies": [{ "entryId": "tool:base", "entryRevision": 2 }],
+        "policy": {
+          "version": "0.9.0-alpha",
+          "filesystem": { "readonlyPaths": ["/g/lib", "/g/share"], "readwritePaths": ["/w"] }
+        },
+        "warnings": [
+          "package URL 'pkg:npm/other' matched no entry; fell back to invocation-name identity",
+          "tool:app matched only by invocation name 'app' (weak identity)"
+        ]
+      }
+    },
+    {
+      "name": "symbol values that make access classes overlap are a composition conflict",
+      "tool": { "invocationName": "app", "packageUrl": "pkg:npm/app" },
+      "context": { "platform": "linux", "architecture": "x64", "projectRoot": "/g", "symbols": { "git_prefix": "/g" } },
+      "expectError": "composition-conflict"
+    }
+  ]
+}
