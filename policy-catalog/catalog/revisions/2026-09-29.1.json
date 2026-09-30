@@ -1,0 +1,133 @@
+{
+  "catalogSchemaVersion": "1",
+  "catalogRevision": "2026-09-29.1",
+  "entries": [
+    {
+      "entryId": "tool:git",
+      "entryRevision": 1,
+      "displayName": "Git",
+      "identity": [
+        { "kind": "invocation-name", "names": ["git", "git.exe"] }
+      ],
+      "platformVariants": [
+        {
+          "when": { "platform": "windows" },
+          "sandboxPolicy": {
+            "version": "0.9.0-alpha",
+            "filesystem": {
+              "readonlyPaths": ["${git_prefix}"],
+              "readwritePaths": ["${project_root}"]
+            }
+          }
+        },
+        {
+          "when": { "platform": "linux" },
+          "sandboxPolicy": {
+            "version": "0.9.0-alpha",
+            "filesystem": {
+              "readonlyPaths": ["${git_prefix}"],
+              "readwritePaths": ["${project_root}"]
+            }
+          }
+        },
+        {
+          "when": { "platform": "macos" },
+          "sandboxPolicy": {
+            "version": "0.9.0-alpha",
+            "filesystem": {
+              "readonlyPaths": ["${git_prefix}"],
+              "readwritePaths": ["${project_root}"]
+            }
+          }
+        }
+      ],
+      "provenance": {
+        "method": "prototype-migration",
+        "sourceRevision": "ChazGo/mxc@17070fb:sdk/node/src/config-floors/catalog.json"
+      }
+    },
+    {
+      "entryId": "tool:node",
+      "entryRevision": 1,
+      "displayName": "Node.js",
+      "identity": [
+        { "kind": "invocation-name", "names": ["node", "node.exe"] }
+      ],
+      "platformVariants": [
+        {
+          "when": { "platform": "windows" },
+          "sandboxPolicy": {
+            "version": "0.9.0-alpha",
+            "filesystem": { "readonlyPaths": ["${node_prefix}"] }
+          }
+        },
+        {
+          "when": { "platform": "linux" },
+          "sandboxPolicy": {
+            "version": "0.9.0-alpha",
+            "filesystem": { "readonlyPaths": ["${node_prefix}"] }
+          }
+        },
+        {
+          "when": { "platform": "macos" },
+          "sandboxPolicy": {
+            "version": "0.9.0-alpha",
+            "filesystem": { "readonlyPaths": ["${node_prefix}"] }
+          }
+        }
+      ],
+      "provenance": {
+        "method": "prototype-migration",
+        "sourceRevision": "ChazGo/mxc@17070fb:sdk/node/src/config-floors/catalog.json"
+      }
+    },
+    {
+      "entryId": "tool:npm",
+      "entryRevision": 1,
+      "displayName": "npm / npx",
+      "identity": [
+        { "kind": "purl", "value": "pkg:npm/npm" },
+        { "kind": "invocation-name", "names": ["npm", "npm.cmd", "npx", "npx.cmd"] }
+      ],
+      "platformVariants": [
+        {
+          "when": { "platform": "windows" },
+          "dependencies": [{ "entryId": "tool:node" }],
+          "sandboxPolicy": {
+            "version": "0.9.0-alpha",
+            "filesystem": {
+              "readonlyPaths": ["${npm_prefix}"],
+              "readwritePaths": ["${project_root}", "${npm_cache}"]
+            }
+          }
+        },
+        {
+          "when": { "platform": "linux" },
+          "dependencies": [{ "entryId": "tool:node" }],
+          "sandboxPolicy": {
+            "version": "0.9.0-alpha",
+            "filesystem": {
+              "readonlyPaths": ["${npm_prefix}"],
+              "readwritePaths": ["${project_root}", "${npm_cache}"]
+            }
+          }
+        },
+        {
+          "when": { "platform": "macos" },
+          "dependencies": [{ "entryId": "tool:node" }],
+          "sandboxPolicy": {
+            "version": "0.9.0-alpha",
+            "filesystem": {
+              "readonlyPaths": ["${npm_prefix}"],
+              "readwritePaths": ["${project_root}", "${npm_cache}"]
+            }
+          }
+        }
+      ],
+      "provenance": {
+        "method": "prototype-migration",
+        "sourceRevision": "ChazGo/mxc@17070fb:sdk/node/src/config-floors/catalog.json"
+      }
+    }
+  ]
+}

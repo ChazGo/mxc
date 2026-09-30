@@ -1,0 +1,35 @@
+{
+  "$comment": "Catalog contract v1: the exact SandboxPolicy contract versions catalog entries may embed, and the symbol vocabulary entries may reference. 'context' symbols come only from ResolveContext.projectRoot; 'caller' symbols come only from ResolveContext.symbols; 'host' symbols are OS well-known folders the resolver may derive for the current host, which ResolveContext.symbols may override.",
+  "catalogSchemaVersion": "1",
+  "sandboxPolicyVersions": ["0.8.0-alpha", "0.9.0-alpha"],
+  "symbols": {
+    "project_root": {
+      "source": "context",
+      "description": "The consumer's project root, supplied through ResolveContext.projectRoot."
+    },
+    "git_prefix": {
+      "source": "caller",
+      "description": "Directory containing the git executable."
+    },
+    "node_prefix": {
+      "source": "caller",
+      "description": "Directory containing the node executable."
+    },
+    "npm_prefix": {
+      "source": "caller",
+      "description": "Directory containing the npm and npx launchers."
+    },
+    "npm_cache": {
+      "source": "caller",
+      "description": "The npm cache directory in effect for the invocation."
+    },
+    "user_home": {
+      "source": "host",
+      "description": "The current user's home directory."
+    },
+    "temp_dir": {
+      "source": "host",
+      "description": "The current user's temporary directory."
+    }
+  }
+}
