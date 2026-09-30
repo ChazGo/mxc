@@ -1,10 +1,21 @@
 <!--
-Copy of the Known-tool Policy Floors / Policy Store design proposal.
-Source: docs/mxc-policy-store.md (uncommitted working copy, sha256 4A584936BB033879F98C1F55AF9FDEF5BB55B33245CD6B7CE93D8459E5143C29),
-based on microsoft/mxc#1309 at 34537f8. Links into the MXC tree were rewritten to
-absolute URLs so they resolve after this directory is extracted. The text is otherwise unchanged.
--->
+Verbatim copy of the Known-tool Policy Floors / Policy Store design proposal.
 
+Source: docs/mxc-policy-store.md in Chaz Gordish's "chazgo-vigilant-enigma"
+MXC worktree: base commit 34537f85384c00f72564f931077d1790c5a86a02
+(microsoft/mxc#1309) plus uncommitted edits as of 2026-09-29.
+Everything below the "BEGIN VERBATIM COPY" marker is byte-identical to that
+file after git's CRLF-to-LF checkout normalization. No text or links were
+changed.
+
+Relative links in the copy point into the MXC repository (docs/), not into
+this directory. Absolute equivalents:
+- authoring-a-new-feature.md -> https://github.com/microsoft/mxc/blob/main/docs/authoring-a-new-feature.md
+- learning-mode/capabilities.md -> https://github.com/microsoft/mxc/blob/main/docs/learning-mode/capabilities.md
+- sandbox-policy/0.8.0/policy.md -> https://github.com/microsoft/mxc/blob/main/docs/sandbox-policy/0.8.0/policy.md
+- versioning.md -> https://github.com/microsoft/mxc/blob/main/docs/versioning.md
+-->
+<!-- BEGIN VERBATIM COPY -->
 # Feature Spec: Known-tool Policy Floors
 
 **Status:** Proposed public preview catalog. This is not an approved, shipped, or
@@ -39,8 +50,8 @@ revision, and inspection behavior. It reuses #779's model where possible and
 calls out differences directly.
 
 This document does not restate general MXC sandboxing concepts already covered
-by [`docs/sandbox-policy/0.8.0/policy.md`](https://github.com/microsoft/mxc/blob/main/docs/sandbox-policy/0.8.0/policy.md) or
-[`docs/versioning.md`](https://github.com/microsoft/mxc/blob/main/docs/versioning.md). It covers only what a policy store adds.
+by [`docs/sandbox-policy/0.8.0/policy.md`](sandbox-policy/0.8.0/policy.md) or
+[`docs/versioning.md`](versioning.md). It covers only what a policy store adds.
 
 ### Non-goals
 
@@ -59,7 +70,7 @@ by [`docs/sandbox-policy/0.8.0/policy.md`](https://github.com/microsoft/mxc/blob
 ### MXC feature impact and defaults
 
 This is a standalone catalog and library proposal. Following the feature-impact
-checklist in [`docs/authoring-a-new-feature.md`](https://github.com/microsoft/mxc/blob/main/docs/authoring-a-new-feature.md):
+checklist in [`docs/authoring-a-new-feature.md`](authoring-a-new-feature.md):
 
 - **Policy changes:** None. Catalog entries embed an existing, registered
   `SandboxPolicy`.
@@ -656,7 +667,7 @@ not a parallel long-term policy platform.
 
 MXC's learning-mode capabilities (`learningModeLogging`,
 `permissiveLearningMode`, `captureDenials`; see
-[`docs/learning-mode/capabilities.md`](https://github.com/microsoft/mxc/blob/main/docs/learning-mode/capabilities.md)) are the
+[`docs/learning-mode/capabilities.md`](learning-mode/capabilities.md)) are the
 substrate a contributor can use to observe what a tool actually touches, the
 same way [#779 §5.1](https://github.com/microsoft/mxc/pull/779) describes for
 config floors. That observation workflow is unchanged by this document and
@@ -803,7 +814,7 @@ Recommended answers are proposals for review, not decisions.
 - [`ChazGo/mxc#1`](https://github.com/ChazGo/mxc/pull/1) - draft SDK resolver
   and catalog prototype exercising lookup, dependency closure, and symbol
   resolution against an earlier version of this shape.
-- [`docs/sandbox-policy/0.8.0/policy.md`](https://github.com/microsoft/mxc/blob/main/docs/sandbox-policy/0.8.0/policy.md) -
+- [`docs/sandbox-policy/0.8.0/policy.md`](sandbox-policy/0.8.0/policy.md) -
   the `SandboxPolicy` contract every catalog entry embeds.
-- [`docs/versioning.md`](https://github.com/microsoft/mxc/blob/main/docs/versioning.md) - the versioning model
+- [`docs/versioning.md`](versioning.md) - the versioning model
   [§4.1](#41-versions) builds on.

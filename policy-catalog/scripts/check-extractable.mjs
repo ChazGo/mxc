@@ -49,11 +49,29 @@ try {
 
   // Relative Markdown links must resolve inside the extracted tree.
   const brokenLinks = [];
+  // docs/design.md is a verbatim copy of the MXC proposal. Its relative links
+  // point into the MXC repository and are deliberately not rewritten; each
+  // one must instead have an absolute equivalent listed in the file's header.
+  const VERBATIM = 'docs/design.md';
+  const VERBATIM_MARKER = '<!-- BEGIN VERBATIM COPY -->';
   for (const file of git(['ls-files', '*.md'], target).split('\n').filter(Boolean)) {
-    const text = readFileSync(join(target, file), 'utf8').replace(/```[\s\S]*?```/g, '');
+    const raw = readFileSync(join(target, file), 'utf8');
+    const markerAt = file === VERBATIM ? raw.indexOf(VERBATIM_MARKER) : -1;
+    if (file === VERBATIM && markerAt < 0) {
+      brokenLinks.push(`${file}: missing '${VERBATIM_MARKER}'`);
+      continue;
+    }
+    const header = markerAt >= 0 ? raw.slice(0, markerAt) : '';
+    const text = raw.replace(/```[\s\S]*?```/g, '');
     for (const match of text.matchAll(/\]\(([^)\s]+)\)/g)) {
       const link = match[1].split('#')[0];
       if (!link || /^[a-z][a-z0-9+.-]*:/i.test(link)) continue;
+      if (markerAt >= 0) {
+        if (!header.includes(`- ${link} -> https://`)) {
+          brokenLinks.push(`${file}: MXC-relative link '${match[1]}' has no absolute equivalent in the header`);
+        }
+        continue;
+      }
       const resolved = resolve(dirname(join(target, file)), link);
       if (relative(target, resolved).startsWith('..')) {
         brokenLinks.push(`${file}: '${match[1]}' leaves the repository`);
@@ -76,8 +94,9 @@ try {
     if (!npmCli) throw new Error('run this script through `npm run check:extract`');
     const npm = args => execFileSync(process.execPath, [npmCli, ...args], { cwd: target, stdio: 'inherit' });
     npm(['ci', '--no-audit', '--no-fund']);
+    // `check` includes typecheck, unit, functional (from the packed tarball),
+    // validation, pack contents, and the install smoke test.
     npm(['run', 'check']);
-    npm(['run', 'test:functional']);
     console.log('\nExtractability check OK: the directory builds, tests, validates, and packs as a standalone repository.');
   }
 } finally {
