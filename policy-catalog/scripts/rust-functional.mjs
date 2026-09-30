@@ -27,6 +27,9 @@ const keep = process.argv.includes('--keep');
 const crateDir = fileURLToPath(new URL('../rust/', import.meta.url));
 const repoDir = fileURLToPath(new URL('../', import.meta.url));
 const exe = process.platform === 'win32' ? '.exe' : '';
+// On Windows, use the inbox bsdtar: a GNU tar earlier on PATH (Git Bash, as on
+// GitHub-hosted runners) reads `C:/...` as a remote host and cannot gunzip.
+const tarCmd = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
 
 function run(cmd, args, options = {}) {
   console.log(`> ${cmd} ${args.join(' ')}${options.cwd ? `   (in ${options.cwd})` : ''}`);
@@ -61,7 +64,7 @@ try {
   // A .crate is a gzip'd tarball with one top-level `<name>-<version>/` directory.
   const extractRoot = join(work, 'extracted');
   rmSync(extractRoot, { recursive: true, force: true });
-  execFileSync('tar', ['-xzf', crate, '-C', work.replaceAll('\\', '/')], { stdio: 'inherit', cwd: work });
+  execFileSync(tarCmd, ['-xzf', crate, '-C', work], { stdio: 'inherit', cwd: work });
   const extracted = readdirSync(work)
     .filter(name => name.startsWith('mxc-policy-catalog-') && statSync(join(work, name)).isDirectory())
     .map(name => join(work, name))[0];

@@ -39,7 +39,9 @@ try {
     const tar = join(work, 'tree.tar');
     git(['archive', '--format=tar', '-o', tar, `HEAD:${prefix}`], repoRoot);
     mkdirSync(target);
-    execFileSync('tar', ['-xf', tar, '-C', target], { stdio: 'inherit' });
+    // Inbox bsdtar on Windows; a GNU tar earlier on PATH misreads `C:/...`.
+    const tarCmd = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+    execFileSync(tarCmd, ['-xf', tar, '-C', target], { stdio: 'inherit' });
     console.log(`Extracted HEAD:${prefix}.`);
   }
 
