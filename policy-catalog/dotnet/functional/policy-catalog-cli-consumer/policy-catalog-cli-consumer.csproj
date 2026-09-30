@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Template only. scripts/dotnet-functional.mjs copies this file into a
+       temporary directory outside the repository together with the CLI
+       sources (Microsoft.Mxc.PolicyCatalog.Cli/Program.cs) and builds the
+       policy-catalog CLI against the packed Microsoft.Mxc.PolicyCatalog
+       package, so the functional tests exercise the packaged library through
+       the CLI as well. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>policy-catalog</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <UseAppHost>false</UseAppHost>
+    <PolicyCatalogPackageVersion Condition="'$(PolicyCatalogPackageVersion)' == ''">0.0.0-prototype</PolicyCatalogPackageVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Mxc.PolicyCatalog" Version="$(PolicyCatalogPackageVersion)" />
+  </ItemGroup>
+
+</Project>

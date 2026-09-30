@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <!-- xUnit v3 test projects are executables that run themselves. -->
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Microsoft.Mxc.PolicyCatalog\Microsoft.Mxc.PolicyCatalog.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shared, language-neutral conformance data and the catalog contract,
+         embedded from the repository (never copied). -->
+    <EmbeddedResource Include="..\..\conformance\**\*.json"
+                      LogicalName="conformance/%(RecursiveDir)%(Filename)%(Extension)"
+                      Link="conformance\%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\catalog\contract.v1.json"
+                      LogicalName="catalog/contract.v1.json"
+                      Link="catalog\contract.v1.json" />
+  </ItemGroup>
+
+</Project>

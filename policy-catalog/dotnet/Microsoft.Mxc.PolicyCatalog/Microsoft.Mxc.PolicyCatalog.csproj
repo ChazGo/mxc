@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <RootNamespace>Microsoft.Mxc.PolicyCatalog</RootNamespace>
+    <AssemblyName>Microsoft.Mxc.PolicyCatalog</AssemblyName>
+    <PackageId>Microsoft.Mxc.PolicyCatalog</PackageId>
+    <Version>0.0.0-prototype</Version>
+    <Authors>Microsoft</Authors>
+    <Description>PROTOTYPE - not supported for production use. Native .NET implementation of the MXC policy catalog: resolves tool inputs to a candidate lower-bound SandboxPolicy from an integrity-validated, bundled catalog.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Microsoft.Mxc.PolicyCatalog.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The repository's catalog/ directory is the single source of truth.
+         It is embedded, never copied into this project. Resource names are
+         normalized to forward slashes at load time (RecursiveDir uses the
+         build host's separator). -->
+    <EmbeddedResource Include="..\..\catalog\**\*.json"
+                      LogicalName="catalog/%(RecursiveDir)%(Filename)%(Extension)"
+                      Link="catalog\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- The same files also ship as a plain directory beside the consuming
+         application (app/catalog/), so the CLI's validate command without a
+         catalog option validates the bundled catalog as a directory, like the
+         TypeScript CLI does with package/catalog/. Project references get it
+         through CopyToOutputDirectory; package consumers through contentFiles. -->
+    <None Include="..\..\catalog\**\*.json"
+          Link="catalog\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          Pack="true"
+          PackagePath="contentFiles\any\any\catalog\%(RecursiveDir)%(Filename)%(Extension)"
+          PackageCopyToOutput="true"
+          BuildAction="None" />
+  </ItemGroup>
+
+</Project>

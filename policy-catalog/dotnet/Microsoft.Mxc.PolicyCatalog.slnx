@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Microsoft.Mxc.PolicyCatalog/Microsoft.Mxc.PolicyCatalog.csproj" />
+  <Project Path="Microsoft.Mxc.PolicyCatalog.Cli/Microsoft.Mxc.PolicyCatalog.Cli.csproj" />
+  <Project Path="Microsoft.Mxc.PolicyCatalog.Tests/Microsoft.Mxc.PolicyCatalog.Tests.csproj" />
+</Solution>
