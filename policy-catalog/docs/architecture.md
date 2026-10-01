@@ -35,7 +35,7 @@ layers and ceilings, approval, audit, and the final sandbox creation.
 | `src/catalog.ts` | Contract and revision validation, variant selection, dependency closure, composition limits. |
 | `src/store.ts` | Manifest validation; lazy, digest-checked, deep-frozen revision loading. |
 | `src/host.ts` | Host platform, native system architecture, and approved host symbols. |
-| `src/resolver.ts` | `getSandboxConfig`, `getSandboxConfigWithDiagnostics`, `getCatalogInfo`, `listCatalogEntries`. |
+| `src/resolver.ts` | `resolveSandboxPolicy`, `resolveSandboxPolicyWithDiagnostics`, `getCatalogInfo`, `listCatalogEntries`. |
 | `src/history.ts` | `entryRevision` monotonicity and published-revision immutability checks. |
 | `src/validate.ts` | Catalog-directory validation and the `--base-ref` immutability check, shared by `policy-catalog validate` and `scripts/validate-catalog.mjs`. Tooling only; the runtime lookup path never runs git. |
 | `src/cli.ts` | `policy-catalog resolve \| inspect \| validate` command-line harness over the public API (functional tests, CI, contributors). |
@@ -167,8 +167,8 @@ The CLI prints a failure as
 `{"error": {"code": "...", "message": "...", "details": {"reason": "..."}}}`
 and exits 1.
 
-Absence is not a failure. `getSandboxConfig` returns `undefined`, and
-`getSandboxConfigWithDiagnostics` returns `policy: undefined` with its
+Absence is not a failure. `resolveSandboxPolicy` returns `undefined`, and
+`resolveSandboxPolicyWithDiagnostics` returns `policy: undefined` with its
 diagnostics.
 
 ## Language bindings
@@ -178,9 +178,9 @@ behavior ([design §6.2](design.md#62-cross-language-consistency-and-support)):
 
 | Language | Location | Package | Entry points |
 |---|---|---|---|
-| TypeScript | `src/` | npm `@mxc-prototype/policy-catalog` | `getSandboxConfig`, `getSandboxConfigWithDiagnostics` |
-| Rust | `rust/` (own `[workspace]`) | crate `mxc-policy-catalog` | `get_sandbox_config`, `get_sandbox_config_with_diagnostics` |
-| C# | `dotnet/` (net8.0) | NuGet `Microsoft.Mxc.PolicyCatalog` | `GetSandboxConfig`, `GetSandboxConfigWithDiagnostics` |
+| TypeScript | `src/` | npm `@mxc-prototype/policy-catalog` | `resolveSandboxPolicy`, `resolveSandboxPolicyWithDiagnostics` |
+| Rust | `rust/` (own `[workspace]`) | crate `mxc-policy-catalog` | `resolve_sandbox_policy`, `resolve_sandbox_policy_with_diagnostics` |
+| C# | `dotnet/` (net8.0) | NuGet `Microsoft.Mxc.PolicyCatalog` | `ResolveSandboxPolicy`, `ResolveSandboxPolicyWithDiagnostics` |
 
 The Rust and .NET libraries are not wrappers. Each one embeds the bundled
 catalog and reimplements canonical JSON, digest checks, path normalization

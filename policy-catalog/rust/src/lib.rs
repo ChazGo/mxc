@@ -5,8 +5,8 @@
 //! catalog library, with behavioral parity to the TypeScript implementation
 //! in `policy-catalog/src`.
 //!
-//! The runtime lookup API ([`get_sandbox_config`],
-//! [`get_sandbox_config_with_diagnostics`], [`get_catalog_info`],
+//! The runtime lookup API ([`resolve_sandbox_policy`],
+//! [`resolve_sandbox_policy_with_diagnostics`], [`get_catalog_info`],
 //! [`list_catalog_entries`], and [`PolicyCatalog`]) returns a **candidate
 //! lower-bound** policy. It never grants access, launches a sandbox, contacts
 //! a network service, or writes consumer state. The catalog bundled with this
@@ -38,7 +38,8 @@ pub use model::{
     ToolInputs, ToolRecord,
 };
 pub use resolver::{
-    get_catalog_info, get_sandbox_config, get_sandbox_config_with_diagnostics, list_catalog_entries, PolicyCatalog,
+    get_catalog_info, list_catalog_entries, resolve_sandbox_policy, resolve_sandbox_policy_with_diagnostics,
+    PolicyCatalog,
 };
 pub use store::{
     bundled_catalog_store, load_catalog_directory, CatalogManifest, CatalogSource, CatalogStore, DirectorySource,

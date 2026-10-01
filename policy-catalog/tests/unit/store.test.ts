@@ -35,8 +35,8 @@ describe('integrity', () => {
     const store = storeFor([revision], { digests: { '2000-01-01.1': '0'.repeat(64) } });
     assert.equal(errorReason(() => store.revision()), 'integrity');
     const catalog = new PolicyCatalog(store, fixedHost());
-    assert.equal(errorReason(() => catalog.getSandboxConfig('a', { allowWeakIdentityFallback: true })), 'integrity');
-    assert.equal(errorReason(() => catalog.getSandboxConfigWithDiagnostics('a', { allowWeakIdentityFallback: true })), 'integrity');
+    assert.equal(errorReason(() => catalog.resolveSandboxPolicy('a', { allowWeakIdentityFallback: true })), 'integrity');
+    assert.equal(errorReason(() => catalog.resolveSandboxPolicyWithDiagnostics('a', { allowWeakIdentityFallback: true })), 'integrity');
     assert.equal(errorReason(() => catalog.listCatalogEntries()), 'integrity');
     assert.equal(errorReason(() => catalog.getCatalogInfo()), 'integrity');
   });
@@ -64,12 +64,12 @@ describe('versioning and immutable revisions', () => {
     const catalog = new PolicyCatalog(storeFor([r1, r2]), fixedHost());
     const ctx = { allowWeakIdentityFallback: true, projectRoot: '/p' };
     const revisionOf = (extra = {}) => {
-      const result = catalog.getSandboxConfigWithDiagnostics('a', { ...ctx, ...extra });
+      const result = catalog.resolveSandboxPolicyWithDiagnostics('a', { ...ctx, ...extra });
       return [result.diagnostics.catalogRevision, result.diagnostics.tools[0].matches[0]?.entryRevision];
     };
     assert.deepEqual(revisionOf(), ['2000-01-02.1', 2]);
     assert.deepEqual(revisionOf({ catalogRevision: '2000-01-01.1' }), ['2000-01-01.1', 1]);
-    assert.equal(errorReason(() => catalog.getSandboxConfig('a', { ...ctx, catalogRevision: '2000-01-03.1' })), 'revision_unavailable');
+    assert.equal(errorReason(() => catalog.resolveSandboxPolicy('a', { ...ctx, catalogRevision: '2000-01-03.1' })), 'revision_unavailable');
   });
 
   it('loaded revisions are deeply frozen (read-only)', () => {

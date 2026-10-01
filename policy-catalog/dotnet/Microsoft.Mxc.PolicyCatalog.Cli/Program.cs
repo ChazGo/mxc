@@ -238,12 +238,12 @@ internal static class Program
         var catalog = new PolicyCatalog(StoreFrom(catalogDir));
         if (diagnostics)
         {
-            Print(PolicyCatalogJson.Serialize(catalog.GetSandboxConfigWithDiagnostics(tools, context), 2));
+            Print(PolicyCatalogJson.Serialize(catalog.ResolveSandboxPolicyWithDiagnostics(tools, context), 2));
         }
         else
         {
             // `null` is JSON's rendering of "no policy"; it is never an empty policy.
-            Print(PolicyCatalogJson.Serialize(catalog.GetSandboxConfig(tools, context), 2));
+            Print(PolicyCatalogJson.Serialize(catalog.ResolveSandboxPolicy(tools, context), 2));
         }
 
         return 0;

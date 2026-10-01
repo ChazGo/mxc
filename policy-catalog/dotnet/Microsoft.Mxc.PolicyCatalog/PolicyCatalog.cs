@@ -69,7 +69,7 @@ public sealed class PolicyCatalog
     /// <param name="context">Lookup context; <c>null</c> means all defaults.</param>
     /// <returns>The policy or <c>null</c>.</returns>
     /// <exception cref="PolicyCatalogException">A library failure; never reported as absence.</exception>
-    public CatalogSandboxPolicy? GetSandboxConfig(IReadOnlyList<ToolInput> tools, ResolveContext? context = null) =>
+    public CatalogSandboxPolicy? ResolveSandboxPolicy(IReadOnlyList<ToolInput> tools, ResolveContext? context = null) =>
         Resolve(tools, context).Policy;
 
     /// <summary>The composed candidate policy for one tool; exactly a one-element list.</summary>
@@ -77,7 +77,7 @@ public sealed class PolicyCatalog
     /// <param name="context">Lookup context.</param>
     /// <returns>The policy or <c>null</c>.</returns>
     /// <exception cref="PolicyCatalogException">A library failure.</exception>
-    public CatalogSandboxPolicy? GetSandboxConfig(ToolInput tool, ResolveContext? context = null) =>
+    public CatalogSandboxPolicy? ResolveSandboxPolicy(ToolInput tool, ResolveContext? context = null) =>
         Resolve(new[] { tool }, context).Policy;
 
     /// <summary>
@@ -89,7 +89,7 @@ public sealed class PolicyCatalog
     /// <param name="context">Lookup context.</param>
     /// <returns>The resolution.</returns>
     /// <exception cref="PolicyCatalogException">A library failure.</exception>
-    public SandboxConfigResolution GetSandboxConfigWithDiagnostics(IReadOnlyList<ToolInput> tools, ResolveContext? context = null) =>
+    public SandboxConfigResolution ResolveSandboxPolicyWithDiagnostics(IReadOnlyList<ToolInput> tools, ResolveContext? context = null) =>
         Resolve(tools, context);
 
     /// <summary>Resolves one tool; exactly a one-element list.</summary>
@@ -97,7 +97,7 @@ public sealed class PolicyCatalog
     /// <param name="context">Lookup context.</param>
     /// <returns>The resolution.</returns>
     /// <exception cref="PolicyCatalogException">A library failure.</exception>
-    public SandboxConfigResolution GetSandboxConfigWithDiagnostics(ToolInput tool, ResolveContext? context = null) =>
+    public SandboxConfigResolution ResolveSandboxPolicyWithDiagnostics(ToolInput tool, ResolveContext? context = null) =>
         Resolve(new[] { tool }, context);
 
     private sealed record EntryMatch(Entry Entry, VariantSelection Selection, List<IdentityPredicate> Satisfied);
@@ -549,25 +549,25 @@ public static class BundledPolicyCatalog
     /// <param name="tools">Tool inputs.</param>
     /// <param name="context">Lookup context.</param>
     /// <returns>The policy or <c>null</c>.</returns>
-    public static CatalogSandboxPolicy? GetSandboxConfig(IReadOnlyList<ToolInput> tools, ResolveContext? context = null) => Catalog.GetSandboxConfig(tools, context);
+    public static CatalogSandboxPolicy? ResolveSandboxPolicy(IReadOnlyList<ToolInput> tools, ResolveContext? context = null) => Catalog.ResolveSandboxPolicy(tools, context);
 
     /// <summary>Composed candidate policy for one tool, from the bundled catalog.</summary>
     /// <param name="tool">The tool input.</param>
     /// <param name="context">Lookup context.</param>
     /// <returns>The policy or <c>null</c>.</returns>
-    public static CatalogSandboxPolicy? GetSandboxConfig(ToolInput tool, ResolveContext? context = null) => Catalog.GetSandboxConfig(tool, context);
+    public static CatalogSandboxPolicy? ResolveSandboxPolicy(ToolInput tool, ResolveContext? context = null) => Catalog.ResolveSandboxPolicy(tool, context);
 
     /// <summary>Composed candidate policy plus attribution for several tools.</summary>
     /// <param name="tools">Tool inputs.</param>
     /// <param name="context">Lookup context.</param>
     /// <returns>The resolution.</returns>
-    public static SandboxConfigResolution GetSandboxConfigWithDiagnostics(IReadOnlyList<ToolInput> tools, ResolveContext? context = null) => Catalog.GetSandboxConfigWithDiagnostics(tools, context);
+    public static SandboxConfigResolution ResolveSandboxPolicyWithDiagnostics(IReadOnlyList<ToolInput> tools, ResolveContext? context = null) => Catalog.ResolveSandboxPolicyWithDiagnostics(tools, context);
 
     /// <summary>Composed candidate policy plus attribution for one tool.</summary>
     /// <param name="tool">The tool input.</param>
     /// <param name="context">Lookup context.</param>
     /// <returns>The resolution.</returns>
-    public static SandboxConfigResolution GetSandboxConfigWithDiagnostics(ToolInput tool, ResolveContext? context = null) => Catalog.GetSandboxConfigWithDiagnostics(tool, context);
+    public static SandboxConfigResolution ResolveSandboxPolicyWithDiagnostics(ToolInput tool, ResolveContext? context = null) => Catalog.ResolveSandboxPolicyWithDiagnostics(tool, context);
 
     /// <summary>Bundled catalog entry metadata.</summary>
     /// <returns>Entry metadata ordered by entry ID.</returns>

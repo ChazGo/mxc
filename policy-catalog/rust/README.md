@@ -4,7 +4,7 @@ A native Rust implementation of the policy catalog library. It behaves the same
 as the TypeScript library in `../src`. It is not a wrapper, and it needs no Node
 at runtime. The catalog is compiled into the crate.
 
-- Library: `mxc_policy_catalog` provides `get_sandbox_config`, `get_sandbox_config_with_diagnostics`,
+- Library: `mxc_policy_catalog` provides `resolve_sandbox_policy`, `resolve_sandbox_policy_with_diagnostics`,
   `get_catalog_info`, `list_catalog_entries`, and `PolicyCatalog` (a store plus an injectable
   `HostEnvironment`). Contribution and CI rules are in `mxc_policy_catalog::tooling`.
 - Binary: `policy-catalog resolve | inspect | validate`. Its output matches `node dist/cli.js`.

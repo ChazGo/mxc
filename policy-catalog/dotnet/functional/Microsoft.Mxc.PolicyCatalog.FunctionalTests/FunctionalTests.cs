@@ -142,7 +142,7 @@ public sealed class ResolutionTests : WorkDirTest
         Assert.Equal("""[{"inputIndex":0,"matches":[]}]""", result.Json["diagnostics"]!["tools"]!.ToJsonString(Relaxed));
         Assert.Equal("input 0 ('cargo') matched no eligible catalog entry", result.Warnings);
         Assert.Equal("null\n", Cli(Args("resolve", FullContext("linux", "x64"), "cargo")).Stdout);
-        var library = BundledPolicyCatalog.GetSandboxConfigWithDiagnostics("cargo", new ResolveContext { Platform = "linux", Architecture = "x64" });
+        var library = BundledPolicyCatalog.ResolveSandboxPolicyWithDiagnostics("cargo", new ResolveContext { Platform = "linux", Architecture = "x64" });
         Assert.Null(library.Policy);
         Assert.Equal(new[] { "input 0 ('cargo') matched no eligible catalog entry" }, library.Diagnostics.Warnings);
     }
@@ -161,8 +161,8 @@ public sealed class ResolutionTests : WorkDirTest
 
         var catalog = new PolicyCatalog(CatalogStore.Bundled());
         var ctx = new ResolveContext { Platform = "linux", Architecture = "x64", ProjectRoot = "/p", Symbols = new Dictionary<string, string?> { ["git_prefix"] = "/usr/bin" } };
-        Assert.Null(catalog.GetSandboxConfig("git", ctx));
-        Assert.NotNull(catalog.GetSandboxConfig(new ToolInput("git"), ctx with { AllowWeakIdentityFallback = true }));
+        Assert.Null(catalog.ResolveSandboxPolicy("git", ctx));
+        Assert.NotNull(catalog.ResolveSandboxPolicy(new ToolInput("git"), ctx with { AllowWeakIdentityFallback = true }));
 
         var strong = Cli(Args("resolve", common, "--purl", "pkg:npm/npm@11.0.0", "npm"));
         Assert.NotNull(strong.Json!["policy"]);
@@ -211,7 +211,7 @@ public sealed class ResolutionTests : WorkDirTest
         var result = Cli(Args("resolve", "--revision", "2099-01-01.1", FullContext("linux", "x64"), "git"));
         Assert.Equal(1, result.Status);
         Assert.Equal("""{"code":"backend_error","message":"[backend_error] catalog revision '2099-01-01.1' is not installed","details":{"reason":"revision_unavailable"}}""", result.Json!["error"]!.ToJsonString(Relaxed));
-        var error = Assert.Throws<PolicyCatalogException>(() => BundledPolicyCatalog.GetSandboxConfig("git", new ResolveContext { CatalogRevision = "2099-01-01.1", Platform = "linux", Architecture = "x64" }));
+        var error = Assert.Throws<PolicyCatalogException>(() => BundledPolicyCatalog.ResolveSandboxPolicy("git", new ResolveContext { CatalogRevision = "2099-01-01.1", Platform = "linux", Architecture = "x64" }));
         Assert.Equal("revision_unavailable", error.Reason);
 
         var r1 = Revision(new JsonNode[] { Entry("tool:a") }, "2000-01-01.1");
@@ -230,7 +230,7 @@ public sealed class ResolutionTests : WorkDirTest
         var catalog = new PolicyCatalog(CatalogStore.Bundled(), new FixedHost(platform, architecture));
         var c = PlatformContext[platform];
         var ctx = new ResolveContext { AllowWeakIdentityFallback = true, ProjectRoot = c.Root, Symbols = new Dictionary<string, string?> { ["git_prefix"] = c.Prefix } };
-        var omitted = catalog.GetSandboxConfigWithDiagnostics("git", ctx);
+        var omitted = catalog.ResolveSandboxPolicyWithDiagnostics("git", ctx);
         Assert.Equal(
             new[]
             {
@@ -239,7 +239,7 @@ public sealed class ResolutionTests : WorkDirTest
                 $"tool:git uses its architecture-neutral {platform} variant; no {architecture}-specific variant exists",
             },
             omitted.Diagnostics.Warnings);
-        var explicitArch = catalog.GetSandboxConfigWithDiagnostics("git", ctx with { Platform = platform, Architecture = architecture });
+        var explicitArch = catalog.ResolveSandboxPolicyWithDiagnostics("git", ctx with { Platform = platform, Architecture = architecture });
         Assert.DoesNotContain(explicitArch.Diagnostics.Warnings, w => w.StartsWith("architecture was not specified", StringComparison.Ordinal));
         Assert.Equal(PolicyCatalogJson.Serialize(omitted.Policy), PolicyCatalogJson.Serialize(explicitArch.Policy));
 
@@ -366,7 +366,7 @@ public sealed class IntegrityTests : WorkDirTest
         Assert.Equal("policy_validation", result.Json?["error"]?["code"]?.GetValue<string>());
         Assert.Equal("invalid_catalog", result.ErrorReason);
         Assert.Contains("cycle (tool:a -> tool:b -> tool:a)", result.ErrorMessage, StringComparison.Ordinal);
-        var error = Assert.Throws<PolicyCatalogException>(() => new PolicyCatalog(CatalogStore.FromDirectory(dir)).GetSandboxConfig("a", new ResolveContext { AllowWeakIdentityFallback = true, Platform = "linux", Architecture = "x64" }));
+        var error = Assert.Throws<PolicyCatalogException>(() => new PolicyCatalog(CatalogStore.FromDirectory(dir)).ResolveSandboxPolicy("a", new ResolveContext { AllowWeakIdentityFallback = true, Platform = "linux", Architecture = "x64" }));
         Assert.Equal("invalid_catalog", error.Reason);
     }
 

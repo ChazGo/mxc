@@ -43,7 +43,7 @@ fn unknown_tool_is_no_policy_with_warning() {
     let plain = cli(&args(&["resolve"], &ctx).into_iter().chain(["cargo"]).collect::<Vec<_>>());
     assert_eq!(plain.stdout, "null\n");
     // Library API over the bundled catalog.
-    let r = mxc_policy_catalog::get_sandbox_config_with_diagnostics(
+    let r = mxc_policy_catalog::resolve_sandbox_policy_with_diagnostics(
         "cargo",
         &ResolveContext::new().platform(Platform::Linux).architecture(Architecture::X64).allow_weak(true),
     )
@@ -89,7 +89,7 @@ fn dependency_cycle_fails_validate_and_resolve() {
     // Library API.
     let catalog = catalog_at(&dir, Platform::Linux, Architecture::X64);
     let err = catalog
-        .get_sandbox_config("a", &ResolveContext::new().allow_weak(true).symbol("git_prefix", "/opt"))
+        .resolve_sandbox_policy("a", &ResolveContext::new().allow_weak(true).symbol("git_prefix", "/opt"))
         .unwrap_err();
     assert_eq!(err.reason(), ErrorReason::InvalidCatalog);
     assert!(err.message().contains("cycle ("), "{}", err.message());
@@ -188,7 +188,7 @@ fn unavailable_revision_is_an_error_never_a_substitution() {
     assert_eq!(r.error_reason().as_deref(), Some("revision_unavailable"));
     let message = r.json.as_ref().unwrap().get("error").unwrap().get("message").and_then(Json::as_str).unwrap();
     assert_eq!(message, "[backend_error] catalog revision '2099-01-01.1' is not installed");
-    let err = mxc_policy_catalog::get_sandbox_config("git", &ResolveContext::new().catalog_revision("1999-01-01.1")).unwrap_err();
+    let err = mxc_policy_catalog::resolve_sandbox_policy("git", &ResolveContext::new().catalog_revision("1999-01-01.1")).unwrap_err();
     assert_eq!(err.reason(), ErrorReason::RevisionUnavailable);
 
     // An older installed revision stays addressable.
@@ -246,10 +246,10 @@ fn weak_identity_requires_opt_in() {
         .architecture(Architecture::X64)
         .project_root("/p")
         .symbol("git_prefix", "/usr/bin");
-    assert_eq!(catalog.get_sandbox_config("git", &ctx).unwrap(), None);
-    assert_eq!(catalog.get_sandbox_config(ToolCandidate::new("git"), &ctx).unwrap(), None);
+    assert_eq!(catalog.resolve_sandbox_policy("git", &ctx).unwrap(), None);
+    assert_eq!(catalog.resolve_sandbox_policy(ToolCandidate::new("git"), &ctx).unwrap(), None);
     let on = ctx.allow_weak(true);
-    assert!(catalog.get_sandbox_config("git", &on).unwrap().is_some());
+    assert!(catalog.resolve_sandbox_policy("git", &on).unwrap().is_some());
 }
 
 // ---------------------------------------------------------------------------
@@ -302,14 +302,14 @@ fn host_default_architecture_and_neutral_fallback_warnings() {
             let root = if platform == Platform::Windows { "C:\\w" } else { "/w" };
             let prefix = if platform == Platform::Windows { "C:\\g" } else { "/g" };
             let ctx = ResolveContext::new().allow_weak(true).project_root(root).symbol("git_prefix", prefix);
-            let omitted = catalog.get_sandbox_config_with_diagnostics("git", &ctx).unwrap();
+            let omitted = catalog.resolve_sandbox_policy_with_diagnostics("git", &ctx).unwrap();
             let w = omitted.diagnostics.warnings.join("\n");
             assert!(w.contains(&format!(
                 "architecture was not specified; variants were selected for the native system architecture '{arch}'; the tool's architecture was not verified"
             )), "{w}");
             assert!(w.contains(&format!("tool:git uses its architecture-neutral {platform} variant; no {arch}-specific variant exists")));
             let explicit = catalog
-                .get_sandbox_config_with_diagnostics("git", &ctx.clone().platform(platform).architecture(arch))
+                .resolve_sandbox_policy_with_diagnostics("git", &ctx.clone().platform(platform).architecture(arch))
                 .unwrap();
             assert!(!explicit.diagnostics.warnings.join("\n").contains("was not verified"));
             assert_eq!(explicit.policy, omitted.policy);
@@ -360,7 +360,7 @@ fn one_input_matching_several_entries_warns_and_composes_all() {
     // Library API.
     let catalog = catalog_at(&dir, Platform::Linux, Architecture::X64);
     let res = catalog
-        .get_sandbox_config_with_diagnostics("app", &ResolveContext::new().allow_weak(true).architecture(Architecture::X64).symbol("git_prefix", "/opt"))
+        .resolve_sandbox_policy_with_diagnostics("app", &ResolveContext::new().allow_weak(true).architecture(Architecture::X64).symbol("git_prefix", "/opt"))
         .unwrap();
     assert_eq!(res.diagnostics.tools[0].matches.len(), 2);
 }
@@ -403,7 +403,7 @@ fn composition_conflicts_are_errors_not_choices() {
     // Library API.
     let catalog = catalog_at(&dir, Platform::Linux, Architecture::X64);
     let err = catalog
-        .get_sandbox_config(vec!["a", "b"], &ResolveContext::new().allow_weak(true).symbol("git_prefix", "/opt"))
+        .resolve_sandbox_policy(vec!["a", "b"], &ResolveContext::new().allow_weak(true).symbol("git_prefix", "/opt"))
         .unwrap_err();
     assert_eq!(err.reason(), ErrorReason::CompositionConflict);
 }

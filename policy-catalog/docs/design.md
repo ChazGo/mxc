@@ -106,8 +106,8 @@ Defaults and omission behavior are:
   resolvable.
 - Omitted `packageUrl` or `detectedVersion` supplies no matching evidence. The
   resolver does not fabricate either value.
-- If no policy can be resolved, `getSandboxConfig` returns `undefined`.
-  `getSandboxConfigWithDiagnostics` instead returns a result whose `policy` is
+- If no policy can be resolved, `resolveSandboxPolicy` returns `undefined`.
+  `resolveSandboxPolicyWithDiagnostics` instead returns a result whose `policy` is
   `undefined`, preserving the diagnostics. The consumer's restrictive baseline
   remains unchanged.
 
@@ -134,7 +134,7 @@ Everything else is a consumer decision:
   sandbox creation.
 
 A catalog lookup can only ever narrow what a consumer still has to decide for
-itself. `getSandboxConfig` returns a candidate composed requirement or
+itself. `resolveSandboxPolicy` returns a candidate composed requirement or
 `undefined`; its diagnostics counterpart also reports how that result was
 obtained. The consumer decides whether and how to act on it. This mirrors
 #779's floor/policy distinction, discussed further in
@@ -150,7 +150,7 @@ required to grant.
 | Strongest satisfied identity predicate describes a match | All eligible matching entries contribute; identity evidence is retained without stronger matches suppressing weaker ones ([§4.3](#43-identity)) |
 | One `sandboxPolicy` per entry; `when.platform` only conditions dependencies | One complete `SandboxPolicy` per platform variant; a variant cannot name a containment backend ([§4.4](#44-platform-variants)) |
 | `requires` composition unspecified beyond "union" | Composition limited to a small, explicit, field-by-field set for the first contract version; everything else is rejected until a rule exists ([§4.5](#45-dependencies-and-composition)) |
-| `getSandboxConfigForTool(tools: string[])` returns one composed policy | `getSandboxConfig` accepts one tool or an array and returns one policy; `getSandboxConfigWithDiagnostics` adds attribution, with catalog inspection kept separate ([§5](#5-api-surface)) |
+| `getSandboxConfigForTool(tools: string[])` returns one composed policy | `resolveSandboxPolicy` accepts one tool or an array and returns one policy; `resolveSandboxPolicyWithDiagnostics` adds attribution, with catalog inspection kept separate ([§5](#5-api-surface)) |
 | No revision/publication model | Immutable published catalog revisions; corrections publish a new revision ([§10](#10-immutable-revisions)) |
 
 The data model, the floor/policy direction argument, multi-tool composition,
@@ -427,22 +427,22 @@ interface SandboxConfigResolution {
   };
 }
 
-declare function getSandboxConfig(
+declare function resolveSandboxPolicy(
   tool: ToolInput,
   ctx?: ResolveContext
 ): SandboxPolicy | undefined;
 
-declare function getSandboxConfig(
+declare function resolveSandboxPolicy(
   tools: readonly ToolInput[],
   ctx?: ResolveContext
 ): SandboxPolicy | undefined;
 
-declare function getSandboxConfigWithDiagnostics(
+declare function resolveSandboxPolicyWithDiagnostics(
   tool: ToolInput,
   ctx?: ResolveContext
 ): SandboxConfigResolution;
 
-declare function getSandboxConfigWithDiagnostics(
+declare function resolveSandboxPolicyWithDiagnostics(
   tools: readonly ToolInput[],
   ctx?: ResolveContext
 ): SandboxConfigResolution;
@@ -455,11 +455,11 @@ rule is:
 
 ```ts
 const ctx = { allowWeakIdentityFallback: true };
-const policy = getSandboxConfig("npm", ctx);
-const combinedPolicy = getSandboxConfig(["git", "npm"], ctx);
-const result = getSandboxConfigWithDiagnostics("npm", ctx);
+const policy = resolveSandboxPolicy("npm", ctx);
+const combinedPolicy = resolveSandboxPolicy(["git", "npm"], ctx);
+const result = resolveSandboxPolicyWithDiagnostics("npm", ctx);
 const combinedResult =
-  getSandboxConfigWithDiagnostics(["git", "npm"], ctx);
+  resolveSandboxPolicyWithDiagnostics(["git", "npm"], ctx);
 ```
 
 Single-tool lookup is equivalent to a one-element array; its diagnostic
@@ -468,8 +468,8 @@ single-tool calls. A caller wanting one sandbox for several tools passes an
 array. Both forms compose every eligible matching entry, not just the
 strongest match, and the selected dependencies.
 
-`getSandboxConfig` returns the composed `SandboxPolicy` directly, not a wrapper
-or a `ContainerConfig`. `getSandboxConfigWithDiagnostics` returns that same
+`resolveSandboxPolicy` returns the composed `SandboxPolicy` directly, not a wrapper
+or a `ContainerConfig`. `resolveSandboxPolicyWithDiagnostics` returns that same
 policy with attribution and warnings from the same resolution pass. Callers
 choose one operation; retrieving diagnostics does not require a second lookup
 or process-global "last result" state.
@@ -478,7 +478,7 @@ Following #779, an unmatched input contributes no requirements while matched
 inputs still contribute. Each input has a diagnostic record; an unmatched
 input has an empty `matches` list and a warning. An empty input array or an
 all-unmatched lookup produces no policy, not an empty policy:
-`getSandboxConfig` returns `undefined`, while the diagnostics operation returns
+`resolveSandboxPolicy` returns `undefined`, while the diagnostics operation returns
 a `SandboxConfigResolution` with `policy: undefined`. An empty array has no
 per-input records. Unresolved required symbols in selected entries prevent a
 policy from being returned and produce diagnostics; they are not grounds for
@@ -496,7 +496,7 @@ effective native system architecture and stating that the tool's architecture
 was not verified. Architecture-neutral fallback is also identified. These
 diagnostics describe selection; they do not attest to the installed tool's
 architecture. The policy-only operation does not expose warnings or
-attribution; consumers needing them use `getSandboxConfigWithDiagnostics`.
+attribution; consumers needing them use `resolveSandboxPolicyWithDiagnostics`.
 
 ### 5.2 Setup and inspection
 
@@ -596,8 +596,8 @@ A consumer:
 1. Installs and pins the standalone library package for its language. Each
    package includes a reviewed default catalog revision for local use.
 2. Calls `getCatalogInfo()` or `listCatalogEntries()` for inspection.
-   `getSandboxConfig()` returns a policy for one tool or an array;
-   `getSandboxConfigWithDiagnostics()` adds match attribution and warnings.
+   `resolveSandboxPolicy()` returns a policy for one tool or an array;
+   `resolveSandboxPolicyWithDiagnostics()` adds match attribution and warnings.
 3. Handles policy absence without widening its restrictive baseline. It
    reviews the composed policy and uses the diagnostics operation when it
    needs contributing identities, revisions, and warnings, applying the

@@ -127,7 +127,7 @@ export class PolicyCatalog {
   // -------------------------------------------------------------------------
 
   /** Returns the composed candidate policy, or `undefined` when no policy can be resolved. */
-  getSandboxConfig(tools: ToolInput | readonly ToolInput[], ctx: ResolveContext = {}): CatalogSandboxPolicy | undefined {
+  resolveSandboxPolicy(tools: ToolInput | readonly ToolInput[], ctx: ResolveContext = {}): CatalogSandboxPolicy | undefined {
     return this.resolve(tools, ctx).policy;
   }
 
@@ -144,7 +144,7 @@ export class PolicyCatalog {
    * The result is a candidate lower bound, not authorization. Consumers keep
    * authorization, ceilings, persistence, composition, approval, and audit.
    */
-  getSandboxConfigWithDiagnostics(tools: ToolInput | readonly ToolInput[], ctx: ResolveContext = {}): SandboxConfigResolution {
+  resolveSandboxPolicyWithDiagnostics(tools: ToolInput | readonly ToolInput[], ctx: ResolveContext = {}): SandboxConfigResolution {
     return this.resolve(tools, ctx);
   }
 
@@ -464,19 +464,19 @@ function bundled(): PolicyCatalog {
 }
 
 /** Composed candidate policy for one tool, from the bundled catalog. */
-export function getSandboxConfig(tool: ToolInput, ctx?: ResolveContext): CatalogSandboxPolicy | undefined;
+export function resolveSandboxPolicy(tool: ToolInput, ctx?: ResolveContext): CatalogSandboxPolicy | undefined;
 /** Composed candidate policy for several tools, from the bundled catalog. */
-export function getSandboxConfig(tools: readonly ToolInput[], ctx?: ResolveContext): CatalogSandboxPolicy | undefined;
-export function getSandboxConfig(tools: ToolInput | readonly ToolInput[], ctx?: ResolveContext): CatalogSandboxPolicy | undefined {
-  return bundled().getSandboxConfig(tools, ctx);
+export function resolveSandboxPolicy(tools: readonly ToolInput[], ctx?: ResolveContext): CatalogSandboxPolicy | undefined;
+export function resolveSandboxPolicy(tools: ToolInput | readonly ToolInput[], ctx?: ResolveContext): CatalogSandboxPolicy | undefined {
+  return bundled().resolveSandboxPolicy(tools, ctx);
 }
 
-/** Composed candidate policy plus attribution for one tool. See {@link PolicyCatalog.getSandboxConfigWithDiagnostics}. */
-export function getSandboxConfigWithDiagnostics(tool: ToolInput, ctx?: ResolveContext): SandboxConfigResolution;
+/** Composed candidate policy plus attribution for one tool. See {@link PolicyCatalog.resolveSandboxPolicyWithDiagnostics}. */
+export function resolveSandboxPolicyWithDiagnostics(tool: ToolInput, ctx?: ResolveContext): SandboxConfigResolution;
 /** Composed candidate policy plus attribution for several tools. */
-export function getSandboxConfigWithDiagnostics(tools: readonly ToolInput[], ctx?: ResolveContext): SandboxConfigResolution;
-export function getSandboxConfigWithDiagnostics(tools: ToolInput | readonly ToolInput[], ctx?: ResolveContext): SandboxConfigResolution {
-  return bundled().getSandboxConfigWithDiagnostics(tools, ctx);
+export function resolveSandboxPolicyWithDiagnostics(tools: readonly ToolInput[], ctx?: ResolveContext): SandboxConfigResolution;
+export function resolveSandboxPolicyWithDiagnostics(tools: ToolInput | readonly ToolInput[], ctx?: ResolveContext): SandboxConfigResolution {
+  return bundled().resolveSandboxPolicyWithDiagnostics(tools, ctx);
 }
 
 /** Lists bundled catalog entry metadata. See {@link PolicyCatalog.listCatalogEntries}. */

@@ -168,7 +168,7 @@ impl PolicyCatalog {
     // -----------------------------------------------------------------------
 
     /// The composed candidate policy, or `None` when no policy can be resolved.
-    pub fn get_sandbox_config(
+    pub fn resolve_sandbox_policy(
         &self,
         tools: impl Into<ToolInputs>,
         ctx: &ResolveContext,
@@ -180,7 +180,7 @@ impl PolicyCatalog {
     /// candidate policy with attribution and warnings. Library failures are
     /// errors, never absence. The result is a candidate lower bound, not
     /// authorization.
-    pub fn get_sandbox_config_with_diagnostics(
+    pub fn resolve_sandbox_policy_with_diagnostics(
         &self,
         tools: impl Into<ToolInputs>,
         ctx: &ResolveContext,
@@ -621,16 +621,16 @@ fn bundled() -> Result<&'static PolicyCatalog> {
 }
 
 /// Composed candidate policy for one or several tools, from the bundled catalog.
-pub fn get_sandbox_config(tools: impl Into<ToolInputs>, ctx: &ResolveContext) -> Result<Option<SandboxPolicy>> {
-    bundled()?.get_sandbox_config(tools, ctx)
+pub fn resolve_sandbox_policy(tools: impl Into<ToolInputs>, ctx: &ResolveContext) -> Result<Option<SandboxPolicy>> {
+    bundled()?.resolve_sandbox_policy(tools, ctx)
 }
 
 /// Composed candidate policy plus attribution, from the bundled catalog.
-pub fn get_sandbox_config_with_diagnostics(
+pub fn resolve_sandbox_policy_with_diagnostics(
     tools: impl Into<ToolInputs>,
     ctx: &ResolveContext,
 ) -> Result<SandboxConfigResolution> {
-    bundled()?.get_sandbox_config_with_diagnostics(tools, ctx)
+    bundled()?.resolve_sandbox_policy_with_diagnostics(tools, ctx)
 }
 
 /// Bundled catalog entry metadata.

@@ -57,12 +57,12 @@ fn all_conformance_fixtures() {
                     expect_error.get("reason").and_then(Json::as_str).unwrap().to_string(),
                 ));
                 assert_eq!(
-                    failure(catalog.get_sandbox_config_with_diagnostics(tools.clone(), &ctx)),
+                    failure(catalog.resolve_sandbox_policy_with_diagnostics(tools.clone(), &ctx)),
                     expected,
                     "{case_name}"
                 );
                 assert_eq!(
-                    failure(catalog.get_sandbox_config(tools, &ctx)),
+                    failure(catalog.resolve_sandbox_policy(tools, &ctx)),
                     expected,
                     "{case_name}"
                 );
@@ -79,14 +79,14 @@ fn all_conformance_fixtures() {
             let expected = Json::Object(expected);
 
             let actual = catalog
-                .get_sandbox_config_with_diagnostics(tools.clone(), &ctx)
+                .resolve_sandbox_policy_with_diagnostics(tools.clone(), &ctx)
                 .unwrap();
             assert_eq!(actual.to_json(), expected, "{case_name}\nactual: {}", actual.to_json());
-            let policy = catalog.get_sandbox_config(tools.clone(), &ctx).unwrap();
+            let policy = catalog.resolve_sandbox_policy(tools.clone(), &ctx).unwrap();
             assert_eq!(policy.map(|p| p.to_json()), expected_policy, "{case_name}");
             if !matches!(raw_tools, Json::Array(_)) {
                 let as_array = tools_from(&Json::Array(vec![raw_tools.clone()]));
-                let again = catalog.get_sandbox_config_with_diagnostics(as_array, &ctx).unwrap();
+                let again = catalog.resolve_sandbox_policy_with_diagnostics(as_array, &ctx).unwrap();
                 assert_eq!(again, actual, "{case_name}: single input == one-element array");
             }
             cases += 1;

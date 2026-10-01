@@ -121,8 +121,8 @@ step('deterministic resolution', () => {
             symbols: Object.fromEntries(Object.keys(symbols).map(s => [s, `${base}${sep}${s}`])),
           };
           const tool = { invocationName: name ?? 'unused', ...(purl ? { packageUrl: purl } : {}) };
-          const first = catalog.getSandboxConfigWithDiagnostics(tool, ctx);
-          const second = catalog.getSandboxConfigWithDiagnostics(tool, ctx);
+          const first = catalog.resolveSandboxPolicyWithDiagnostics(tool, ctx);
+          const second = catalog.resolveSandboxPolicyWithDiagnostics(tool, ctx);
           if (first.policy === undefined) {
             found.push(`${revisionId} ${entry.entryId} ${platform}/${architecture} produced no policy: ${first.diagnostics.warnings.join('; ')}`);
           } else if (JSON.stringify(first) !== JSON.stringify(second)) {
@@ -172,7 +172,7 @@ step('order independence', () => {
       };
       const run = (catalogStore, tools) => {
         try {
-          return JSON.stringify(new PolicyCatalog(catalogStore).getSandboxConfig(tools, ctx));
+          return JSON.stringify(new PolicyCatalog(catalogStore).resolveSandboxPolicy(tools, ctx));
         } catch (error) {
           return `error:${error.reason ?? error.message}`;
         }

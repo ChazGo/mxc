@@ -40,8 +40,8 @@ public sealed class StoreTests
         Assert.Matches("^\\[backend_error\\] catalog revision '2000-01-01.1' digest [0-9a-f]{64} does not match the published digest 0{64}$", error.Message);
         var catalog = new PolicyCatalog(store, new FixedHost());
         var weak = new ResolveContext { AllowWeakIdentityFallback = true };
-        Assert.Equal("integrity", TestData.ErrorReason(() => catalog.GetSandboxConfig("a", weak)));
-        Assert.Equal("integrity", TestData.ErrorReason(() => catalog.GetSandboxConfigWithDiagnostics("a", weak)));
+        Assert.Equal("integrity", TestData.ErrorReason(() => catalog.ResolveSandboxPolicy("a", weak)));
+        Assert.Equal("integrity", TestData.ErrorReason(() => catalog.ResolveSandboxPolicyWithDiagnostics("a", weak)));
         Assert.Equal("integrity", TestData.ErrorReason(() => catalog.ListCatalogEntries()));
         Assert.Equal("integrity", TestData.ErrorReason(() => catalog.GetCatalogInfo()));
     }
@@ -80,11 +80,11 @@ public sealed class StoreTests
         var r2 = TestData.Revision(new[] { TestData.Entry("tool:a", """{ "entryRevision": 2, "displayName": "renamed" }"""), TestData.Entry("tool:b") }, "2000-01-02.1");
         var catalog = new PolicyCatalog(TestData.StoreFor(new[] { r1, r2 }), new FixedHost());
         var ctx = new ResolveContext { AllowWeakIdentityFallback = true, ProjectRoot = "/p" };
-        var latest = catalog.GetSandboxConfigWithDiagnostics("a", ctx);
+        var latest = catalog.ResolveSandboxPolicyWithDiagnostics("a", ctx);
         Assert.Equal(("2000-01-02.1", 2.0), (latest.Diagnostics.CatalogRevision, latest.Diagnostics.Tools[0].Matches[0].EntryRevision));
-        var older = catalog.GetSandboxConfigWithDiagnostics("a", ctx with { CatalogRevision = "2000-01-01.1" });
+        var older = catalog.ResolveSandboxPolicyWithDiagnostics("a", ctx with { CatalogRevision = "2000-01-01.1" });
         Assert.Equal(("2000-01-01.1", 1.0), (older.Diagnostics.CatalogRevision, older.Diagnostics.Tools[0].Matches[0].EntryRevision));
-        var error = TestData.Failure(() => catalog.GetSandboxConfig("a", ctx with { CatalogRevision = "2000-01-03.1" }));
+        var error = TestData.Failure(() => catalog.ResolveSandboxPolicy("a", ctx with { CatalogRevision = "2000-01-03.1" }));
         Assert.Equal(("backend_error", "revision_unavailable", "[backend_error] catalog revision '2000-01-03.1' is not installed"), (error.Code, error.Reason, error.Message));
     }
 

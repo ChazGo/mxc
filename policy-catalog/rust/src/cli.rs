@@ -219,11 +219,11 @@ fn resolve_command(args: &[String], catalog_dir: &Option<String>, out: &mut Stri
     let tools = ToolInputs(tools);
     if diagnostics {
         print(
-            &catalog.get_sandbox_config_with_diagnostics(tools, &ctx)?.to_json(),
+            &catalog.resolve_sandbox_policy_with_diagnostics(tools, &ctx)?.to_json(),
             out,
         );
     } else {
-        let policy = catalog.get_sandbox_config(tools, &ctx)?;
+        let policy = catalog.resolve_sandbox_policy(tools, &ctx)?;
         print(&policy.map_or(Json::Null, |p| p.to_json()), out);
     }
     Ok(0)

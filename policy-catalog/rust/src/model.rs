@@ -439,7 +439,7 @@ impl Diagnostics {
     }
 }
 
-/// Result of `get_sandbox_config_with_diagnostics` (design §5.1).
+/// Result of `resolve_sandbox_policy_with_diagnostics` (design §5.1).
 #[derive(Clone, Debug, PartialEq)]
 pub struct SandboxConfigResolution {
     pub policy: Option<SandboxPolicy>,

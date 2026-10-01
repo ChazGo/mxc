@@ -13,7 +13,7 @@
 //   policy-catalog inspect [--catalog DIR]
 //   policy-catalog validate [--catalog DIR] [--base-ref REF]
 //
-// resolve   runs getSandboxConfig / getSandboxConfigWithDiagnostics.
+// resolve   runs resolveSandboxPolicy / resolveSandboxPolicyWithDiagnostics.
 // inspect   prints getCatalogInfo() and listCatalogEntries() (metadata only).
 // validate  checks integrity, the catalog contract (including dependency
 //           cycles), entry-revision history, and, with --base-ref, that every
@@ -176,10 +176,10 @@ function resolveCommand(args: string[], catalogDir: string | undefined): number 
   }
   const catalog = new PolicyCatalog(storeFrom(catalogDir));
   if (diagnostics) {
-    print(catalog.getSandboxConfigWithDiagnostics(tools, ctx));
+    print(catalog.resolveSandboxPolicyWithDiagnostics(tools, ctx));
   } else {
     // `null` is JSON's rendering of "no policy"; it is never an empty policy.
-    print(catalog.getSandboxConfig(tools, ctx) ?? null);
+    print(catalog.resolveSandboxPolicy(tools, ctx) ?? null);
   }
   return 0;
 }

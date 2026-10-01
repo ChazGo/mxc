@@ -30,19 +30,19 @@ try {
   run(['install', '--offline', '--no-audit', '--no-fund', tarball], consumer);
   const manifest = JSON.parse(readFileSync(join(packageDir, 'catalog', 'manifest.json'), 'utf8'));
   writeFileSync(join(consumer, 'smoke.mjs'), `
-    import { getCatalogInfo, listCatalogEntries, getSandboxConfig, getSandboxConfigWithDiagnostics, PolicyCatalogError } from '@mxc-prototype/policy-catalog';
+    import { getCatalogInfo, listCatalogEntries, resolveSandboxPolicy, resolveSandboxPolicyWithDiagnostics, PolicyCatalogError } from '@mxc-prototype/policy-catalog';
     import { execFileSync } from 'node:child_process';
     import assert from 'node:assert/strict';
     assert.equal(getCatalogInfo().catalogRevision, ${JSON.stringify(manifest.defaultRevision)});
     assert.ok(listCatalogEntries().length > 0);
     // Weak identity requires opt-in, so a bare name yields no policy.
-    assert.equal(getSandboxConfig('git', { platform: 'linux', architecture: 'x64' }), undefined);
+    assert.equal(resolveSandboxPolicy('git', { platform: 'linux', architecture: 'x64' }), undefined);
     const ctx = { platform: 'linux', architecture: 'x64', allowWeakIdentityFallback: true,
       projectRoot: '/p', symbols: { git_prefix: '/usr/bin', node_prefix: '/n', npm_prefix: '/n', npm_cache: '/c' } };
-    assert.deepEqual(getSandboxConfig(['git', 'npm'], ctx).filesystem.readwritePaths, ['/p', '/c']);
-    const r = getSandboxConfigWithDiagnostics('git', ctx);
+    assert.deepEqual(resolveSandboxPolicy(['git', 'npm'], ctx).filesystem.readwritePaths, ['/p', '/c']);
+    const r = resolveSandboxPolicyWithDiagnostics('git', ctx);
     assert.equal(r.diagnostics.tools[0].matches[0].entryId, 'tool:git');
-    assert.throws(() => getSandboxConfig('git', { catalogRevision: '1999-01-01.1' }), PolicyCatalogError);
+    assert.throws(() => resolveSandboxPolicy('git', { catalogRevision: '1999-01-01.1' }), PolicyCatalogError);
     // The packaged CLI runs from the installed tree.
     const inspected = JSON.parse(execFileSync(process.execPath, ['node_modules/@mxc-prototype/policy-catalog/dist/cli.js', 'inspect'], { encoding: 'utf8' }));
     assert.equal(inspected.info.catalogRevision, ${JSON.stringify(manifest.defaultRevision)});

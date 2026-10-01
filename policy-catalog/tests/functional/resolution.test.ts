@@ -117,11 +117,11 @@ describe('weak-identity opt-in', () => {
   it('string shorthand and object input obey the same option in the installed library', () => {
     const catalog = new lib.PolicyCatalog(lib.bundledCatalogStore());
     const ctx = { platform: 'linux' as const, architecture: 'x64' as const, projectRoot: '/p', symbols: { git_prefix: '/usr/bin' } };
-    assert.equal(catalog.getSandboxConfig('git', ctx), undefined);
-    assert.equal(catalog.getSandboxConfig({ invocationName: 'git' }, ctx), undefined);
+    assert.equal(catalog.resolveSandboxPolicy('git', ctx), undefined);
+    assert.equal(catalog.resolveSandboxPolicy({ invocationName: 'git' }, ctx), undefined);
     const on = { ...ctx, allowWeakIdentityFallback: true };
-    assert.deepEqual(catalog.getSandboxConfig('git', on), catalog.getSandboxConfig({ invocationName: 'git' }, on));
-    assert.notEqual(catalog.getSandboxConfig('git', on), undefined);
+    assert.deepEqual(catalog.resolveSandboxPolicy('git', on), catalog.resolveSandboxPolicy({ invocationName: 'git' }, on));
+    assert.notEqual(catalog.resolveSandboxPolicy('git', on), undefined);
   });
 });
 
@@ -197,7 +197,7 @@ describe('catalog revisions', () => {
     assert.equal(result.json.error.details.reason, 'revision_unavailable');
     assert.match(result.json.error.message, /'1999-01-01\.1' is not installed/);
     assert.throws(
-      () => lib.getSandboxConfig('git', { catalogRevision: '1999-01-01.1', platform: 'linux', architecture: 'x64' }),
+      () => lib.resolveSandboxPolicy('git', { catalogRevision: '1999-01-01.1', platform: 'linux', architecture: 'x64' }),
       (error: any) => error instanceof lib.PolicyCatalogError && error.reason === 'revision_unavailable',
     );
   });
@@ -239,12 +239,12 @@ describe('platform and architecture selection', () => {
         const catalog = new lib.PolicyCatalog(lib.bundledCatalogStore(), host);
         const c = PLATFORM_CONTEXT[platform];
         const ctx = { allowWeakIdentityFallback: true, projectRoot: c.root, symbols: { git_prefix: c.prefix } };
-        const omitted = catalog.getSandboxConfigWithDiagnostics('git', ctx);
+        const omitted = catalog.resolveSandboxPolicyWithDiagnostics('git', ctx);
         const warnings = omitted.diagnostics.warnings.join('\n');
         assert.match(warnings, NOT_VERIFIED);
         assert.match(warnings, new RegExp(`native system architecture '${architecture}'`));
         assert.match(warnings, new RegExp(`no ${architecture}-specific variant exists`));
-        const explicit = catalog.getSandboxConfigWithDiagnostics('git', { ...ctx, architecture, platform });
+        const explicit = catalog.resolveSandboxPolicyWithDiagnostics('git', { ...ctx, architecture, platform });
         assert.doesNotMatch(explicit.diagnostics.warnings.join('\n'), NOT_VERIFIED);
         assert.deepEqual(explicit.policy, omitted.policy);
       });

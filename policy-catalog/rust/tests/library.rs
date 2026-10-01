@@ -12,8 +12,8 @@ use mxc_policy_catalog::tooling::{
     validate_catalog_revision, validate_contract, Json, PublishedRevision, PublishedState,
 };
 use mxc_policy_catalog::{
-    get_catalog_info, get_sandbox_config, get_sandbox_config_with_diagnostics, list_catalog_entries, Architecture,
-    ErrorReason, FixedHost, HostEnvironment, Platform, PolicyCatalog, PolicyCatalogError, ResolveContext,
+    get_catalog_info, list_catalog_entries, resolve_sandbox_policy, resolve_sandbox_policy_with_diagnostics,
+    Architecture, ErrorReason, FixedHost, HostEnvironment, Platform, PolicyCatalog, PolicyCatalogError, ResolveContext,
     ToolCandidate, ToolInput, ToolInputs,
 };
 use std::collections::HashMap;
@@ -79,9 +79,12 @@ fn arch_catalog(host: Arc<FixedHost>) -> PolicyCatalog {
 #[test]
 fn omitted_context_uses_host_platform_native_arch_default_revision_no_weak() {
     let catalog = arch_catalog(fixed_host(Platform::Windows, Architecture::Arm64));
-    assert_eq!(catalog.get_sandbox_config("a", &ResolveContext::new()).unwrap(), None);
+    assert_eq!(
+        catalog.resolve_sandbox_policy("a", &ResolveContext::new()).unwrap(),
+        None
+    );
     let result = catalog
-        .get_sandbox_config_with_diagnostics(
+        .resolve_sandbox_policy_with_diagnostics(
             ToolCandidate::new("a").with_package_url("pkg:npm/a"),
             &ResolveContext::new(),
         )
@@ -99,7 +102,7 @@ fn omitted_context_uses_host_platform_native_arch_default_revision_no_weak() {
 fn explicit_architecture_wins_and_suppresses_host_default_warning() {
     let catalog = arch_catalog(fixed_host(Platform::Windows, Architecture::Arm64));
     let result = catalog
-        .get_sandbox_config_with_diagnostics(
+        .resolve_sandbox_policy_with_diagnostics(
             ToolCandidate::new("a").with_package_url("pkg:npm/a"),
             &ResolveContext::new().architecture(Architecture::X64),
         )
@@ -120,7 +123,7 @@ fn another_architecture_is_never_a_fallback() {
         linux_x64(),
     );
     let result = catalog
-        .get_sandbox_config_with_diagnostics("a", &weak().architecture(Architecture::X64))
+        .resolve_sandbox_policy_with_diagnostics("a", &weak().architecture(Architecture::X64))
         .unwrap();
     assert_eq!(result.policy, None);
     assert!(result.diagnostics.warnings[0].contains("tool:a has no variant for linux/x64"));
@@ -143,12 +146,14 @@ impl HostEnvironment for FailingHost {
 fn host_detection_failure_is_an_error_and_only_attempted_when_needed() {
     let store = Arc::new(store_for(&[revision(vec![entry("tool:t", "")])]).unwrap());
     let catalog = PolicyCatalog::with_host(store, Arc::new(FailingHost));
-    let error = catalog.get_sandbox_config("t", &weak().project_root("/p")).unwrap_err();
+    let error = catalog
+        .resolve_sandbox_policy("t", &weak().project_root("/p"))
+        .unwrap_err();
     assert!(error.message().contains("unknown machine"));
     assert_eq!(error.reason(), ErrorReason::UnsupportedHost);
-    assert_eq!(catalog.get_sandbox_config("nothing", &weak()).unwrap(), None);
+    assert_eq!(catalog.resolve_sandbox_policy("nothing", &weak()).unwrap(), None);
     let policy = catalog
-        .get_sandbox_config("t", &weak().architecture(Architecture::X64).project_root("/p"))
+        .resolve_sandbox_policy("t", &weak().architecture(Architecture::X64).project_root("/p"))
         .unwrap();
     assert_eq!(fs_paths(&policy), j(r#"{"readwritePaths":["/p"]}"#));
 }
@@ -156,7 +161,7 @@ fn host_detection_failure_is_an_error_and_only_attempted_when_needed() {
 #[test]
 fn never_fabricates_project_root_or_caller_symbols() {
     let result = bundled_catalog(linux_x64())
-        .get_sandbox_config_with_diagnostics("git", &weak().architecture(Architecture::X64))
+        .resolve_sandbox_policy_with_diagnostics("git", &weak().architecture(Architecture::X64))
         .unwrap();
     assert_eq!(result.policy, None);
     let warnings = result.diagnostics.warnings.join("\n");
@@ -178,19 +183,19 @@ fn host_symbols_only_for_current_host_platform_and_caller_overrides() {
     let host = Arc::new(FixedHost::new(Platform::Linux, Architecture::X64).with_symbol("user_home", "/home/me"));
     let catalog = catalog_for(rev, host);
     assert_eq!(
-        fs_paths(&catalog.get_sandbox_config("t", &weak()).unwrap()),
+        fs_paths(&catalog.resolve_sandbox_policy("t", &weak()).unwrap()),
         j(r#"{"readonlyPaths":["/home/me/.cfg"]}"#)
     );
     assert_eq!(
         catalog
-            .get_sandbox_config("t", &weak().platform(Platform::Macos).architecture(Architecture::Arm64))
+            .resolve_sandbox_policy("t", &weak().platform(Platform::Macos).architecture(Architecture::Arm64))
             .unwrap(),
         None
     );
     assert_eq!(
         fs_paths(
             &catalog
-                .get_sandbox_config("t", &weak().symbol("user_home", "/srv/u"))
+                .resolve_sandbox_policy("t", &weak().symbol("user_home", "/srv/u"))
                 .unwrap()
         ),
         j(r#"{"readonlyPaths":["/srv/u/.cfg"]}"#)
@@ -208,15 +213,17 @@ fn string_object_and_one_element_array_are_equivalent() {
         .architecture(Architecture::X64)
         .project_root("/p")
         .symbol("git_prefix", "/g");
-    let a = catalog.get_sandbox_config_with_diagnostics("git", &ctx).unwrap();
+    let a = catalog.resolve_sandbox_policy_with_diagnostics("git", &ctx).unwrap();
     assert_eq!(
         catalog
-            .get_sandbox_config_with_diagnostics(ToolCandidate::new("git"), &ctx)
+            .resolve_sandbox_policy_with_diagnostics(ToolCandidate::new("git"), &ctx)
             .unwrap(),
         a
     );
     assert_eq!(
-        catalog.get_sandbox_config_with_diagnostics(vec!["git"], &ctx).unwrap(),
+        catalog
+            .resolve_sandbox_policy_with_diagnostics(vec!["git"], &ctx)
+            .unwrap(),
         a
     );
     assert_eq!(a.diagnostics.tools[0].input_index, 0);
@@ -224,9 +231,11 @@ fn string_object_and_one_element_array_are_equivalent() {
         .architecture(Architecture::X64)
         .project_root("/p")
         .symbol("git_prefix", "/g");
-    assert_eq!(catalog.get_sandbox_config("git", &strict).unwrap(), None);
+    assert_eq!(catalog.resolve_sandbox_policy("git", &strict).unwrap(), None);
     assert_eq!(
-        catalog.get_sandbox_config(ToolCandidate::new("git"), &strict).unwrap(),
+        catalog
+            .resolve_sandbox_policy(ToolCandidate::new("git"), &strict)
+            .unwrap(),
         None
     );
 }
@@ -270,7 +279,7 @@ fn invalid_context_and_inputs_are_failures_not_absence() {
     ];
     for (tools, ctx) in cases {
         assert_eq!(
-            reason_of(catalog.get_sandbox_config(tools.clone(), &ctx)),
+            reason_of(catalog.resolve_sandbox_policy(tools.clone(), &ctx)),
             ErrorReason::InvalidContext,
             "{tools:?} {ctx:?}"
         );
@@ -278,7 +287,7 @@ fn invalid_context_and_inputs_are_failures_not_absence() {
     // A relative or `${`-containing symbol value is rejected once it is needed.
     for value in ["bin", "/x/${node_prefix}"] {
         let ctx = weak().architecture(Architecture::X64).symbol("node_prefix", value);
-        let error = catalog.get_sandbox_config("node", &ctx).unwrap_err();
+        let error = catalog.resolve_sandbox_policy("node", &ctx).unwrap_err();
         assert_eq!(
             error.message(),
             "[malformed_request] symbol 'node_prefix' must resolve to an absolute linux path"
@@ -296,7 +305,9 @@ fn results_are_caller_owned_and_deterministic() {
         .symbol("npm_cache", "/c")
         .symbol("node_prefix", "/n");
     let tool = ToolCandidate::new("npm").with_package_url("pkg:npm/npm");
-    let mut first = catalog.get_sandbox_config_with_diagnostics(tool.clone(), &ctx).unwrap();
+    let mut first = catalog
+        .resolve_sandbox_policy_with_diagnostics(tool.clone(), &ctx)
+        .unwrap();
     first
         .policy
         .as_mut()
@@ -309,7 +320,7 @@ fn results_are_caller_owned_and_deterministic() {
         .unwrap()
         .push("/mutated".into());
     first.diagnostics.warnings.push("mutated".into());
-    let second = catalog.get_sandbox_config_with_diagnostics(tool, &ctx).unwrap();
+    let second = catalog.resolve_sandbox_policy_with_diagnostics(tool, &ctx).unwrap();
     assert_eq!(
         fs_paths(&second.policy),
         j(r#"{"readonlyPaths":["/n"],"readwritePaths":["/p","/c"]}"#)
@@ -334,7 +345,7 @@ fn dedupes_normalized_paths_with_platform_casing() {
         .symbol("git_prefix", "C:\\Tools")
         .symbol("node_prefix", "c:\\tools");
     assert_eq!(
-        fs_paths(&windows.get_sandbox_config("w", &ctx).unwrap()),
+        fs_paths(&windows.resolve_sandbox_policy("w", &ctx).unwrap()),
         j(r#"{"readonlyPaths":["C:\\Tools"]}"#)
     );
     let tmpl = |platform: &str, id: &str| {
@@ -348,13 +359,13 @@ fn dedupes_normalized_paths_with_platform_casing() {
     let linux = catalog_for(revision(vec![tmpl("linux", "tool:l")]), linux_x64());
     let ctx = weak().symbol("git_prefix", "/Tools").symbol("node_prefix", "/tools");
     assert_eq!(
-        fs_paths(&linux.get_sandbox_config("l", &ctx).unwrap()),
+        fs_paths(&linux.resolve_sandbox_policy("l", &ctx).unwrap()),
         j(r#"{"readonlyPaths":["/Tools","/tools"]}"#)
     );
     let mac = catalog_for(revision(vec![tmpl("macos", "tool:m")]), linux_x64());
     let ctx = ctx.platform(Platform::Macos).architecture(Architecture::Arm64);
     assert_eq!(
-        fs_paths(&mac.get_sandbox_config("m", &ctx).unwrap()),
+        fs_paths(&mac.resolve_sandbox_policy("m", &ctx).unwrap()),
         j(r#"{"readonlyPaths":["/Tools"]}"#)
     );
 }
@@ -377,13 +388,13 @@ fn overlap_detection_follows_platform_casing() {
         .project_root("/tools/work")
         .symbol("git_prefix", "/Tools");
     assert_eq!(
-        reason_of(make("macos").get_sandbox_config("m", &ctx.clone().platform(Platform::Macos))),
+        reason_of(make("macos").resolve_sandbox_policy("m", &ctx.clone().platform(Platform::Macos))),
         ErrorReason::CompositionConflict
     );
     assert_eq!(
         fs_paths(
             &make("linux")
-                .get_sandbox_config("m", &ctx.platform(Platform::Linux))
+                .resolve_sandbox_policy("m", &ctx.platform(Platform::Linux))
                 .unwrap()
         ),
         j(r#"{"readonlyPaths":["/Tools"],"readwritePaths":["/tools/work"]}"#)
@@ -406,7 +417,7 @@ fn invocation_name_casing_per_platform() {
     );
     let on = |platform: Platform, name: &str| -> Vec<String> {
         catalog
-            .get_sandbox_config_with_diagnostics(name, &weak().platform(platform).architecture(Architecture::X64))
+            .resolve_sandbox_policy_with_diagnostics(name, &weak().platform(platform).architecture(Architecture::X64))
             .unwrap()
             .diagnostics
             .tools[0]
@@ -449,7 +460,7 @@ fn dependency_chain_composes_each_entry_once_in_order() {
         linux_x64(),
     );
     let result = catalog
-        .get_sandbox_config_with_diagnostics("top", &weak().project_root("/r"))
+        .resolve_sandbox_policy_with_diagnostics("top", &weak().project_root("/r"))
         .unwrap();
     let deps: Vec<&str> = result
         .diagnostics
@@ -487,7 +498,7 @@ fn dependency_diagnostics_keep_distinct_ranges_sorted() {
         linux_x64(),
     );
     let result = catalog
-        .get_sandbox_config_with_diagnostics(vec!["a", "b", "a"], &weak())
+        .resolve_sandbox_policy_with_diagnostics(vec!["a", "b", "a"], &weak())
         .unwrap();
     assert_eq!(
         result
@@ -515,10 +526,10 @@ fn catalog_file_order_does_not_matter() {
     };
     let ctx = weak().project_root("/r");
     let forward = catalog_for(revision(vec![e("tool:b", "b"), e("tool:a", "a")]), linux_x64())
-        .get_sandbox_config_with_diagnostics("x", &ctx)
+        .resolve_sandbox_policy_with_diagnostics("x", &ctx)
         .unwrap();
     let backward = catalog_for(revision(vec![e("tool:a", "a"), e("tool:b", "b")]), linux_x64())
-        .get_sandbox_config_with_diagnostics("x", &ctx)
+        .resolve_sandbox_policy_with_diagnostics("x", &ctx)
         .unwrap();
     assert_eq!(forward, backward);
     assert_eq!(fs_paths(&forward.policy), j(r#"{"readonlyPaths":["/r/a","/r/b"]}"#));
@@ -533,13 +544,13 @@ fn mixed_versions_across_inputs_conflict() {
         ]),
         linux_x64(),
     );
-    let error = catalog.get_sandbox_config(vec!["a", "b"], &weak()).unwrap_err();
+    let error = catalog.resolve_sandbox_policy(vec!["a", "b"], &weak()).unwrap_err();
     assert_eq!(
         error.message(),
         "[policy_validation] selected entries cannot be composed: mixed sandboxPolicy.version values (0.8.0-alpha, 0.9.0-alpha)"
     );
     assert_eq!(
-        catalog.get_sandbox_config("a", &weak()).unwrap().unwrap().to_json(),
+        catalog.resolve_sandbox_policy("a", &weak()).unwrap().unwrap().to_json(),
         j(r#"{"version":"0.8.0-alpha"}"#)
     );
 }
@@ -572,15 +583,16 @@ fn inspection_over_the_bundled_catalog() {
 #[test]
 fn module_level_functions_use_the_bundled_catalog() {
     let ctx = weak().platform(Platform::Linux).architecture(Architecture::X64);
-    assert_eq!(get_sandbox_config("definitely-unknown-tool", &ctx).unwrap(), None);
-    let result = get_sandbox_config_with_diagnostics(vec![ToolInput::from("definitely-unknown-tool")], &ctx).unwrap();
+    assert_eq!(resolve_sandbox_policy("definitely-unknown-tool", &ctx).unwrap(), None);
+    let result =
+        resolve_sandbox_policy_with_diagnostics(vec![ToolInput::from("definitely-unknown-tool")], &ctx).unwrap();
     assert_eq!(result.policy, None);
     assert_eq!(
         result.diagnostics.to_json().get("tools").unwrap(),
         &j(r#"[{"inputIndex":0,"matches":[]}]"#)
     );
     assert_eq!(
-        reason_of(get_sandbox_config("git", &ctx.catalog_revision("1999-01-01.1"))),
+        reason_of(resolve_sandbox_policy("git", &ctx.catalog_revision("1999-01-01.1"))),
         ErrorReason::RevisionUnavailable
     );
 }
@@ -873,11 +885,11 @@ fn tampered_revision_is_an_integrity_error_everywhere() {
     assert_eq!(reason_of(store.revision(None)), ErrorReason::Integrity);
     let catalog = PolicyCatalog::with_host(store, linux_x64());
     assert_eq!(
-        reason_of(catalog.get_sandbox_config("a", &weak())),
+        reason_of(catalog.resolve_sandbox_policy("a", &weak())),
         ErrorReason::Integrity
     );
     assert_eq!(
-        reason_of(catalog.get_sandbox_config_with_diagnostics("a", &weak())),
+        reason_of(catalog.resolve_sandbox_policy_with_diagnostics("a", &weak())),
         ErrorReason::Integrity
     );
     assert_eq!(reason_of(catalog.list_catalog_entries()), ErrorReason::Integrity);
@@ -941,7 +953,7 @@ fn explicit_revisions_are_never_substituted() {
     let catalog = PolicyCatalog::with_host(Arc::new(store_for(&[r1, r2]).unwrap()), linux_x64());
     let ctx = weak().project_root("/p");
     let of = |ctx: &ResolveContext| {
-        let r = catalog.get_sandbox_config_with_diagnostics("a", ctx).unwrap();
+        let r = catalog.resolve_sandbox_policy_with_diagnostics("a", ctx).unwrap();
         (
             r.diagnostics.catalog_revision.clone(),
             r.diagnostics.tools[0].matches[0].entry_revision,
@@ -953,7 +965,7 @@ fn explicit_revisions_are_never_substituted() {
         ("2000-01-01.1".into(), 1.0)
     );
     let error = catalog
-        .get_sandbox_config("a", &ctx.catalog_revision("2000-01-03.1"))
+        .resolve_sandbox_policy("a", &ctx.catalog_revision("2000-01-03.1"))
         .unwrap_err();
     assert_eq!(
         error.message(),

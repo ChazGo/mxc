@@ -1,5 +1,5 @@
 {
-  "$comment": "Language-neutral conformance cases against the bundled catalog. Every language binding (TypeScript, Rust, C#) must produce the same `expect` for each case from getSandboxConfigWithDiagnostics(tools, context), and getSandboxConfig must return `expect.policy`. `policy: null` is the language's absence value (undefined / None / null). `expectError` is the failure's MXC error `code` and stable `details.reason`. `tools` is a single input or an array.",
+  "$comment": "Language-neutral conformance cases against the bundled catalog. Every language binding (TypeScript, Rust, C#) must produce the same `expect` for each case from resolveSandboxPolicyWithDiagnostics(tools, context), and resolveSandboxPolicy must return `expect.policy`. `policy: null` is the language's absence value (undefined / None / null). `expectError` is the failure's MXC error `code` and stable `details.reason`. `tools` is a single input or an array.",
   "catalog": "bundled",
   "cases": [
     {

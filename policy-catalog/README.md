@@ -46,8 +46,8 @@ Runtime lookup is kept separate from inspection
 
 ```ts
 import {
-  getSandboxConfig,
-  getSandboxConfigWithDiagnostics,
+  resolveSandboxPolicy,
+  resolveSandboxPolicyWithDiagnostics,
   getCatalogInfo,
   listCatalogEntries,
 } from '@mxc-prototype/policy-catalog';
@@ -58,10 +58,10 @@ const ctx = {
   symbols: { git_prefix: '/usr/bin', npm_prefix: '/usr/local/bin', npm_cache: '/home/me/.npm', node_prefix: '/usr/local/bin' },
 };
 
-getSandboxConfig('npm', ctx);                             // one tool -> SandboxPolicy | undefined
-getSandboxConfig(['git', 'npm'], ctx);                    // several tools -> one composed policy
-getSandboxConfigWithDiagnostics(['git', 'npm'], ctx);     // same policy plus attribution and warnings
-getSandboxConfig({ invocationName: 'npx', packageUrl: 'pkg:npm/npm@10.9.0' }, ctx);
+resolveSandboxPolicy('npm', ctx);                             // one tool -> SandboxPolicy | undefined
+resolveSandboxPolicy(['git', 'npm'], ctx);                    // several tools -> one composed policy
+resolveSandboxPolicyWithDiagnostics(['git', 'npm'], ctx);     // same policy plus attribution and warnings
+resolveSandboxPolicy({ invocationName: 'npx', packageUrl: 'pkg:npm/npm@10.9.0' }, ctx);
 
 getCatalogInfo();      // { catalogSchemaVersion: '1', catalogRevision: '2026-09-29.1' }
 listCatalogEntries();  // metadata only, never policy bodies
@@ -72,7 +72,7 @@ exactly three commands:
 
 | Command | Purpose |
 |---|---|
-| `policy-catalog resolve [options] <tool>...` | `getSandboxConfig`, or `getSandboxConfigWithDiagnostics` with `--diagnostics`. Options: `--platform`, `--architecture`, `--revision`, `--project-root`, `--symbol name=value`, `--allow-weak`, and `--purl` / `--detected-version` for the next tool. |
+| `policy-catalog resolve [options] <tool>...` | `resolveSandboxPolicy`, or `resolveSandboxPolicyWithDiagnostics` with `--diagnostics`. Options: `--platform`, `--architecture`, `--revision`, `--project-root`, `--symbol name=value`, `--allow-weak`, and `--purl` / `--detected-version` for the next tool. |
 | `policy-catalog inspect` | `getCatalogInfo()` and `listCatalogEntries()`: metadata only, never a policy body. |
 | `policy-catalog validate [--base-ref REF]` | Integrity, the catalog contract (including dependency cycles), and entry-revision history. With `--base-ref`, also checks that every revision published at `REF` is unchanged. |
 
@@ -94,9 +94,9 @@ npx policy-catalog validate --catalog ./catalog --base-ref origin/main
   audit, and sandbox creation
   ([design §2](docs/design.md#2-ownership-boundary),
   [design §5.3](docs/design.md#53-consumer-obligations)).
-- Absence is not an empty policy. `getSandboxConfig` returns `undefined` for
+- Absence is not an empty policy. `resolveSandboxPolicy` returns `undefined` for
   an empty input, when no input matched, or when a selected entry has an
-  unresolved required symbol. `getSandboxConfigWithDiagnostics` returns
+  unresolved required symbol. `resolveSandboxPolicyWithDiagnostics` returns
   `policy: undefined` with the diagnostics.
 - Library failures throw `PolicyCatalogError` with an MXC error `code`
   (`policy_validation`, `malformed_request`, `unsupported_containment`,

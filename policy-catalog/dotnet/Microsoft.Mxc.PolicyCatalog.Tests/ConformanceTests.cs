@@ -72,9 +72,9 @@ public sealed class ConformanceTests
         {
             var code = expectError.GetProperty("code").GetString();
             var reason = expectError.GetProperty("reason").GetString();
-            var withDiagnostics = TestData.Failure(() => catalog.GetSandboxConfigWithDiagnostics(tools, context));
+            var withDiagnostics = TestData.Failure(() => catalog.ResolveSandboxPolicyWithDiagnostics(tools, context));
             Assert.Equal((code, reason), (withDiagnostics.Code, withDiagnostics.Reason));
-            var policyOnly = TestData.Failure(() => catalog.GetSandboxConfig(tools, context));
+            var policyOnly = TestData.Failure(() => catalog.ResolveSandboxPolicy(tools, context));
             Assert.Equal((code, reason), (policyOnly.Code, policyOnly.Reason));
             return;
         }
@@ -88,19 +88,19 @@ public sealed class ConformanceTests
         }
 
         var expected = TestData.Canonical(expect.ToJsonString());
-        var result = catalog.GetSandboxConfigWithDiagnostics(tools, context);
+        var result = catalog.ResolveSandboxPolicyWithDiagnostics(tools, context);
         Assert.Equal(expected, TestData.Canonical(PolicyCatalogJson.Serialize(result)));
 
-        var policy = catalog.GetSandboxConfig(tools, context);
+        var policy = catalog.ResolveSandboxPolicy(tools, context);
         Assert.Equal(TestData.Canonical(expectedPolicy?.ToJsonString() ?? "null"), TestData.Canonical(PolicyCatalogJson.Serialize(policy)));
         Assert.Equal(result.Policy is null, policy is null);
 
         if (TestData.IsSingle(toolsElement))
         {
-            var single = catalog.GetSandboxConfigWithDiagnostics(tools[0], context);
+            var single = catalog.ResolveSandboxPolicyWithDiagnostics(tools[0], context);
             Assert.Equal(expected, TestData.Canonical(PolicyCatalogJson.Serialize(single)));
             Assert.Equal(
-                TestData.Canonical(PolicyCatalogJson.Serialize(catalog.GetSandboxConfig(tools[0], context))),
+                TestData.Canonical(PolicyCatalogJson.Serialize(catalog.ResolveSandboxPolicy(tools[0], context))),
                 TestData.Canonical(PolicyCatalogJson.Serialize(policy)));
         }
     }

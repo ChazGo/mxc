@@ -26,8 +26,8 @@ public sealed class ResolverTests
     public void OmittedContextUsesHostDefaultsAndNoWeakFallback()
     {
         var catalog = ArchCatalog();
-        Assert.Null(catalog.GetSandboxConfig("a"));
-        var result = catalog.GetSandboxConfigWithDiagnostics(new ToolInput("a") { PackageUrl = "pkg:npm/a" });
+        Assert.Null(catalog.ResolveSandboxPolicy("a"));
+        var result = catalog.ResolveSandboxPolicyWithDiagnostics(new ToolInput("a") { PackageUrl = "pkg:npm/a" });
         Assert.Equal(2.0, result.Policy?.TimeoutMs);
         Assert.Equal("2000-01-01.1", result.Diagnostics.CatalogRevision);
         Assert.Contains("native system architecture 'arm64'; the tool's architecture was not verified", Warnings(result), StringComparison.Ordinal);
@@ -36,7 +36,7 @@ public sealed class ResolverTests
     [Fact]
     public void ExplicitArchitectureWinsAndSuppressesTheWarning()
     {
-        var result = ArchCatalog().GetSandboxConfigWithDiagnostics(new ToolInput("a") { PackageUrl = "pkg:npm/a" }, new ResolveContext { Architecture = "x64" });
+        var result = ArchCatalog().ResolveSandboxPolicyWithDiagnostics(new ToolInput("a") { PackageUrl = "pkg:npm/a" }, new ResolveContext { Architecture = "x64" });
         Assert.Equal(1.0, result.Policy?.TimeoutMs);
         Assert.Empty(result.Diagnostics.Warnings);
     }
@@ -48,7 +48,7 @@ public sealed class ResolverTests
         {
             TestData.Entry("tool:a", """{ "platformVariants": [{ "when": { "platform": "linux", "architecture": "arm64" }, "sandboxPolicy": { "version": "0.9.0-alpha" } }] }"""),
         }));
-        var result = catalog.GetSandboxConfigWithDiagnostics("a", Weak with { Architecture = "x64" });
+        var result = catalog.ResolveSandboxPolicyWithDiagnostics("a", Weak with { Architecture = "x64" });
         Assert.Null(result.Policy);
         Assert.Equal("input 0 ('a') matched no eligible catalog entry: tool:a has no variant for linux/x64", result.Diagnostics.Warnings[0]);
     }
@@ -58,17 +58,17 @@ public sealed class ResolverTests
     {
         var host = new FixedHost("linux", () => throw new PolicyCatalogException(PolicyCatalogErrorReason.UnsupportedHost, "unknown machine"));
         var catalog = new PolicyCatalog(TestData.StoreFor(new[] { TestData.Revision(new[] { TestData.Entry("tool:t") }) }), host);
-        var error = TestData.Failure(() => catalog.GetSandboxConfig("t", Weak with { ProjectRoot = "/p" }));
+        var error = TestData.Failure(() => catalog.ResolveSandboxPolicy("t", Weak with { ProjectRoot = "/p" }));
         Assert.Equal(("unsupported_containment", "unsupported_host"), (error.Code, error.Reason));
-        Assert.Null(catalog.GetSandboxConfig("nothing", Weak));
-        var explicitArch = catalog.GetSandboxConfig("t", Weak with { Architecture = "x64", ProjectRoot = "/p" });
+        Assert.Null(catalog.ResolveSandboxPolicy("nothing", Weak));
+        var explicitArch = catalog.ResolveSandboxPolicy("t", Weak with { Architecture = "x64", ProjectRoot = "/p" });
         Assert.Equal(new[] { "/p" }, explicitArch?.Filesystem?.ReadwritePaths);
     }
 
     [Fact]
     public void NeverFabricatesSymbols()
     {
-        var result = TestData.Bundled().GetSandboxConfigWithDiagnostics("git", Weak with { Architecture = "x64" });
+        var result = TestData.Bundled().ResolveSandboxPolicyWithDiagnostics("git", Weak with { Architecture = "x64" });
         Assert.Null(result.Policy);
         Assert.Matches("(?s)required symbol 'git_prefix'.*required symbol 'project_root'", Warnings(result));
     }
@@ -85,9 +85,9 @@ public sealed class ResolverTests
                 """),
         });
         var catalog = TestData.CatalogFor(revision, new FixedHost("linux", "x64", new Dictionary<string, string> { ["user_home"] = "/home/me" }));
-        Assert.Equal(new[] { "/home/me/.cfg" }, catalog.GetSandboxConfig("t", Weak)?.Filesystem?.ReadonlyPaths);
-        Assert.Null(catalog.GetSandboxConfig("t", Weak with { Platform = "macos", Architecture = "arm64" }));
-        Assert.Equal(new[] { "/srv/u/.cfg" }, catalog.GetSandboxConfig("t", Weak with { Symbols = new Dictionary<string, string?> { ["user_home"] = "/srv/u" } })?.Filesystem?.ReadonlyPaths);
+        Assert.Equal(new[] { "/home/me/.cfg" }, catalog.ResolveSandboxPolicy("t", Weak)?.Filesystem?.ReadonlyPaths);
+        Assert.Null(catalog.ResolveSandboxPolicy("t", Weak with { Platform = "macos", Architecture = "arm64" }));
+        Assert.Equal(new[] { "/srv/u/.cfg" }, catalog.ResolveSandboxPolicy("t", Weak with { Symbols = new Dictionary<string, string?> { ["user_home"] = "/srv/u" } })?.Filesystem?.ReadonlyPaths);
     }
 
     [Fact]
@@ -95,10 +95,10 @@ public sealed class ResolverTests
     {
         var catalog = TestData.Bundled();
         var ctx = Weak with { Architecture = "x64", ProjectRoot = "/p", Symbols = new Dictionary<string, string?> { ["git_prefix"] = "/g" } };
-        var a = PolicyCatalogJson.Serialize(catalog.GetSandboxConfigWithDiagnostics("git", ctx));
-        Assert.Equal(a, PolicyCatalogJson.Serialize(catalog.GetSandboxConfigWithDiagnostics(new ToolInput("git"), ctx)));
-        Assert.Equal(a, PolicyCatalogJson.Serialize(catalog.GetSandboxConfigWithDiagnostics(new ToolInput[] { "git" }, ctx)));
-        Assert.Null(catalog.GetSandboxConfig("git", ctx with { AllowWeakIdentityFallback = false }));
+        var a = PolicyCatalogJson.Serialize(catalog.ResolveSandboxPolicyWithDiagnostics("git", ctx));
+        Assert.Equal(a, PolicyCatalogJson.Serialize(catalog.ResolveSandboxPolicyWithDiagnostics(new ToolInput("git"), ctx)));
+        Assert.Equal(a, PolicyCatalogJson.Serialize(catalog.ResolveSandboxPolicyWithDiagnostics(new ToolInput[] { "git" }, ctx)));
+        Assert.Null(catalog.ResolveSandboxPolicy("git", ctx with { AllowWeakIdentityFallback = false }));
     }
 
     public static TheoryData<string, ToolInput?, ResolveContext> InvalidInputs() => new()
@@ -122,7 +122,7 @@ public sealed class ResolverTests
     public void InvalidInputsAreLibraryFailures(string label, ToolInput? tool, ResolveContext ctx)
     {
         Assert.NotEmpty(label);
-        Assert.Equal("invalid_context", TestData.ErrorReason(() => TestData.Bundled().GetSandboxConfig(new[] { tool! }, ctx)));
+        Assert.Equal("invalid_context", TestData.ErrorReason(() => TestData.Bundled().ResolveSandboxPolicy(new[] { tool! }, ctx)));
     }
 
     [Fact]
@@ -130,9 +130,9 @@ public sealed class ResolverTests
     {
         var catalog = TestData.Bundled();
         var ctx = Weak with { Platform = "linux", Architecture = "x64" };
-        var error = TestData.Failure(() => catalog.GetSandboxConfig("node", ctx with { Symbols = new Dictionary<string, string?> { ["node_prefix"] = "bin" } }));
+        var error = TestData.Failure(() => catalog.ResolveSandboxPolicy("node", ctx with { Symbols = new Dictionary<string, string?> { ["node_prefix"] = "bin" } }));
         Assert.Equal("[malformed_request] symbol 'node_prefix' must resolve to an absolute linux path", error.Message);
-        Assert.Equal("invalid_context", TestData.ErrorReason(() => catalog.GetSandboxConfig("node", ctx with { Symbols = new Dictionary<string, string?> { ["node_prefix"] = "/x/${git_prefix}" } })));
+        Assert.Equal("invalid_context", TestData.ErrorReason(() => catalog.ResolveSandboxPolicy("node", ctx with { Symbols = new Dictionary<string, string?> { ["node_prefix"] = "/x/${git_prefix}" } })));
     }
 
     [Fact]
@@ -141,9 +141,9 @@ public sealed class ResolverTests
         var catalog = TestData.Bundled();
         var ctx = new ResolveContext { Architecture = "x64", ProjectRoot = "/p", Symbols = new Dictionary<string, string?> { ["npm_prefix"] = "/n", ["npm_cache"] = "/c", ["node_prefix"] = "/n" } };
         var tool = new ToolInput("npm") { PackageUrl = "pkg:npm/npm" };
-        var first = PolicyCatalogJson.Serialize(catalog.GetSandboxConfigWithDiagnostics(tool, ctx));
-        Assert.Equal(first, PolicyCatalogJson.Serialize(catalog.GetSandboxConfigWithDiagnostics(tool, ctx)));
-        var policy = catalog.GetSandboxConfig(tool, ctx)!;
+        var first = PolicyCatalogJson.Serialize(catalog.ResolveSandboxPolicyWithDiagnostics(tool, ctx));
+        Assert.Equal(first, PolicyCatalogJson.Serialize(catalog.ResolveSandboxPolicyWithDiagnostics(tool, ctx)));
+        var policy = catalog.ResolveSandboxPolicy(tool, ctx)!;
         Assert.Equal(new[] { "/n" }, policy.Filesystem!.ReadonlyPaths);
         Assert.Equal(new[] { "/p", "/c" }, policy.Filesystem!.ReadwritePaths);
     }
@@ -155,13 +155,13 @@ public sealed class ResolverTests
         {
             TestData.Entry("tool:w", """{ "platformVariants": [{ "when": { "platform": "windows" }, "sandboxPolicy": { "version": "0.9.0-alpha", "filesystem": { "readonlyPaths": ["${git_prefix}", "${node_prefix}\\"] } } }] }"""),
         }));
-        var policy = windows.GetSandboxConfig("w", Weak with { Platform = "windows", Architecture = "x64", Symbols = new Dictionary<string, string?> { ["git_prefix"] = "C:\\Tools", ["node_prefix"] = "c:\\tools" } });
+        var policy = windows.ResolveSandboxPolicy("w", Weak with { Platform = "windows", Architecture = "x64", Symbols = new Dictionary<string, string?> { ["git_prefix"] = "C:\\Tools", ["node_prefix"] = "c:\\tools" } });
         Assert.Equal(new[] { "C:\\Tools" }, policy?.Filesystem?.ReadonlyPaths);
         var linux = TestData.CatalogFor(TestData.Revision(new[]
         {
             TestData.Entry("tool:l", """{ "platformVariants": [{ "when": { "platform": "linux" }, "sandboxPolicy": { "version": "0.9.0-alpha", "filesystem": { "readonlyPaths": ["${git_prefix}", "${node_prefix}/"] } } }] }"""),
         }));
-        Assert.Equal(new[] { "/Tools", "/tools" }, linux.GetSandboxConfig("l", Weak with { Symbols = new Dictionary<string, string?> { ["git_prefix"] = "/Tools", ["node_prefix"] = "/tools" } })?.Filesystem?.ReadonlyPaths);
+        Assert.Equal(new[] { "/Tools", "/tools" }, linux.ResolveSandboxPolicy("l", Weak with { Symbols = new Dictionary<string, string?> { ["git_prefix"] = "/Tools", ["node_prefix"] = "/tools" } })?.Filesystem?.ReadonlyPaths);
     }
 
     [Fact]
@@ -170,10 +170,10 @@ public sealed class ResolverTests
         string Entry(string platform) => $$"""{ "platformVariants": [{ "when": { "platform": "{{platform}}" }, "sandboxPolicy": { "version": "0.9.0-alpha", "filesystem": { "readonlyPaths": ["${git_prefix}"], "readwritePaths": ["${project_root}"] } } }] }""";
         var mac = TestData.CatalogFor(TestData.Revision(new[] { TestData.Entry("tool:m", Entry("macos")) }));
         var ctx = Weak with { Platform = "macos", Architecture = "arm64", ProjectRoot = "/tools/work", Symbols = new Dictionary<string, string?> { ["git_prefix"] = "/Tools" } };
-        var error = TestData.Failure(() => mac.GetSandboxConfig("m", ctx));
+        var error = TestData.Failure(() => mac.ResolveSandboxPolicy("m", ctx));
         Assert.Equal("[policy_validation] resolved paths overlap across access classes: '/Tools' (readonlyPaths) overlaps '/tools/work' (readwritePaths)", error.Message);
         var linux = TestData.CatalogFor(TestData.Revision(new[] { TestData.Entry("tool:m", Entry("linux")) }));
-        Assert.NotNull(linux.GetSandboxConfig("m", ctx with { Platform = "linux", Architecture = "x64" }));
+        Assert.NotNull(linux.ResolveSandboxPolicy("m", ctx with { Platform = "linux", Architecture = "x64" }));
     }
 
     [Fact]
@@ -189,7 +189,7 @@ public sealed class ResolverTests
                 """),
         }));
         IEnumerable<string> On(string platform, string name) =>
-            catalog.GetSandboxConfigWithDiagnostics(name, Weak with { Platform = platform, Architecture = "x64" }).Diagnostics.Tools[0].Matches.Select(m => m.EntryId);
+            catalog.ResolveSandboxPolicyWithDiagnostics(name, Weak with { Platform = platform, Architecture = "x64" }).Diagnostics.Tools[0].Matches.Select(m => m.EntryId);
         Assert.Equal(new[] { "tool:gh" }, On("linux", "gh"));
         Assert.Empty(On("linux", "GH"));
         Assert.Equal(new[] { "tool:gh" }, On("macos", "GH"));
@@ -211,7 +211,7 @@ public sealed class ResolverTests
             TestData.Entry("tool:right", Variant(new[] { "tool:leaf" }, "right")),
             TestData.Entry("tool:leaf", Variant(Array.Empty<string>(), "leaf")),
         }));
-        var result = catalog.GetSandboxConfigWithDiagnostics("top", Weak with { ProjectRoot = "/r" });
+        var result = catalog.ResolveSandboxPolicyWithDiagnostics("top", Weak with { ProjectRoot = "/r" });
         Assert.Equal(new[] { "tool:leaf", "tool:left", "tool:right" }, result.Diagnostics.ResolvedDependencies.Select(d => d.EntryId));
         Assert.Equal(new[] { "/r/top", "/r/left", "/r/leaf", "/r/right" }, result.Policy?.Filesystem?.ReadonlyPaths);
     }
@@ -225,7 +225,7 @@ public sealed class ResolverTests
             TestData.Entry("tool:b", """{ "platformVariants": [{ "when": { "platform": "linux" }, "dependencies": [{ "entryId": "tool:c" }], "sandboxPolicy": { "version": "0.9.0-alpha" } }] }"""),
             TestData.Entry("tool:c", """{ "platformVariants": [{ "when": { "platform": "linux" }, "sandboxPolicy": { "version": "0.9.0-alpha" } }] }"""),
         }));
-        var result = catalog.GetSandboxConfigWithDiagnostics(new ToolInput[] { "a", "b", "a" }, Weak);
+        var result = catalog.ResolveSandboxPolicyWithDiagnostics(new ToolInput[] { "a", "b", "a" }, Weak);
         Assert.Equal(
             new[] { new ResolvedDependency("tool:c", 1, null), new ResolvedDependency("tool:c", 1, ">=2") },
             result.Diagnostics.ResolvedDependencies);
@@ -241,8 +241,8 @@ public sealed class ResolverTests
             TestData.Entry("tool:a", """{ "identity": [{ "kind": "invocation-name", "names": ["x"] }], "platformVariants": [{ "when": { "platform": "linux" }, "sandboxPolicy": { "version": "0.9.0-alpha", "filesystem": { "readonlyPaths": ["${project_root}/a"] } } }] }"""),
         };
         var ctx = Weak with { ProjectRoot = "/r" };
-        var forward = TestData.CatalogFor(TestData.Revision(entries.Select(e => e.DeepClone()))).GetSandboxConfigWithDiagnostics("x", ctx);
-        var backward = TestData.CatalogFor(TestData.Revision(Enumerable.Reverse(entries).Select(e => e.DeepClone()))).GetSandboxConfigWithDiagnostics("x", ctx);
+        var forward = TestData.CatalogFor(TestData.Revision(entries.Select(e => e.DeepClone()))).ResolveSandboxPolicyWithDiagnostics("x", ctx);
+        var backward = TestData.CatalogFor(TestData.Revision(Enumerable.Reverse(entries).Select(e => e.DeepClone()))).ResolveSandboxPolicyWithDiagnostics("x", ctx);
         Assert.Equal(PolicyCatalogJson.Serialize(forward), PolicyCatalogJson.Serialize(backward));
         Assert.Equal(new[] { "/r/a", "/r/b" }, forward.Policy?.Filesystem?.ReadonlyPaths);
         Assert.Contains("input 0 ('x') matched 2 entries (tool:a, tool:b); all contribute", forward.Diagnostics.Warnings);
@@ -256,9 +256,9 @@ public sealed class ResolverTests
             TestData.Entry("tool:a", """{ "platformVariants": [{ "when": { "platform": "linux" }, "sandboxPolicy": { "version": "0.8.0-alpha" } }] }"""),
             TestData.Entry("tool:b", """{ "platformVariants": [{ "when": { "platform": "linux" }, "sandboxPolicy": { "version": "0.9.0-alpha" } }] }"""),
         }));
-        var error = TestData.Failure(() => catalog.GetSandboxConfig(new ToolInput[] { "a", "b" }, Weak));
+        var error = TestData.Failure(() => catalog.ResolveSandboxPolicy(new ToolInput[] { "a", "b" }, Weak));
         Assert.Equal("[policy_validation] selected entries cannot be composed: mixed sandboxPolicy.version values (0.8.0-alpha, 0.9.0-alpha)", error.Message);
-        Assert.Equal("""{"version":"0.8.0-alpha"}""", PolicyCatalogJson.Serialize(catalog.GetSandboxConfig("a", Weak)));
+        Assert.Equal("""{"version":"0.8.0-alpha"}""", PolicyCatalogJson.Serialize(catalog.ResolveSandboxPolicy("a", Weak)));
     }
 
     [Fact]
@@ -269,10 +269,10 @@ public sealed class ResolverTests
             TestData.Entry("tool:app", """{ "identity": [{ "kind": "purl", "value": "pkg:npm/app", "versionRange": ">=2 <3" }] }"""),
         }));
         var ctx = new ResolveContext { ProjectRoot = "/p" };
-        Assert.DoesNotContain(catalog.GetSandboxConfigWithDiagnostics(new ToolInput("app") { PackageUrl = "pkg:npm/app@2.1.0" }, ctx).Diagnostics.Warnings, w => w.Contains("range", StringComparison.Ordinal));
+        Assert.DoesNotContain(catalog.ResolveSandboxPolicyWithDiagnostics(new ToolInput("app") { PackageUrl = "pkg:npm/app@2.1.0" }, ctx).Diagnostics.Warnings, w => w.Contains("range", StringComparison.Ordinal));
         Assert.Contains(
             "input 0 ('app'): detected version 'nightly' could not be compared with the reviewed range '>=2 <3' for tool:app",
-            catalog.GetSandboxConfigWithDiagnostics(new ToolInput("app") { PackageUrl = "pkg:npm/app@3.0.0", DetectedVersion = "nightly" }, ctx).Diagnostics.Warnings);
+            catalog.ResolveSandboxPolicyWithDiagnostics(new ToolInput("app") { PackageUrl = "pkg:npm/app@3.0.0", DetectedVersion = "nightly" }, ctx).Diagnostics.Warnings);
     }
 
     [Fact]
@@ -294,10 +294,10 @@ public sealed class ResolverTests
     public void BundledConvenienceFunctions()
     {
         var ctx = Weak with { Platform = "linux", Architecture = "x64" };
-        Assert.Null(BundledPolicyCatalog.GetSandboxConfig("definitely-unknown-tool", ctx));
-        var result = BundledPolicyCatalog.GetSandboxConfigWithDiagnostics(new ToolInput[] { "definitely-unknown-tool" }, ctx);
+        Assert.Null(BundledPolicyCatalog.ResolveSandboxPolicy("definitely-unknown-tool", ctx));
+        var result = BundledPolicyCatalog.ResolveSandboxPolicyWithDiagnostics(new ToolInput[] { "definitely-unknown-tool" }, ctx);
         Assert.Null(result.Policy);
         Assert.Equal("""{"diagnostics":{"catalogRevision":"2026-09-29.1","tools":[{"inputIndex":0,"matches":[]}],"resolvedDependencies":[],"warnings":["input 0 ('definitely-unknown-tool') matched no eligible catalog entry"]}}""", PolicyCatalogJson.Serialize(result));
-        Assert.Equal("revision_unavailable", TestData.ErrorReason(() => BundledPolicyCatalog.GetSandboxConfig("git", ctx with { CatalogRevision = "1999-01-01.1" })));
+        Assert.Equal("revision_unavailable", TestData.ErrorReason(() => BundledPolicyCatalog.ResolveSandboxPolicy("git", ctx with { CatalogRevision = "1999-01-01.1" })));
     }
 }

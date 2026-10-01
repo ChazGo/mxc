@@ -32,17 +32,17 @@ for (const name of fixtureFiles()) {
         const host = fixedHost(testCase.host?.platform ?? 'linux', testCase.host?.nativeArchitecture ?? 'x64');
         const catalog = fixture.catalog === 'bundled' ? bundledCatalog(host) : catalogFor(fixture.catalog, host);
         if (testCase.expectError !== undefined) {
-          assert.deepEqual(failure(() => catalog.getSandboxConfigWithDiagnostics(testCase.tools, testCase.context)), testCase.expectError);
-          assert.deepEqual(failure(() => catalog.getSandboxConfig(testCase.tools, testCase.context)), testCase.expectError);
+          assert.deepEqual(failure(() => catalog.resolveSandboxPolicyWithDiagnostics(testCase.tools, testCase.context)), testCase.expectError);
+          assert.deepEqual(failure(() => catalog.resolveSandboxPolicy(testCase.tools, testCase.context)), testCase.expectError);
           return;
         }
         const expected = toExpected(testCase.expect);
-        assert.deepEqual(catalog.getSandboxConfigWithDiagnostics(testCase.tools, testCase.context), expected);
+        assert.deepEqual(catalog.resolveSandboxPolicyWithDiagnostics(testCase.tools, testCase.context), expected);
         // The policy-only operation returns the same policy from the same logic.
-        assert.deepEqual(catalog.getSandboxConfig(testCase.tools, testCase.context), expected.policy);
+        assert.deepEqual(catalog.resolveSandboxPolicy(testCase.tools, testCase.context), expected.policy);
         // A single input is exactly a one-element array.
         if (!Array.isArray(testCase.tools)) {
-          assert.deepEqual(catalog.getSandboxConfigWithDiagnostics([testCase.tools], testCase.context), expected);
+          assert.deepEqual(catalog.resolveSandboxPolicyWithDiagnostics([testCase.tools], testCase.context), expected);
         }
       });
     }

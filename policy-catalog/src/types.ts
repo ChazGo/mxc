@@ -69,7 +69,7 @@ export interface ResolveContext {
 /** Strength of a matched identity predicate. */
 export type IdentityStrength = 'strong' | 'weak';
 
-/** Result of `getSandboxConfigWithDiagnostics` (design §5.1). */
+/** Result of `resolveSandboxPolicyWithDiagnostics` (design §5.1). */
 export interface SandboxConfigResolution {
   policy: CatalogSandboxPolicy | undefined;
   diagnostics: {

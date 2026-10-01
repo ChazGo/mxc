@@ -150,7 +150,7 @@ public sealed record ResolutionDiagnostics(
     IReadOnlyList<ResolvedDependency> ResolvedDependencies,
     IReadOnlyList<string> Warnings);
 
-/// <summary>Result of <see cref="PolicyCatalog.GetSandboxConfigWithDiagnostics(IReadOnlyList{ToolInput}, ResolveContext?)"/>.</summary>
+/// <summary>Result of <see cref="PolicyCatalog.ResolveSandboxPolicyWithDiagnostics(IReadOnlyList{ToolInput}, ResolveContext?)"/>.</summary>
 /// <param name="Policy">The composed candidate policy, or <c>null</c> when none can be resolved.</param>
 /// <param name="Diagnostics">Attribution and warnings.</param>
 public sealed record SandboxConfigResolution(CatalogSandboxPolicy? Policy, ResolutionDiagnostics Diagnostics);

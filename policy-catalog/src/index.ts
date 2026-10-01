@@ -5,8 +5,8 @@
 // separate entry points. None of them launches a sandbox, contacts a network
 // service, or writes consumer state.
 export {
-  getSandboxConfig,
-  getSandboxConfigWithDiagnostics,
+  resolveSandboxPolicy,
+  resolveSandboxPolicyWithDiagnostics,
   listCatalogEntries,
   getCatalogInfo,
   PolicyCatalog,
