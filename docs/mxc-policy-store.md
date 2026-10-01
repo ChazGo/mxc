@@ -3,11 +3,11 @@
 **Status:** Proposed public preview catalog. This is not an approved, shipped, or
 implemented catalog.
 
-**IMPORTANT NOTE:** This is a time-limited bridge, not a long-term supported
-Microsoft product. Applying a published floor does not guarantee that a tool's
-end-to-end workflow will work under process containment. The catalog and its
-dedicated repository are expected to be retired when Learning Mode provides
-the replacement workflow.
+**IMPORTANT NOTE:** This catalog and its repository are a temporary bridge to
+Learning Mode, not a long-term supported product. Floors may broaden file
+access to unblock tools, but guarantee neither success nor safety. Users and
+clients must review that access; their settings and enterprise policies take
+precedence.
 
 ---
 
@@ -479,6 +479,23 @@ when the code alone is too broad. Callers need not branch on it; an absent or
 unrecognized reason retains the same handling as the primary code. A reason
 must not duplicate a distinction already expressed by an existing MXC code.
 
+The following primary-code mappings apply across all language bindings.
+When `details.reason` is supplied for these failures, it uses the listed value;
+callers may ignore it.
+
+| Failure | MXC error code | Optional `details.reason` |
+|---|---|---|
+| Invalid tool input or resolution context | `malformed_request` | `invalid_context` |
+| Invalid catalog data, including invalid dependency references or cycles | `policy_validation` | `invalid_catalog` |
+| Unsupported composition, including mixed policy versions or fields without a composition rule | `policy_validation` | `composition_conflict` |
+| Unsupported or undetectable host platform or architecture | `unsupported_containment` | `unsupported_host` |
+| Catalog content cannot be read or fails its integrity check | `backend_error` | `integrity` |
+| Explicitly requested catalog revision is not installed | `backend_error` | `revision_unavailable` |
+
+Filesystem overlaps handled by [§4.5](#45-dependencies-and-composition) are not
+composition failures. Ordinary no-match results remain policy absence, not an
+error from this table.
+
 ```ts
 import type { SandboxPolicy } from "@microsoft/mxc-sdk";
 
@@ -890,6 +907,8 @@ property of the trusted package or artifact distribution channel.
   categories in all three languages without requiring identical message text
   or language-specific representations; each binding's error handling is
   consistent and uses the corresponding MXC error codes
+- failure cases use the primary-code mappings in [§5.1](#51-runtime-lookup);
+  any supplied reason uses its listed value, and callers can handle the code alone
 - one-tool and one-element-array overloads produce equivalent policies and
   diagnostics; the simple API returns the same policy as the diagnostic API
 - multiple input tools compose all matching entries and dependencies into one
