@@ -57,7 +57,6 @@ describe('WSLC SDK E2E — createConfigFromPolicy → customize → spawn', {
 
     try {
       const policy = {
-        version: '0.9.0-alpha',
         network: {
           egress: { default: 'allow' as const },
           ingress: { default: 'allow' as const, hostLoopback: 'allow' as const },
@@ -109,7 +108,6 @@ describe('WSLC SDK E2E — createConfigFromPolicy → customize → spawn', {
     const CONTAINER_PORT = 8080;
 
     const policy = {
-      version: '0.9.0-alpha',
       network: {
         egress: { default: 'allow' as const },
         ingress: { default: 'allow' as const, hostLoopback: 'allow' as const },
@@ -214,7 +212,6 @@ srv.handle_request()
     // SDK type narrows `protocol` to `'tcp'`, so a cast is required here to
     // exercise the parser path that rejects an out-of-type value at runtime.
     const policy = {
-      version: '0.9.0-alpha',
       network: {
         egress: { default: 'allow' as const },
         ingress: { default: 'allow' as const, hostLoopback: 'allow' as const },
