@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Proposed initial tool scope for the MXC Policy Store catalog.">
+  <meta name="description" content="Proposed initial tool scope for the known-tool policy catalog.">
   <title>MXC Policy Store - Initial Tool Scope</title>
   <script>
     document.documentElement.dataset.theme = localStorage.getItem("mxc-policy-store-theme") || "light";
@@ -34,9 +34,10 @@
         <div class="eyebrow"><span class="status-dot"></span> Proposed initial catalog</div>
         <h1>Initial Policy Store Tool Scope</h1>
         <p class="lede">
-          A deliberately tight Windows/OpenClaw seed: ten concrete tool identities
-          with actionable policy evidence and enough variety to validate the catalog
-          contract before expanding its coverage.
+          A deliberately tight seed proposal, chosen from a Windows/OpenClaw pilot:
+          ten concrete tool identities with actionable policy evidence and enough
+          variety to exercise the proposed catalog contract before expanding its
+          coverage. No entry has been published.
         </p>
         <div class="hero-actions">
           <a class="button primary" href="#initial-set">Review the initial set</a>
@@ -67,7 +68,7 @@
       </div>
       <ol class="criteria-grid">
         <li><span>1</span><p>Supports the Windows/OpenClaw pilot and has a concrete executable or plugin identity.</p></li>
-        <li><span>2</span><p>Has observed requirements that a sandbox policy floor can address.</p></li>
+        <li><span>2</span><p>Has observed requirements that an MXC <code>SandboxPolicy</code> floor can express.</p></li>
         <li><span>3</span><p>Has a Windows installation and execution path, not a macOS-only dependency.</p></li>
         <li><span>4</span><p>Is a priority scenario, an existing prototype entry, or a distinct contract test case.</p></li>
         <li><span>5</span><p>Has enough ownership and requirement evidence for an initial review.</p></li>
@@ -80,7 +81,7 @@
           <span class="kicker">Recommended initial set</span>
           <h2>Ten catalog entries</h2>
         </div>
-        <p>Capabilities describe requirements only. The consuming agent still decides whether to authorize them.</p>
+        <p>Capabilities summarize observed needs, not finished entries. Each entry embeds an existing <code>SandboxPolicy</code>; the consuming agent still decides whether to authorize it.</p>
       </div>
 
       <div class="scope-tabs" role="tablist" aria-label="Tool categories">
@@ -139,7 +140,7 @@
         <article class="tool-row">
           <div><h3>npm / npx</h3><p>npm ecosystem</p></div>
           <p>Validates dependency closure, configurable registry endpoints, project writes, cache paths, and Windows launchers.</p>
-          <ul class="capability-list"><li><b>Network:</b> configured npm registry</li><li><b>Files:</b> read npm installation; read/write project and npm cache</li><li><b>Process:</b> execute npm/npx and Node.js</li><li><b>Dependency:</b> include the Node.js floor</li></ul>
+          <ul class="capability-list"><li><b>Network:</b> configured npm registry</li><li><b>Files:</b> read npm installation; read/write project and npm cache</li><li><b>Process:</b> execute npm/npx and Node.js</li><li><b>Dependency:</b> include the Node.js entry; its filesystem floors compose with npm's</li></ul>
           <p class="evidence-text"><a href="https://github.com/microsoft/mxc/pull/779">Floor proposal</a> and <a href="https://github.com/ChazGo/mxc/pull/1">public prototype</a></p>
         </article>
       </div>
@@ -262,12 +263,13 @@
       <div class="section-heading">
         <div>
           <span class="kicker">Still unresolved</span>
-          <h2>Two publication questions</h2>
+          <h2>Two scope questions</h2>
         </div>
+        <p>The proposed spec treats floors as advisory, with no workflow or security guarantee, and composes only filesystem fields across entries in its first version.</p>
       </div>
       <div class="question-grid scope-questions">
-        <article><span>Catalog warranty</span><h3>Are floors advisory and potentially incomplete, or do they carry a stronger compatibility or security guarantee?</h3></article>
-        <article><span>Schema limits</span><h3>Which selected requirements can be represented safely before merge, diagnostics, networking, and version behavior are settled?</h3></article>
+        <article><span>Network floors</span><h3>How should entries that need network access, such as npm or GitHub CLI, be scoped while cross-entry network composition is rejected?</h3></article>
+        <article><span>Evidence bar</span><h3>Which seed entries have enough identity, platform, and regression evidence to pass catalog review first?</h3></article>
       </div>
     </section>
 
@@ -282,10 +284,11 @@
       <div class="source-list">
         <article class="source-summary"><span>Private evidence</span><strong>Internal tool inventory</strong><small>Tool requirements, validation status, blockers, and Windows compatibility evidence.</small></article>
         <article class="source-summary"><span>Private evidence</span><strong>Internal pilot prioritization</strong><small>Initial first-party scenarios and high-priority bundled tools.</small></article>
+        <a href="https://github.com/ChazGo/mxc/blob/ed8a75c01f9c69f0a55fe9d7cdc2af39a764b42f/docs/mxc-policy-store.md"><span>Feature spec</span><strong>microsoft/mxc#1309 - Known-tool policy floors</strong><small>Proposed catalog contract: entry shape, composition limits, and review requirements (revision ed8a75c).</small></a>
         <a href="https://github.com/microsoft/mxc/pull/779"><span>Public proposal</span><strong>microsoft/mxc#779 - Sandbox config floors</strong><small>Selection rule, identity/dependency model, symbolic paths, and contract questions.</small></a>
         <a href="https://github.com/ChazGo/mxc/pull/1"><span>Public prototype</span><strong>ChazGo/mxc#1 - Draft resolver catalog</strong><small>Concrete Git, Node.js, and npm entries used to validate the resolver seam.</small></a>
       </div>
-      <p class="as-of">Scope status as of September 25, 2026. This is a proposed initial catalog, not shipped MXC behavior.</p>
+      <p class="as-of">Scope status as of October 1, 2026, checked against spec revision ed8a75c. This is a proposed initial catalog, not shipped MXC or catalog behavior.</p>
     </section>
   </main>
 
