@@ -77,19 +77,19 @@
             </p>
           </div>
           <div class="api-examples">
-            <pre><code>declare function resolveSandboxPolicy(
+            <pre><code>export declare function resolveSandboxPolicy(
   tool: ToolInput,
   ctx?: ResolveContext
 ): SandboxPolicy | undefined;
-declare function resolveSandboxPolicy(
+export declare function resolveSandboxPolicy(
   tools: readonly ToolInput[],
   ctx?: ResolveContext
 ): SandboxPolicy | undefined;
-declare function resolveSandboxPolicyWithDiagnostics(
+export declare function resolveSandboxPolicyWithDiagnostics(
   tool: ToolInput,
   ctx?: ResolveContext
 ): SandboxConfigResolution;
-declare function resolveSandboxPolicyWithDiagnostics(
+export declare function resolveSandboxPolicyWithDiagnostics(
   tools: readonly ToolInput[],
   ctx?: ResolveContext
 ): SandboxConfigResolution;</code></pre>
