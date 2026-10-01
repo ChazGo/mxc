@@ -72,7 +72,9 @@ impl ErrorReason {
     /// The one code each reason maps to (`ERROR_CODE_FOR_REASON`).
     pub fn code(self) -> ErrorCode {
         match self {
-            ErrorReason::InvalidCatalog | ErrorReason::CompositionConflict => ErrorCode::PolicyValidation,
+            ErrorReason::InvalidCatalog | ErrorReason::CompositionConflict => {
+                ErrorCode::PolicyValidation
+            }
             ErrorReason::InvalidContext => ErrorCode::MalformedRequest,
             ErrorReason::UnsupportedHost => ErrorCode::UnsupportedContainment,
             ErrorReason::Integrity | ErrorReason::RevisionUnavailable => ErrorCode::BackendError,

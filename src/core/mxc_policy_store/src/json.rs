@@ -459,7 +459,9 @@ impl Parser<'_> {
                 }
                 Some(b'\\') => {
                     self.pos += 1;
-                    let escape = self.peek().ok_or_else(|| self.error("Bad escaped character"))?;
+                    let escape = self
+                        .peek()
+                        .ok_or_else(|| self.error("Bad escaped character"))?;
                     self.pos += 1;
                     match escape {
                         b'"' => out.push('"'),
@@ -478,8 +480,11 @@ impl Parser<'_> {
                                     self.pos += 2;
                                     let low = self.hex4()?;
                                     if (0xDC00..0xE000).contains(&low) {
-                                        let code = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
-                                        out.push(char::from_u32(code).expect("valid surrogate pair"));
+                                        let code =
+                                            0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
+                                        out.push(
+                                            char::from_u32(code).expect("valid surrogate pair"),
+                                        );
                                         continue;
                                     }
                                     self.pos = save;

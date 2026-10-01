@@ -7,15 +7,16 @@
 mod common;
 
 use common::*;
-use mxc_policy_catalog::tooling::{
-    canonical_json, canonical_sha256, is_absolute_path, normalize_path, parse_purl, path_key_segments, Json, ParsedPurl,
+use mxc_policy_store::tooling::{
+    canonical_json, canonical_sha256, is_absolute_path, normalize_path, parse_purl,
+    path_key_segments, Json, ParsedPurl,
 };
-use mxc_policy_catalog::Platform;
+use mxc_policy_store::Platform;
 
 #[test]
 fn canonical_json_vectors() {
     let vectors = read_json(
-        repo_dir()
+        crate_dir()
             .join("conformance")
             .join("vectors")
             .join("canonical-json.json"),
@@ -40,9 +41,17 @@ fn canonical_json_vectors() {
 
 #[test]
 fn path_vectors() {
-    let vectors = read_json(repo_dir().join("conformance").join("vectors").join("paths.json"));
+    let vectors = read_json(
+        crate_dir()
+            .join("conformance")
+            .join("vectors")
+            .join("paths.json"),
+    );
     for platform in Platform::ALL {
-        let cases = vectors.get(platform.as_str()).and_then(Json::as_array).unwrap();
+        let cases = vectors
+            .get(platform.as_str())
+            .and_then(Json::as_array)
+            .unwrap();
         assert!(cases.len() > 5);
         for v in cases {
             let input = v.get("input").and_then(Json::as_str).unwrap();
@@ -86,16 +95,12 @@ fn malformed_percent_encoding_is_an_invalid_purl() {
     );
 }
 
-/// The embedded catalog must equal the repository's `../catalog` (canonical
-/// content), so a stale crate-local copy can never ship unnoticed.
+/// The embedded catalog must equal `catalog/` on disk (canonical content),
+/// so `build.rs` can never silently skip or misorder a revision.
 #[test]
 fn embedded_catalog_matches_repository_catalog() {
-    let dir = repo_dir().join("catalog");
-    if !dir.join("manifest.json").is_file() {
-        eprintln!("skipped: ../catalog not present (packaged crate)");
-        return;
-    }
-    let embedded = mxc_policy_catalog::tooling::bundled_catalog_files();
+    let dir = crate_dir().join("catalog");
+    let embedded = mxc_policy_store::tooling::bundled_catalog_files();
     let mut on_disk = vec!["contract.v1.json".to_string(), "manifest.json".to_string()];
     let mut revisions: Vec<String> = std::fs::read_dir(dir.join("revisions"))
         .unwrap()

@@ -25,6 +25,7 @@ members = [
     "core/mxc_config_contract",
     "core/mxc_darwin",
     "core/mxc_engine",
+    "core/mxc_policy_store",
     "core/mxc_pty",
     "core/mxc_schema_support",
     "core/mxc-sdk",
@@ -81,6 +82,7 @@ lxc_common = { path = "backends/lxc/common" }
 mxc_build_common = { path = "core/mxc_build_common" }
 mxc_config_contract = { path = "core/mxc_config_contract" }
 mxc_engine = { path = "core/mxc_engine" }
+mxc_policy_store = { path = "core/mxc_policy_store" }
 mxc_pty = { path = "core/mxc_pty" }
 mxc_schema_support = { path = "core/mxc_schema_support" }
 mxc-sdk = { path = "core/mxc-sdk" }

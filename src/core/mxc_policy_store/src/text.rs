@@ -9,7 +9,13 @@ pub fn js_is_space(c: char) -> bool {
     matches!(
         c,
         '\u{9}' | '\u{a}' | '\u{b}' | '\u{c}' | '\u{d}' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
-            ..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
     )
 }
 
@@ -34,7 +40,10 @@ pub fn symbol_matches(value: &str) -> Vec<(usize, usize, &str)> {
     let mut matches = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'$' && bytes.get(i + 1) == Some(&b'{') && bytes.get(i + 2).is_some_and(u8::is_ascii_lowercase) {
+        if bytes[i] == b'$'
+            && bytes.get(i + 1) == Some(&b'{')
+            && bytes.get(i + 2).is_some_and(u8::is_ascii_lowercase)
+        {
             let mut j = i + 3;
             while bytes
                 .get(j)
@@ -85,7 +94,10 @@ mod tests {
 
     #[test]
     fn symbols() {
-        let found: Vec<&str> = symbol_matches("${a}/${b_1}${C}${x").iter().map(|m| m.2).collect();
+        let found: Vec<&str> = symbol_matches("${a}/${b_1}${C}${x")
+            .iter()
+            .map(|m| m.2)
+            .collect();
         assert_eq!(found, ["a", "b_1"]);
         assert_eq!(replace_symbols("${a}/x/${a}", |_| "$&".into()), "$&/x/$&");
         assert!(is_symbol_name("git_prefix"));

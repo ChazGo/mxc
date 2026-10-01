@@ -4,16 +4,18 @@
 //! Runtime lookup and inspection (TypeScript `src/resolver.ts`).
 
 use crate::catalog::{
-    composition_violation, dependency_closure, entry_index, find_cross_class_overlap, policy_symbols, select_variant,
-    CatalogEntry, ClosureNode, IdentityPredicate, SymbolSource, VariantSelection, COMPOSABLE_FILESYSTEM_FIELDS,
+    composition_violation, dependency_closure, entry_index, find_cross_class_overlap,
+    policy_symbols, select_variant, CatalogEntry, ClosureNode, IdentityPredicate, SymbolSource,
+    VariantSelection, COMPOSABLE_FILESYSTEM_FIELDS,
 };
 use crate::errors::{invalid_context, ErrorReason, PolicyCatalogError, Result};
 use crate::host::{HostEnvironment, SystemHost};
 use crate::json::cmp_utf16;
 use crate::model::{
-    Architecture, CatalogEntryMetadata, CatalogIdentityMetadata, CatalogInfo, DependencyRecord, Diagnostics,
-    EntryMatchRecord, FilesystemPolicy, MatchedIdentity, Platform, PlatformVariantMetadata, Provenance, ResolveContext,
-    SandboxConfigResolution, SandboxPolicy, ToolCandidate, ToolInputs, ToolRecord,
+    Architecture, CatalogEntryMetadata, CatalogIdentityMetadata, CatalogInfo, DependencyRecord,
+    Diagnostics, EntryMatchRecord, FilesystemPolicy, MatchedIdentity, Platform,
+    PlatformVariantMetadata, Provenance, ResolveContext, SandboxConfigResolution, SandboxPolicy,
+    ToolCandidate, ToolInputs, ToolRecord,
 };
 use crate::paths::{case_key, is_absolute_path, normalize_path, path_key_segments};
 use crate::purl::{parse_purl, ParsedPurl};
@@ -131,12 +133,17 @@ impl PolicyCatalog {
                     .identity
                     .iter()
                     .map(|predicate| match predicate {
-                        IdentityPredicate::Purl { value, version_range } => CatalogIdentityMetadata::Purl {
+                        IdentityPredicate::Purl {
+                            value,
+                            version_range,
+                        } => CatalogIdentityMetadata::Purl {
                             value: value.clone(),
                             version_range: version_range.clone(),
                         },
                         IdentityPredicate::InvocationName { names } => {
-                            CatalogIdentityMetadata::InvocationName { names: names.clone() }
+                            CatalogIdentityMetadata::InvocationName {
+                                names: names.clone(),
+                            }
                         }
                     })
                     .collect(),
@@ -252,12 +259,16 @@ impl PolicyCatalog {
             }
             for m in &matches {
                 let nodes =
-                    dependency_closure(m.entry, m.selection, &by_id, platform, architecture.get()?).map_err(|f| {
-                        PolicyCatalogError::new(
-                            ErrorReason::InvalidCatalog,
-                            format!("dependency resolution failed: {} ({})", f.reason, f.detail),
-                        )
-                    })?;
+                    dependency_closure(m.entry, m.selection, &by_id, platform, architecture.get()?)
+                        .map_err(|f| {
+                            PolicyCatalogError::new(
+                                ErrorReason::InvalidCatalog,
+                                format!(
+                                    "dependency resolution failed: {} ({})",
+                                    f.reason, f.detail
+                                ),
+                            )
+                        })?;
                 for node in nodes {
                     if selected_ids.insert(node.entry.entry_id.as_str()) {
                         selected.push(node);
@@ -309,7 +320,10 @@ impl PolicyCatalog {
             Some(symbols) => Some(compose_policy(&selected, &symbols, platform)?),
         };
         diagnostics.warnings = warnings;
-        Ok(SandboxConfigResolution { policy, diagnostics })
+        Ok(SandboxConfigResolution {
+            policy,
+            diagnostics,
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -346,15 +360,17 @@ impl PolicyCatalog {
                         Some(purl) => parse_purl(value).is_some_and(|p| p.key == purl.key),
                         None => false,
                     },
-                    IdentityPredicate::InvocationName { names } => {
-                        names.iter().any(|name| case_key(name, platform) == invocation)
-                    }
+                    IdentityPredicate::InvocationName { names } => names
+                        .iter()
+                        .any(|name| case_key(name, platform) == invocation),
                 })
                 .collect();
             if satisfied.is_empty() {
                 continue;
             }
-            let strong = satisfied.iter().any(|p| matches!(p, IdentityPredicate::Purl { .. }));
+            let strong = satisfied
+                .iter()
+                .any(|p| matches!(p, IdentityPredicate::Purl { .. }));
             if !strong && !allow_weak {
                 skipped.push(format!(
                     "{} matched only by invocation name and allowWeakIdentityFallback is not enabled",
@@ -426,20 +442,23 @@ impl PolicyCatalog {
         Ok(matches)
     }
 
-    fn validate_context(&self, ctx: &ResolveContext) -> Result<(Option<Platform>, Option<Architecture>)> {
+    fn validate_context(
+        &self,
+        ctx: &ResolveContext,
+    ) -> Result<(Option<Platform>, Option<Architecture>)> {
         let platform = match &ctx.platform {
             None => None,
-            Some(value) => Some(
-                Platform::parse(value)
-                    .ok_or_else(|| invalid_context(format!("ResolveContext.platform '{value}' is unsupported")))?,
-            ),
+            Some(value) => Some(Platform::parse(value).ok_or_else(|| {
+                invalid_context(format!("ResolveContext.platform '{value}' is unsupported"))
+            })?),
         };
         let architecture = match &ctx.architecture {
             None => None,
-            Some(value) => Some(
-                Architecture::parse(value)
-                    .ok_or_else(|| invalid_context(format!("ResolveContext.architecture '{value}' is unsupported")))?,
-            ),
+            Some(value) => Some(Architecture::parse(value).ok_or_else(|| {
+                invalid_context(format!(
+                    "ResolveContext.architecture '{value}' is unsupported"
+                ))
+            })?),
         };
         if ctx.project_root.as_deref() == Some("") {
             return Err(invalid_context(
@@ -485,7 +504,11 @@ impl PolicyCatalog {
                 let value = if definition.source == SymbolSource::Context {
                     ctx.project_root.clone()
                 } else {
-                    let mut value = ctx.symbols.as_ref().and_then(|s| s.get(&name)).map(str::to_string);
+                    let mut value = ctx
+                        .symbols
+                        .as_ref()
+                        .and_then(|s| s.get(&name))
+                        .map(str::to_string);
                     if value.is_none()
                         && definition.source == SymbolSource::Host
                         && self.host.platform().ok() == Some(platform)
@@ -512,11 +535,12 @@ impl PolicyCatalog {
         if !missing.is_empty() {
             missing.sort_by(|a, b| cmp_utf16(&a.0, &b.0));
             for (name, entry_ids) in missing {
-                let hint = if contract.symbol(&name).map(|d| d.source) == Some(SymbolSource::Context) {
-                    "ResolveContext.projectRoot".to_string()
-                } else {
-                    format!("ResolveContext.symbols.{name}")
-                };
+                let hint =
+                    if contract.symbol(&name).map(|d| d.source) == Some(SymbolSource::Context) {
+                        "ResolveContext.projectRoot".to_string()
+                    } else {
+                        format!("ResolveContext.symbols.{name}")
+                    };
                 warnings.push(format!(
                     "required symbol '{name}' (needed by {}) is unresolved; supply {hint}; no policy was returned",
                     entry_ids.join(", ")
@@ -530,7 +554,10 @@ impl PolicyCatalog {
 
 /// Distinct dependency edges among the selected entries, ordered by
 /// entryId, entryRevision, then requiredVersionRange (absent first).
-fn dependency_records(nodes: &[ClosureNode<'_>], by_id: &HashMap<&str, &CatalogEntry>) -> Vec<DependencyRecord> {
+fn dependency_records(
+    nodes: &[ClosureNode<'_>],
+    by_id: &HashMap<&str, &CatalogEntry>,
+) -> Vec<DependencyRecord> {
     let mut records: Vec<DependencyRecord> = Vec::new();
     for node in nodes {
         for dependency in node.variant.dependencies.iter().flatten() {
@@ -552,12 +579,14 @@ fn dependency_records(nodes: &[ClosureNode<'_>], by_id: &HashMap<&str, &CatalogE
                     .partial_cmp(&b.entry_revision)
                     .unwrap_or(std::cmp::Ordering::Equal),
             )
-            .then_with(|| match (&a.required_version_range, &b.required_version_range) {
-                (None, None) => std::cmp::Ordering::Equal,
-                (None, Some(_)) => std::cmp::Ordering::Less,
-                (Some(_), None) => std::cmp::Ordering::Greater,
-                (Some(x), Some(y)) => cmp_utf16(x, y),
-            })
+            .then_with(
+                || match (&a.required_version_range, &b.required_version_range) {
+                    (None, None) => std::cmp::Ordering::Equal,
+                    (None, Some(_)) => std::cmp::Ordering::Less,
+                    (Some(_), None) => std::cmp::Ordering::Greater,
+                    (Some(x), Some(y)) => cmp_utf16(x, y),
+                },
+            )
     });
     records
 }
@@ -621,7 +650,10 @@ fn bundled() -> Result<&'static PolicyCatalog> {
 }
 
 /// Composed candidate policy for one or several tools, from the bundled catalog.
-pub fn resolve_sandbox_policy(tools: impl Into<ToolInputs>, ctx: &ResolveContext) -> Result<Option<SandboxPolicy>> {
+pub fn resolve_sandbox_policy(
+    tools: impl Into<ToolInputs>,
+    ctx: &ResolveContext,
+) -> Result<Option<SandboxPolicy>> {
     bundled()?.resolve_sandbox_policy(tools, ctx)
 }
 

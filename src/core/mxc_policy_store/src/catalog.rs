@@ -18,7 +18,8 @@ use std::collections::{HashMap, HashSet};
 pub const CATALOG_SCHEMA_VERSION: &str = "1";
 
 /// Fields the v1 contract can compose across entries (design §4.5), in order.
-pub const COMPOSABLE_FILESYSTEM_FIELDS: [&str; 3] = ["deniedPaths", "readonlyPaths", "readwritePaths"];
+pub const COMPOSABLE_FILESYSTEM_FIELDS: [&str; 3] =
+    ["deniedPaths", "readonlyPaths", "readwritePaths"];
 
 const BACKEND_KEYS: [&str; 8] = [
     "containment",
@@ -111,7 +112,10 @@ impl CatalogPolicy {
     }
 
     pub fn version(&self) -> &str {
-        self.raw.get("version").and_then(Json::as_str).unwrap_or_default()
+        self.raw
+            .get("version")
+            .and_then(Json::as_str)
+            .unwrap_or_default()
     }
 
     pub fn has_filesystem(&self) -> bool {
@@ -188,7 +192,11 @@ fn non_empty_string(value: Option<&Json>, at: &str) -> Result<String> {
 fn string_array(value: Option<&Json>, at: &str, min_items: usize) -> Result<Vec<String>> {
     let items = match value.and_then(Json::as_array) {
         Some(items) if items.len() >= min_items => items,
-        _ => return fail(format!("'{at}' must be an array with at least {min_items} item(s)")),
+        _ => {
+            return fail(format!(
+                "'{at}' must be an array with at least {min_items} item(s)"
+            ))
+        }
     };
     items
         .iter()
@@ -208,8 +216,16 @@ fn parse_revision_id(value: &str) -> Option<(&str, &str)> {
         return None;
     }
     let digit = |i: usize| b[i].is_ascii_digit();
-    let date_ok = (0..4).all(digit) && b[4] == b'-' && (5..7).all(digit) && b[7] == b'-' && (8..10).all(digit);
-    if !date_ok || b[10] != b'.' || !(b'1'..=b'9').contains(&b[11]) || !b[12..].iter().all(u8::is_ascii_digit) {
+    let date_ok = (0..4).all(digit)
+        && b[4] == b'-'
+        && (5..7).all(digit)
+        && b[7] == b'-'
+        && (8..10).all(digit);
+    if !date_ok
+        || b[10] != b'.'
+        || !(b'1'..=b'9').contains(&b[11])
+        || !b[12..].iter().all(u8::is_ascii_digit)
+    {
         return None;
     }
     Some((&value[..10], &value[11..]))
@@ -222,7 +238,10 @@ pub fn compare_catalog_revisions(left: &str, right: &str) -> Result<Ordering> {
             if ld != rd {
                 return Ok(ld.cmp(rd));
             }
-            let (l, r): (f64, f64) = (ln.parse().unwrap_or(f64::NAN), rn.parse().unwrap_or(f64::NAN));
+            let (l, r): (f64, f64) = (
+                ln.parse().unwrap_or(f64::NAN),
+                rn.parse().unwrap_or(f64::NAN),
+            );
             Ok(l.partial_cmp(&r).unwrap_or(Ordering::Equal))
         }
         _ => fail(format!(
@@ -245,7 +264,12 @@ pub fn validate_contract(raw: &Json) -> Result<CatalogContract> {
     };
     only_fields(
         raw,
-        &["$comment", "catalogSchemaVersion", "sandboxPolicyVersions", "symbols"],
+        &[
+            "$comment",
+            "catalogSchemaVersion",
+            "sandboxPolicyVersions",
+            "symbols",
+        ],
         "contract",
     )?;
     if raw.get("catalogSchemaVersion").and_then(Json::as_str) != Some(CATALOG_SCHEMA_VERSION) {
@@ -253,7 +277,11 @@ pub fn validate_contract(raw: &Json) -> Result<CatalogContract> {
             "contract.catalogSchemaVersion must be '{CATALOG_SCHEMA_VERSION}'"
         ));
     }
-    let sandbox_policy_versions = string_array(raw.get("sandboxPolicyVersions"), "contract.sandboxPolicyVersions", 1)?;
+    let sandbox_policy_versions = string_array(
+        raw.get("sandboxPolicyVersions"),
+        "contract.sandboxPolicyVersions",
+        1,
+    )?;
     let Some(raw_symbols) = record(raw.get("symbols")) else {
         return fail("contract.symbols must be an object");
     };
@@ -278,7 +306,13 @@ pub fn validate_contract(raw: &Json) -> Result<CatalogContract> {
             definition.get("description"),
             &format!("contract.symbols.{name}.description"),
         )?;
-        symbols.push((name.to_string(), SymbolDefinition { source, description }));
+        symbols.push((
+            name.to_string(),
+            SymbolDefinition {
+                source,
+                description,
+            },
+        ));
     }
     Ok(CatalogContract {
         catalog_schema_version: CATALOG_SCHEMA_VERSION.to_string(),
@@ -304,9 +338,9 @@ fn validate_template_path(value: &str, at: &str, contract: &CatalogContract) -> 
             return fail(format!("'{at}' references unknown symbol '{name}'"));
         }
     }
-    let anchored = matches
-        .first()
-        .is_some_and(|(start, end, _)| *start == 0 && (value.len() == *end || value[*end..].starts_with(['/', '\\'])));
+    let anchored = matches.first().is_some_and(|(start, end, _)| {
+        *start == 0 && (value.len() == *end || value[*end..].starts_with(['/', '\\']))
+    });
     if !anchored {
         return fail(format!(
             "'{at}' must start with a declared symbol; literal paths are not allowed"
@@ -344,13 +378,22 @@ fn is_same_or_nested(left: &[String], right: &[String]) -> bool {
 
 /// Finds the first equal or ancestor/descendant pair of paths in different
 /// access classes. `classes` is in [`COMPOSABLE_FILESYSTEM_FIELDS`] order.
-pub fn find_cross_class_overlap(classes: &[(&str, Vec<String>)], platform: Platform) -> Option<String> {
-    let fields: Vec<&(&str, Vec<String>)> = classes.iter().filter(|(_, values)| !values.is_empty()).collect();
+pub fn find_cross_class_overlap(
+    classes: &[(&str, Vec<String>)],
+    platform: Platform,
+) -> Option<String> {
+    let fields: Vec<&(&str, Vec<String>)> = classes
+        .iter()
+        .filter(|(_, values)| !values.is_empty())
+        .collect();
     for i in 0..fields.len() {
         for j in i + 1..fields.len() {
             for left in &fields[i].1 {
                 for right in &fields[j].1 {
-                    if is_same_or_nested(&path_key_segments(left, platform), &path_key_segments(right, platform)) {
+                    if is_same_or_nested(
+                        &path_key_segments(left, platform),
+                        &path_key_segments(right, platform),
+                    ) {
                         return Some(format!(
                             "'{left}' ({}) overlaps '{right}' ({})",
                             fields[i].0, fields[j].0
@@ -424,7 +467,9 @@ fn validate_network_rules(value: &Json, at: &str, deny_list: bool) -> Result<()>
                             .as_f64()
                             .is_some_and(|n| is_integer(n) && (1.0..=65535.0).contains(&n));
                         if !ok {
-                            return fail(format!("'{port_at}.{key}' must be an integer in 1..65535"));
+                            return fail(format!(
+                                "'{port_at}.{key}' must be an integer in 1..65535"
+                            ));
                         }
                     }
                 }
@@ -434,7 +479,9 @@ fn validate_network_rules(value: &Json, at: &str, deny_list: bool) -> Result<()>
                         Some(start) => end < start,
                     };
                     if bad {
-                        return fail(format!("'{port_at}.endPort' requires a lower or equal 'port'"));
+                        return fail(format!(
+                            "'{port_at}.endPort' requires a lower or equal 'port'"
+                        ));
                     }
                 }
             }
@@ -443,7 +490,11 @@ fn validate_network_rules(value: &Json, at: &str, deny_list: bool) -> Result<()>
     Ok(())
 }
 
-fn validate_sandbox_policy(raw: Option<&Json>, at: &str, contract: &CatalogContract) -> Result<CatalogPolicy> {
+fn validate_sandbox_policy(
+    raw: Option<&Json>,
+    at: &str,
+    contract: &CatalogContract,
+) -> Result<CatalogPolicy> {
     let Some(raw) = record(raw) else {
         return fail(format!("'{at}' must be an object"));
     };
@@ -454,7 +505,11 @@ fn validate_sandbox_policy(raw: Option<&Json>, at: &str, contract: &CatalogContr
             ));
         }
     }
-    only_fields(raw, &["version", "filesystem", "network", "ui", "timeoutMs"], at)?;
+    only_fields(
+        raw,
+        &["version", "filesystem", "network", "ui", "timeoutMs"],
+        at,
+    )?;
     let version = non_empty_string(raw.get("version"), &format!("{at}.version"))?;
     if !contract.sandbox_policy_versions.contains(&version) {
         return fail(format!(
@@ -465,7 +520,11 @@ fn validate_sandbox_policy(raw: Option<&Json>, at: &str, contract: &CatalogContr
         let Some(filesystem) = filesystem.as_object() else {
             return fail(format!("'{at}.filesystem' must be an object"));
         };
-        only_fields(filesystem, &COMPOSABLE_FILESYSTEM_FIELDS, &format!("{at}.filesystem"))?;
+        only_fields(
+            filesystem,
+            &COMPOSABLE_FILESYSTEM_FIELDS,
+            &format!("{at}.filesystem"),
+        )?;
         for field in COMPOSABLE_FILESYSTEM_FIELDS {
             if let Some(values) = filesystem.get(field) {
                 let field_at = format!("{at}.filesystem.{field}");
@@ -484,7 +543,11 @@ fn validate_sandbox_policy(raw: Option<&Json>, at: &str, contract: &CatalogContr
             let Some(egress) = egress.as_object() else {
                 return fail(format!("'{at}.network.egress' must be an object"));
             };
-            only_fields(egress, &["default", "allow", "deny"], &format!("{at}.network.egress"))?;
+            only_fields(
+                egress,
+                &["default", "allow", "deny"],
+                &format!("{at}.network.egress"),
+            )?;
             if let Some(default) = egress.get("default") {
                 if default.as_str() != Some("deny") {
                     return fail(format!(
@@ -503,7 +566,11 @@ fn validate_sandbox_policy(raw: Option<&Json>, at: &str, contract: &CatalogContr
             let Some(ingress) = ingress.as_object() else {
                 return fail(format!("'{at}.network.ingress' must be an object"));
             };
-            only_fields(ingress, &["default", "hostLoopback"], &format!("{at}.network.ingress"))?;
+            only_fields(
+                ingress,
+                &["default", "hostLoopback"],
+                &format!("{at}.network.ingress"),
+            )?;
             if let Some(default) = ingress.get("default") {
                 if default.as_str() != Some("deny") {
                     return fail(format!(
@@ -513,7 +580,9 @@ fn validate_sandbox_policy(raw: Option<&Json>, at: &str, contract: &CatalogContr
             }
             if let Some(loopback) = ingress.get("hostLoopback") {
                 if !matches!(loopback.as_str(), Some("allow" | "deny")) {
-                    return fail(format!("'{at}.network.ingress.hostLoopback' is unsupported"));
+                    return fail(format!(
+                        "'{at}.network.ingress.hostLoopback' is unsupported"
+                    ));
                 }
             }
         }
@@ -556,7 +625,10 @@ fn validate_sandbox_policy(raw: Option<&Json>, at: &str, contract: &CatalogContr
 fn identity_keys(predicate: &IdentityPredicate) -> Vec<String> {
     match predicate {
         IdentityPredicate::Purl { value, .. } => {
-            vec![format!("purl:{}", parse_purl(value).map(|p| p.key).unwrap_or_default())]
+            vec![format!(
+                "purl:{}",
+                parse_purl(value).map(|p| p.key).unwrap_or_default()
+            )]
         }
         IdentityPredicate::InvocationName { names } => names
             .iter()
@@ -584,17 +656,24 @@ fn validate_identity(raw: Option<&Json>, at: &str) -> Result<Vec<IdentityPredica
                     return fail(format!("'{item_at}.value' is not a valid package URL"));
                 };
                 if parsed.version.is_some() {
-                    return fail(format!("'{item_at}.value' must not pin a version; use 'versionRange'"));
+                    return fail(format!(
+                        "'{item_at}.value' must not pin a version; use 'versionRange'"
+                    ));
                 }
                 let mut version_range = None;
                 if let Some(range) = item.get("versionRange") {
                     let range = non_empty_string(Some(range), &format!("{item_at}.versionRange"))?;
                     if !is_valid_version_range(&range) {
-                        return fail(format!("'{item_at}.versionRange' is not a valid version range"));
+                        return fail(format!(
+                            "'{item_at}.versionRange' is not a valid version range"
+                        ));
                     }
                     version_range = Some(range);
                 }
-                predicates.push(IdentityPredicate::Purl { value, version_range });
+                predicates.push(IdentityPredicate::Purl {
+                    value,
+                    version_range,
+                });
             }
             Some("invocation-name") => {
                 only_fields(item, &["kind", "names"], &item_at)?;
@@ -620,7 +699,11 @@ fn validate_identity(raw: Option<&Json>, at: &str) -> Result<Vec<IdentityPredica
     Ok(predicates)
 }
 
-fn validate_variants(raw: Option<&Json>, at: &str, contract: &CatalogContract) -> Result<Vec<PlatformVariant>> {
+fn validate_variants(
+    raw: Option<&Json>,
+    at: &str,
+    contract: &CatalogContract,
+) -> Result<Vec<PlatformVariant>> {
     let items = match raw.and_then(Json::as_array) {
         Some(items) if !items.is_empty() => items,
         _ => return fail(format!("'{at}' must be a non-empty array")),
@@ -636,8 +719,16 @@ fn validate_variants(raw: Option<&Json>, at: &str, contract: &CatalogContract) -
         let Some(when) = record(item.get("when")) else {
             return fail(format!("'{item_at}.when' must be an object"));
         };
-        only_fields(when, &["platform", "architecture"], &format!("{item_at}.when"))?;
-        let Some(platform) = when.get("platform").and_then(Json::as_str).and_then(Platform::parse) else {
+        only_fields(
+            when,
+            &["platform", "architecture"],
+            &format!("{item_at}.when"),
+        )?;
+        let Some(platform) = when
+            .get("platform")
+            .and_then(Json::as_str)
+            .and_then(Platform::parse)
+        else {
             return fail(format!(
                 "'{item_at}.when.platform' must be one of windows, linux, macos"
             ));
@@ -646,10 +737,17 @@ fn validate_variants(raw: Option<&Json>, at: &str, contract: &CatalogContract) -
             None => None,
             Some(value) => match value.as_str().and_then(Architecture::parse) {
                 Some(arch) => Some(arch),
-                None => return fail(format!("'{item_at}.when.architecture' must be one of x64, arm64")),
+                None => {
+                    return fail(format!(
+                        "'{item_at}.when.architecture' must be one of x64, arm64"
+                    ))
+                }
             },
         };
-        let selector = format!("{platform}/{}", architecture.map_or("*", Architecture::as_str));
+        let selector = format!(
+            "{platform}/{}",
+            architecture.map_or("*", Architecture::as_str)
+        );
         if !selectors.insert(selector.clone()) {
             return fail(if architecture.is_none() {
                 format!("'{item_at}' is a second architecture-neutral variant for '{platform}'")
@@ -670,7 +768,8 @@ fn validate_variants(raw: Option<&Json>, at: &str, contract: &CatalogContract) -
                     return fail(format!("'{dep_at}' must be an object"));
                 };
                 only_fields(dependency, &["entryId", "versionRange"], &dep_at)?;
-                let entry_id = non_empty_string(dependency.get("entryId"), &format!("{dep_at}.entryId"))?;
+                let entry_id =
+                    non_empty_string(dependency.get("entryId"), &format!("{dep_at}.entryId"))?;
                 if !seen.insert(entry_id.clone()) {
                     return fail(format!("'{dep_at}.entryId' '{entry_id}' is listed twice"));
                 }
@@ -678,7 +777,9 @@ fn validate_variants(raw: Option<&Json>, at: &str, contract: &CatalogContract) -
                 if let Some(range) = dependency.get("versionRange") {
                     let range = non_empty_string(Some(range), &format!("{dep_at}.versionRange"))?;
                     if !is_valid_version_range(&range) {
-                        return fail(format!("'{dep_at}.versionRange' is not a valid version range"));
+                        return fail(format!(
+                            "'{dep_at}.versionRange' is not a valid version range"
+                        ));
                     }
                     version_range = Some(range);
                 }
@@ -689,8 +790,11 @@ fn validate_variants(raw: Option<&Json>, at: &str, contract: &CatalogContract) -
             }
             dependencies = Some(list);
         }
-        let sandbox_policy =
-            validate_sandbox_policy(item.get("sandboxPolicy"), &format!("{item_at}.sandboxPolicy"), contract)?;
+        let sandbox_policy = validate_sandbox_policy(
+            item.get("sandboxPolicy"),
+            &format!("{item_at}.sandboxPolicy"),
+            contract,
+        )?;
         variants.push(PlatformVariant {
             platform,
             architecture,
@@ -710,7 +814,9 @@ fn is_entry_id(value: &str) -> bool {
     let mut nm = name.chars();
     ns.next().is_some_and(|c| c.is_ascii_lowercase())
         && ns.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-        && nm.next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        && nm
+            .next()
+            .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
         && nm.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'))
 }
 
@@ -743,7 +849,11 @@ fn validate_entry(raw: &Json, at: &str, contract: &CatalogContract) -> Result<Ca
     let Some(provenance) = record(object.get("provenance")) else {
         return fail(format!("'{at}.provenance' must be an object"));
     };
-    only_fields(provenance, &["method", "sourceRevision"], &format!("{at}.provenance"))?;
+    only_fields(
+        provenance,
+        &["method", "sourceRevision"],
+        &format!("{at}.provenance"),
+    )?;
     let display_name = non_empty_string(object.get("displayName"), &format!("{at}.displayName"))?;
     let identity = validate_identity(object.get("identity"), &format!("{at}.identity"))?;
     let platform_variants = validate_variants(
@@ -751,7 +861,8 @@ fn validate_entry(raw: &Json, at: &str, contract: &CatalogContract) -> Result<Ca
         &format!("{at}.platformVariants"),
         contract,
     )?;
-    let provenance_method = non_empty_string(provenance.get("method"), &format!("{at}.provenance.method"))?;
+    let provenance_method =
+        non_empty_string(provenance.get("method"), &format!("{at}.provenance.method"))?;
     let provenance_source_revision = non_empty_string(
         provenance.get("sourceRevision"),
         &format!("{at}.provenance.sourceRevision"),
@@ -786,13 +897,24 @@ pub fn select_variant(
     platform: Platform,
     architecture: Architecture,
 ) -> Option<VariantSelection<'_>> {
-    let for_platform = || entry.platform_variants.iter().filter(move |v| v.platform == platform);
+    let for_platform = || {
+        entry
+            .platform_variants
+            .iter()
+            .filter(move |v| v.platform == platform)
+    };
     if let Some(variant) = for_platform().find(|v| v.architecture == Some(architecture)) {
-        return Some(VariantSelection { variant, exact: true });
+        return Some(VariantSelection {
+            variant,
+            exact: true,
+        });
     }
     for_platform()
         .find(|v| v.architecture.is_none())
-        .map(|variant| VariantSelection { variant, exact: false })
+        .map(|variant| VariantSelection {
+            variant,
+            exact: false,
+        })
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -903,7 +1025,10 @@ pub fn composition_violation(nodes: &[ClosureNode<'_>]) -> Option<String> {
     }
     if versions.len() > 1 {
         versions.sort_by(|a, b| cmp_utf16(a, b));
-        return Some(format!("mixed sandboxPolicy.version values ({})", versions.join(", ")));
+        return Some(format!(
+            "mixed sandboxPolicy.version values ({})",
+            versions.join(", ")
+        ));
     }
     if nodes.len() < 2 {
         return None;
@@ -926,7 +1051,10 @@ pub fn composition_violation(nodes: &[ClosureNode<'_>]) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 /// Validates one catalog revision against the v1 contract (design §7).
-pub fn validate_catalog_revision(raw: &Json, contract: &CatalogContract) -> Result<CatalogRevision> {
+pub fn validate_catalog_revision(
+    raw: &Json,
+    contract: &CatalogContract,
+) -> Result<CatalogRevision> {
     let Some(object) = raw.as_object() else {
         return fail("catalog root must be an object");
     };
@@ -935,13 +1063,16 @@ pub fn validate_catalog_revision(raw: &Json, contract: &CatalogContract) -> Resu
         &["catalogSchemaVersion", "catalogRevision", "entries"],
         "catalog",
     )?;
-    if object.get("catalogSchemaVersion").and_then(Json::as_str) != Some(contract.catalog_schema_version.as_str()) {
+    if object.get("catalogSchemaVersion").and_then(Json::as_str)
+        != Some(contract.catalog_schema_version.as_str())
+    {
         return fail(format!(
             "catalog.catalogSchemaVersion must be '{}'",
             contract.catalog_schema_version
         ));
     }
-    let catalog_revision = non_empty_string(object.get("catalogRevision"), "catalog.catalogRevision")?;
+    let catalog_revision =
+        non_empty_string(object.get("catalogRevision"), "catalog.catalogRevision")?;
     if !is_catalog_revision_id(&catalog_revision) {
         return fail(format!(
             "catalog.catalogRevision '{catalog_revision}' must match YYYY-MM-DD.N"
@@ -982,15 +1113,16 @@ pub fn validate_catalog_revision(raw: &Json, contract: &CatalogContract) -> Resu
                 let Some(selected) = select_variant(entry, platform, architecture) else {
                     continue;
                 };
-                let nodes = match dependency_closure(entry, selected, &by_id, platform, architecture) {
-                    Ok(nodes) => nodes,
-                    Err(failure) => {
-                        return fail(format!(
-                            "'{}' on {platform}/{architecture}: {} ({})",
-                            entry.entry_id, failure.reason, failure.detail
-                        ))
-                    }
-                };
+                let nodes =
+                    match dependency_closure(entry, selected, &by_id, platform, architecture) {
+                        Ok(nodes) => nodes,
+                        Err(failure) => {
+                            return fail(format!(
+                                "'{}' on {platform}/{architecture}: {} ({})",
+                                entry.entry_id, failure.reason, failure.detail
+                            ))
+                        }
+                    };
                 if let Some(violation) = composition_violation(&nodes) {
                     return fail(format!(
                         "'{}' on {platform}/{architecture}: {violation}",
@@ -1009,7 +1141,10 @@ pub fn validate_catalog_revision(raw: &Json, contract: &CatalogContract) -> Resu
                     })
                     .collect();
                 if let Some(overlap) = find_cross_class_overlap(&classes, platform) {
-                    return fail(format!("'{}' on {platform}/{architecture}: {overlap}", entry.entry_id));
+                    return fail(format!(
+                        "'{}' on {platform}/{architecture}: {overlap}",
+                        entry.entry_id
+                    ));
                 }
             }
         }

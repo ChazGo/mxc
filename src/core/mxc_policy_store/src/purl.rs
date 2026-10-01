@@ -62,7 +62,11 @@ pub fn parse_purl(value: &str) -> Option<ParsedPurl> {
         return None;
     }
     Some(ParsedPurl {
-        key: format!("{}/{}", segments[0].to_ascii_lowercase(), segments[1..].join("/")),
+        key: format!(
+            "{}/{}",
+            segments[0].to_ascii_lowercase(),
+            segments[1..].join("/")
+        ),
         version: version.filter(|v| !v.is_empty()),
     })
 }
@@ -80,14 +84,20 @@ mod tests {
 
     #[test]
     fn parses_like_typescript() {
-        assert_eq!(parse_purl("pkg:npm/npm@10.9.0"), purl("npm/npm", Some("10.9.0")));
+        assert_eq!(
+            parse_purl("pkg:npm/npm@10.9.0"),
+            purl("npm/npm", Some("10.9.0"))
+        );
         assert_eq!(
             parse_purl("pkg:NPM/%40scope/pkg@1.0.0?x=y#sub"),
             purl("npm/%40scope/pkg", Some("1.0.0"))
         );
         assert_eq!(parse_purl("pkg:npm/npm"), purl("npm/npm", None));
         assert_eq!(parse_purl("pkg:npm/npm@"), purl("npm/npm", None));
-        assert_eq!(parse_purl("pkg:npm/a@%E2%82%AC"), purl("npm/a", Some("\u{20ac}")));
+        assert_eq!(
+            parse_purl("pkg:npm/a@%E2%82%AC"),
+            purl("npm/a", Some("\u{20ac}"))
+        );
         assert_eq!(parse_purl("npm/npm"), None);
         assert_eq!(parse_purl("pkg:npm"), None);
         assert_eq!(parse_purl("pkg:npm//x"), None);

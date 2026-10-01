@@ -27,7 +27,8 @@ fn is_posix_sep(code: u16) -> bool {
 }
 
 fn is_device_root(code: u16) -> bool {
-    (u16::from(b'A')..=u16::from(b'Z')).contains(&code) || (u16::from(b'a')..=u16::from(b'z')).contains(&code)
+    (u16::from(b'A')..=u16::from(b'Z')).contains(&code)
+        || (u16::from(b'a')..=u16::from(b'z')).contains(&code)
 }
 
 fn u(value: &str) -> Vec<u16> {
@@ -39,7 +40,11 @@ fn s(value: &[u16]) -> String {
 }
 
 fn index_of(haystack: &[u16], needle: u16, from: usize) -> Option<usize> {
-    haystack.iter().skip(from).position(|c| *c == needle).map(|i| i + from)
+    haystack
+        .iter()
+        .skip(from)
+        .position(|c| *c == needle)
+        .map(|i| i + from)
 }
 
 /// JavaScript `String.prototype.slice(start, end)` with negative-index rules.
@@ -96,7 +101,12 @@ fn is_windows_reserved_name(path: &[u16], colon_index: isize) -> bool {
 }
 
 /// Node `normalizeString`: resolves `.` and `..` segments.
-fn normalize_string(path: &[u16], allow_above_root: bool, separator: u16, is_separator: fn(u16) -> bool) -> Vec<u16> {
+fn normalize_string(
+    path: &[u16],
+    allow_above_root: bool,
+    separator: u16,
+    is_separator: fn(u16) -> bool,
+) -> Vec<u16> {
     let mut res: Vec<u16> = Vec::new();
     let mut last_segment_length: isize = 0;
     let mut last_slash: isize = -1;
@@ -126,7 +136,10 @@ fn normalize_string(path: &[u16], allow_above_root: bool, separator: u16, is_sep
                             last_segment_length = 0;
                         } else {
                             res.truncate(last_slash_index as usize);
-                            let last_sep = res.iter().rposition(|c| *c == separator).map_or(-1, |p| p as isize);
+                            let last_sep = res
+                                .iter()
+                                .rposition(|c| *c == separator)
+                                .map_or(-1, |p| p as isize);
                             last_segment_length = res.len() as isize - 1 - last_sep;
                         }
                         last_slash = ii;
@@ -221,13 +234,27 @@ fn win32_normalize_units(path: &[u16]) -> Vec<u16> {
                             let colon_index = index_of(path, COLON, 0).map_or(-1, |i| i as isize);
                             let possible = js_slice(path, 4, colon_index + 1).to_vec();
                             if is_windows_reserved_name(&possible, possible.len() as isize - 1) {
-                                device = Some(cat(&[&[BACKSLASH, BACKSLASH, QUESTION, BACKSLASH], &possible]));
+                                device = Some(cat(&[
+                                    &[BACKSLASH, BACKSLASH, QUESTION, BACKSLASH],
+                                    &possible,
+                                ]));
                                 root_end = 4 + possible.len();
                             }
                         } else if j == len {
-                            return cat(&[&[BACKSLASH, BACKSLASH], first_part, &bs, &path[last..], &bs]);
+                            return cat(&[
+                                &[BACKSLASH, BACKSLASH],
+                                first_part,
+                                &bs,
+                                &path[last..],
+                                &bs,
+                            ]);
                         } else {
-                            device = Some(cat(&[&[BACKSLASH, BACKSLASH], first_part, &bs, &path[last..j]]));
+                            device = Some(cat(&[
+                                &[BACKSLASH, BACKSLASH],
+                                first_part,
+                                &bs,
+                                &path[last..j],
+                            ]));
                             root_end = j;
                         }
                     }
@@ -470,7 +497,10 @@ pub fn path_key_segments(value: &str, platform: Platform) -> Vec<String> {
     } else {
         &segments[..]
     };
-    segments.iter().map(|segment| case_key(segment, platform)).collect()
+    segments
+        .iter()
+        .map(|segment| case_key(segment, platform))
+        .collect()
 }
 
 #[cfg(test)]

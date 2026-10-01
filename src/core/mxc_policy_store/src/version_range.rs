@@ -37,7 +37,10 @@ struct Comparator {
 
 /// Consumes `\d+` (ASCII) from `s`, returning the digits and the rest.
 fn digits(s: &str) -> Option<(&str, &str)> {
-    let end = s.bytes().position(|b| !b.is_ascii_digit()).unwrap_or(s.len());
+    let end = s
+        .bytes()
+        .position(|b| !b.is_ascii_digit())
+        .unwrap_or(s.len());
     if end == 0 {
         None
     } else {
@@ -127,7 +130,8 @@ fn parse_version_evidence(value: &str) -> Option<Triple> {
         }
     }
     if rest.is_empty()
-        || ((rest.starts_with('-') || rest.starts_with('+')) && !rest[1..].chars().any(js_is_line_terminator))
+        || ((rest.starts_with('-') || rest.starts_with('+'))
+            && !rest[1..].chars().any(js_is_line_terminator))
     {
         Some(version)
     } else {
@@ -176,7 +180,9 @@ mod tests {
         for range in [">=10 <12", "22", ">=1.2.3", "=1.0.0", "<2 || >=4"] {
             assert!(is_valid_version_range(range), "{range}");
         }
-        for range in ["", "^1.2.3", "~1", "1.x", ">= 1", "1 ||", "latest", "1.2.3.4", "１"] {
+        for range in [
+            "", "^1.2.3", "~1", "1.x", ">= 1", "1 ||", "latest", "1.2.3.4", "１",
+        ] {
             assert!(!is_valid_version_range(range), "{range}");
         }
     }

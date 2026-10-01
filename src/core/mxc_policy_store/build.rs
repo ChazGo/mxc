@@ -1,48 +1,41 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Embeds the catalog into the crate.
+//! Embeds the V1 policy catalog into the crate.
 //!
-//! Source of truth: `../catalog` (the repository's `policy-catalog/catalog`).
-//! It is used when present and this is not a packaged crate. A packaged
-//! crate (identified by the `Cargo.toml.orig` cargo writes into every
-//! `.crate`) always uses its crate-local `catalog/`, which
-//! `scripts/sync-catalog.mjs` copies from `../catalog` before
-//! `cargo package`; that directory is git-ignored and listed in
-//! `Cargo.toml` `include` so it ships in the `.crate`.
+//! `catalog/` beside this file is the single source of truth. Every MXC SDK
+//! reaches it through this crate: Rust directly, and Node and C# through the
+//! `mxc_ffi` native library they already ship.
 
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 fn main() {
-    let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let repo_catalog = manifest_dir.join("..").join("catalog");
-    let local_catalog = manifest_dir.join("catalog");
-    let packaged = manifest_dir.join("Cargo.toml.orig").exists();
+    let manifest_dir =
+        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let source = manifest_dir.join("catalog");
 
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed={}", local_catalog.display());
-    println!("cargo:rerun-if-changed={}", repo_catalog.display());
+    println!("cargo:rerun-if-changed={}", source.display());
 
-    let source = if !packaged && repo_catalog.join("manifest.json").is_file() {
-        repo_catalog
-    } else if local_catalog.join("manifest.json").is_file() {
-        local_catalog
-    } else {
-        panic!(
-            "no catalog to embed: expected {} (repository) or {} (run `node scripts/sync-catalog.mjs` before `cargo package`)",
-            repo_catalog.display(),
-            local_catalog.display()
-        );
-    };
+    assert!(
+        source.join("manifest.json").is_file(),
+        "no catalog to embed: expected {}",
+        source.display()
+    );
     let source = fs::canonicalize(&source).expect("canonicalize catalog directory");
     let display = strip_verbatim(&source);
 
     let revisions_dir = source.join("revisions");
     let mut revisions: Vec<String> = fs::read_dir(&revisions_dir)
         .expect("read catalog/revisions")
-        .map(|e| e.expect("dir entry").file_name().to_string_lossy().into_owned())
+        .map(|e| {
+            e.expect("dir entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
         .filter(|name| name.ends_with(".json"))
         .collect();
     revisions.sort();

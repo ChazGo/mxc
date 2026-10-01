@@ -6,7 +6,9 @@
 //! runtime lookup path never runs git.
 
 use crate::errors::{invalid_catalog, PolicyCatalogError};
-use crate::history::{check_published_immutability, check_store_history, PublishedRevision, PublishedState};
+use crate::history::{
+    check_published_immutability, check_store_history, PublishedRevision, PublishedState,
+};
 use crate::json::{Json, JsonObject};
 use crate::model::Platform;
 use crate::paths::{is_absolute_path, normalize_path};
@@ -51,7 +53,12 @@ impl CatalogValidationReport {
         }
         o.insert(
             "errors",
-            Json::Array(self.errors.iter().map(|s| Json::String(s.clone())).collect()),
+            Json::Array(
+                self.errors
+                    .iter()
+                    .map(|s| Json::String(s.clone()))
+                    .collect(),
+            ),
         );
         Json::Object(o)
     }
@@ -163,17 +170,24 @@ pub fn read_published_state_at_ref(
 ) -> Result<Option<PublishedState>, PolicyCatalogError> {
     if base_ref.is_empty()
         || base_ref.starts_with('-')
-        || base_ref.chars().any(|c| c == '\0' || crate::text::js_is_space(c))
+        || base_ref
+            .chars()
+            .any(|c| c == '\0' || crate::text::js_is_space(c))
     {
         return Err(validation_error(format!(
             "base-ref check: '{base_ref}' is not a valid git ref"
         )));
     }
-    let dir = realpath(catalog_dir).map_err(|e| validation_error(format!("{e}, realpath '{catalog_dir}'")))?;
+    let dir = realpath(catalog_dir)
+        .map_err(|e| validation_error(format!("{e}, realpath '{catalog_dir}'")))?;
     let top = git(&["rev-parse", "--show-toplevel"], &dir)
         .ok()
         .and_then(|out| realpath(out.trim()).ok())
-        .ok_or_else(|| validation_error(format!("base-ref check: '{catalog_dir}' is not inside a git work tree")))?;
+        .ok_or_else(|| {
+            validation_error(format!(
+                "base-ref check: '{catalog_dir}' is not inside a git work tree"
+            ))
+        })?;
     let commit = format!("{base_ref}^{{commit}}");
     if !git_succeeds(&["rev-parse", "--verify", "--quiet", &commit], &top) {
         return Err(validation_error(format!(
@@ -217,7 +231,11 @@ pub fn read_published_state_at_ref(
 
 /// Compares a catalog directory's manifest and files with the revisions
 /// published at `base_ref`. Never fails; problems are returned as errors.
-pub fn check_against_base_ref(catalog_dir: &str, manifest: &CatalogManifest, base_ref: &str) -> (usize, Vec<String>) {
+pub fn check_against_base_ref(
+    catalog_dir: &str,
+    manifest: &CatalogManifest,
+    base_ref: &str,
+) -> (usize, Vec<String>) {
     let dir = resolve_path(catalog_dir);
     let base = match read_published_state_at_ref(&dir, base_ref) {
         Ok(None) => return (0, Vec::new()),
@@ -278,7 +296,10 @@ fn run_checks(
 /// Validates a catalog directory: manifest and contract, per-revision
 /// integrity, the full contract, entry-revision history, and, with
 /// `base_ref`, immutability of every revision published at that ref.
-pub fn validate_catalog_directory(catalog_dir: &str, base_ref: Option<&str>) -> CatalogValidationReport {
+pub fn validate_catalog_directory(
+    catalog_dir: &str,
+    base_ref: Option<&str>,
+) -> CatalogValidationReport {
     let dir = resolve_path(catalog_dir);
     let store = DirectorySource::open(PathBuf::from(&dir)).and_then(CatalogStore::new);
     run_checks(store, dir.clone(), &dir, base_ref)

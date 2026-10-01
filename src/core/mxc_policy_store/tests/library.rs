@@ -7,14 +7,16 @@
 mod common;
 
 use common::*;
-use mxc_policy_catalog::tooling::{
-    canonical_json, canonical_sha256, check_entry_revisions, check_published_immutability, check_store_history,
-    validate_catalog_revision, validate_contract, Json, PublishedRevision, PublishedState,
+use mxc_policy_store::tooling::{
+    canonical_json, canonical_sha256, check_entry_revisions, check_published_immutability,
+    check_store_history, validate_catalog_revision, validate_contract, Json, PublishedRevision,
+    PublishedState,
 };
-use mxc_policy_catalog::{
-    get_catalog_info, list_catalog_entries, resolve_sandbox_policy, resolve_sandbox_policy_with_diagnostics,
-    Architecture, ErrorReason, FixedHost, HostEnvironment, Platform, PolicyCatalog, PolicyCatalogError, ResolveContext,
-    ToolCandidate, ToolInput, ToolInputs,
+use mxc_policy_store::{
+    get_catalog_info, list_catalog_entries, resolve_sandbox_policy,
+    resolve_sandbox_policy_with_diagnostics, Architecture, ErrorReason, FixedHost, HostEnvironment,
+    Platform, PolicyCatalog, PolicyCatalogError, ResolveContext, ToolCandidate, ToolInput,
+    ToolInputs,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -53,8 +55,14 @@ fn variants(list: &[String]) -> String {
     format!(r#"{{"platformVariants":[{}]}}"#, list.join(","))
 }
 
-fn fs_paths(policy: &Option<mxc_policy_catalog::SandboxPolicy>) -> Json {
-    policy.as_ref().unwrap().filesystem.as_ref().unwrap().to_json()
+fn fs_paths(policy: &Option<mxc_policy_store::SandboxPolicy>) -> Json {
+    policy
+        .as_ref()
+        .unwrap()
+        .filesystem
+        .as_ref()
+        .unwrap()
+        .to_json()
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +88,9 @@ fn arch_catalog(host: Arc<FixedHost>) -> PolicyCatalog {
 fn omitted_context_uses_host_platform_native_arch_default_revision_no_weak() {
     let catalog = arch_catalog(fixed_host(Platform::Windows, Architecture::Arm64));
     assert_eq!(
-        catalog.resolve_sandbox_policy("a", &ResolveContext::new()).unwrap(),
+        catalog
+            .resolve_sandbox_policy("a", &ResolveContext::new())
+            .unwrap(),
         None
     );
     let result = catalog
@@ -135,7 +145,10 @@ impl HostEnvironment for FailingHost {
         Ok(Platform::Linux)
     }
     fn native_architecture(&self) -> Result<Architecture, PolicyCatalogError> {
-        Err(PolicyCatalogError::new(ErrorReason::UnsupportedHost, "unknown machine"))
+        Err(PolicyCatalogError::new(
+            ErrorReason::UnsupportedHost,
+            "unknown machine",
+        ))
     }
     fn symbol(&self, _: &str) -> Option<String> {
         None
@@ -151,9 +164,15 @@ fn host_detection_failure_is_an_error_and_only_attempted_when_needed() {
         .unwrap_err();
     assert!(error.message().contains("unknown machine"));
     assert_eq!(error.reason(), ErrorReason::UnsupportedHost);
-    assert_eq!(catalog.resolve_sandbox_policy("nothing", &weak()).unwrap(), None);
+    assert_eq!(
+        catalog.resolve_sandbox_policy("nothing", &weak()).unwrap(),
+        None
+    );
     let policy = catalog
-        .resolve_sandbox_policy("t", &weak().architecture(Architecture::X64).project_root("/p"))
+        .resolve_sandbox_policy(
+            "t",
+            &weak().architecture(Architecture::X64).project_root("/p"),
+        )
         .unwrap();
     assert_eq!(fs_paths(&policy), j(r#"{"readwritePaths":["/p"]}"#));
 }
@@ -180,7 +199,9 @@ fn host_symbols_only_for_current_host_platform_and_caller_overrides() {
             {{"when":{{"platform":"macos"}},"sandboxPolicy":{{"version":"{V}","filesystem":{{"readonlyPaths":["${{user_home}}/.cfg"]}}}}}}]}}"#
         ),
     )]);
-    let host = Arc::new(FixedHost::new(Platform::Linux, Architecture::X64).with_symbol("user_home", "/home/me"));
+    let host = Arc::new(
+        FixedHost::new(Platform::Linux, Architecture::X64).with_symbol("user_home", "/home/me"),
+    );
     let catalog = catalog_for(rev, host);
     assert_eq!(
         fs_paths(&catalog.resolve_sandbox_policy("t", &weak()).unwrap()),
@@ -188,7 +209,12 @@ fn host_symbols_only_for_current_host_platform_and_caller_overrides() {
     );
     assert_eq!(
         catalog
-            .resolve_sandbox_policy("t", &weak().platform(Platform::Macos).architecture(Architecture::Arm64))
+            .resolve_sandbox_policy(
+                "t",
+                &weak()
+                    .platform(Platform::Macos)
+                    .architecture(Architecture::Arm64)
+            )
             .unwrap(),
         None
     );
@@ -213,7 +239,9 @@ fn string_object_and_one_element_array_are_equivalent() {
         .architecture(Architecture::X64)
         .project_root("/p")
         .symbol("git_prefix", "/g");
-    let a = catalog.resolve_sandbox_policy_with_diagnostics("git", &ctx).unwrap();
+    let a = catalog
+        .resolve_sandbox_policy_with_diagnostics("git", &ctx)
+        .unwrap();
     assert_eq!(
         catalog
             .resolve_sandbox_policy_with_diagnostics(ToolCandidate::new("git"), &ctx)
@@ -231,7 +259,10 @@ fn string_object_and_one_element_array_are_equivalent() {
         .architecture(Architecture::X64)
         .project_root("/p")
         .symbol("git_prefix", "/g");
-    assert_eq!(catalog.resolve_sandbox_policy("git", &strict).unwrap(), None);
+    assert_eq!(
+        catalog.resolve_sandbox_policy("git", &strict).unwrap(),
+        None
+    );
     assert_eq!(
         catalog
             .resolve_sandbox_policy(ToolCandidate::new("git"), &strict)
@@ -273,8 +304,14 @@ fn invalid_context_and_inputs_are_failures_not_absence() {
             },
         ),
         ("git".into(), ResolveContext::new().symbol("nope", "/x")),
-        ("git".into(), ResolveContext::new().symbol("project_root", "/x")),
-        ("git".into(), ResolveContext::new().symbol("__proto__", "/x")),
+        (
+            "git".into(),
+            ResolveContext::new().symbol("project_root", "/x"),
+        ),
+        (
+            "git".into(),
+            ResolveContext::new().symbol("__proto__", "/x"),
+        ),
         ("git".into(), ResolveContext::new().project_root("")),
     ];
     for (tools, ctx) in cases {
@@ -286,7 +323,9 @@ fn invalid_context_and_inputs_are_failures_not_absence() {
     }
     // A relative or `${`-containing symbol value is rejected once it is needed.
     for value in ["bin", "/x/${node_prefix}"] {
-        let ctx = weak().architecture(Architecture::X64).symbol("node_prefix", value);
+        let ctx = weak()
+            .architecture(Architecture::X64)
+            .symbol("node_prefix", value);
         let error = catalog.resolve_sandbox_policy("node", &ctx).unwrap_err();
         assert_eq!(
             error.message(),
@@ -320,7 +359,9 @@ fn results_are_caller_owned_and_deterministic() {
         .unwrap()
         .push("/mutated".into());
     first.diagnostics.warnings.push("mutated".into());
-    let second = catalog.resolve_sandbox_policy_with_diagnostics(tool, &ctx).unwrap();
+    let second = catalog
+        .resolve_sandbox_policy_with_diagnostics(tool, &ctx)
+        .unwrap();
     assert_eq!(
         fs_paths(&second.policy),
         j(r#"{"readonlyPaths":["/n"],"readwritePaths":["/p","/c"]}"#)
@@ -357,13 +398,17 @@ fn dedupes_normalized_paths_with_platform_casing() {
         )
     };
     let linux = catalog_for(revision(vec![tmpl("linux", "tool:l")]), linux_x64());
-    let ctx = weak().symbol("git_prefix", "/Tools").symbol("node_prefix", "/tools");
+    let ctx = weak()
+        .symbol("git_prefix", "/Tools")
+        .symbol("node_prefix", "/tools");
     assert_eq!(
         fs_paths(&linux.resolve_sandbox_policy("l", &ctx).unwrap()),
         j(r#"{"readonlyPaths":["/Tools","/tools"]}"#)
     );
     let mac = catalog_for(revision(vec![tmpl("macos", "tool:m")]), linux_x64());
-    let ctx = ctx.platform(Platform::Macos).architecture(Architecture::Arm64);
+    let ctx = ctx
+        .platform(Platform::Macos)
+        .architecture(Architecture::Arm64);
     assert_eq!(
         fs_paths(&mac.resolve_sandbox_policy("m", &ctx).unwrap()),
         j(r#"{"readonlyPaths":["/Tools"]}"#)
@@ -388,7 +433,9 @@ fn overlap_detection_follows_platform_casing() {
         .project_root("/tools/work")
         .symbol("git_prefix", "/Tools");
     assert_eq!(
-        reason_of(make("macos").resolve_sandbox_policy("m", &ctx.clone().platform(Platform::Macos))),
+        reason_of(
+            make("macos").resolve_sandbox_policy("m", &ctx.clone().platform(Platform::Macos))
+        ),
         ErrorReason::CompositionConflict
     );
     assert_eq!(
@@ -417,7 +464,10 @@ fn invocation_name_casing_per_platform() {
     );
     let on = |platform: Platform, name: &str| -> Vec<String> {
         catalog
-            .resolve_sandbox_policy_with_diagnostics(name, &weak().platform(platform).architecture(Architecture::X64))
+            .resolve_sandbox_policy_with_diagnostics(
+                name,
+                &weak().platform(platform).architecture(Architecture::X64),
+            )
             .unwrap()
             .diagnostics
             .tools[0]
@@ -493,7 +543,10 @@ fn dependency_diagnostics_keep_distinct_ranges_sorted() {
                     r#""dependencies":[{"entryId":"tool:c"}]"#,
                 )]),
             ),
-            entry("tool:c", &variants(&[linux(&format!(r#"{{"version":"{V}"}}"#), "")])),
+            entry(
+                "tool:c",
+                &variants(&[linux(&format!(r#"{{"version":"{V}"}}"#), "")]),
+            ),
         ]),
         linux_x64(),
     );
@@ -511,7 +564,10 @@ fn dependency_diagnostics_keep_distinct_ranges_sorted() {
             r#"[{"entryId":"tool:c","entryRevision":1},{"entryId":"tool:c","entryRevision":1,"requiredVersionRange":">=2"}]"#
         )
     );
-    assert_eq!(result.policy.unwrap().to_json(), j(&format!(r#"{{"version":"{V}"}}"#)));
+    assert_eq!(
+        result.policy.unwrap().to_json(),
+        j(&format!(r#"{{"version":"{V}"}}"#))
+    );
 }
 
 #[test]
@@ -525,32 +581,53 @@ fn catalog_file_order_does_not_matter() {
         )
     };
     let ctx = weak().project_root("/r");
-    let forward = catalog_for(revision(vec![e("tool:b", "b"), e("tool:a", "a")]), linux_x64())
-        .resolve_sandbox_policy_with_diagnostics("x", &ctx)
-        .unwrap();
-    let backward = catalog_for(revision(vec![e("tool:a", "a"), e("tool:b", "b")]), linux_x64())
-        .resolve_sandbox_policy_with_diagnostics("x", &ctx)
-        .unwrap();
+    let forward = catalog_for(
+        revision(vec![e("tool:b", "b"), e("tool:a", "a")]),
+        linux_x64(),
+    )
+    .resolve_sandbox_policy_with_diagnostics("x", &ctx)
+    .unwrap();
+    let backward = catalog_for(
+        revision(vec![e("tool:a", "a"), e("tool:b", "b")]),
+        linux_x64(),
+    )
+    .resolve_sandbox_policy_with_diagnostics("x", &ctx)
+    .unwrap();
     assert_eq!(forward, backward);
-    assert_eq!(fs_paths(&forward.policy), j(r#"{"readonlyPaths":["/r/a","/r/b"]}"#));
+    assert_eq!(
+        fs_paths(&forward.policy),
+        j(r#"{"readonlyPaths":["/r/a","/r/b"]}"#)
+    );
 }
 
 #[test]
 fn mixed_versions_across_inputs_conflict() {
     let catalog = catalog_for(
         revision(vec![
-            entry("tool:a", &variants(&[linux(r#"{"version":"0.8.0-alpha"}"#, "")])),
-            entry("tool:b", &variants(&[linux(&format!(r#"{{"version":"{V}"}}"#), "")])),
+            entry(
+                "tool:a",
+                &variants(&[linux(r#"{"version":"0.8.0-alpha"}"#, "")]),
+            ),
+            entry(
+                "tool:b",
+                &variants(&[linux(&format!(r#"{{"version":"{V}"}}"#), "")]),
+            ),
         ]),
         linux_x64(),
     );
-    let error = catalog.resolve_sandbox_policy(vec!["a", "b"], &weak()).unwrap_err();
+    let error = catalog
+        .resolve_sandbox_policy(vec!["a", "b"], &weak())
+        .unwrap_err();
     assert_eq!(
         error.message(),
         "[policy_validation] selected entries cannot be composed: mixed sandboxPolicy.version values (0.8.0-alpha, 0.9.0-alpha)"
     );
     assert_eq!(
-        catalog.resolve_sandbox_policy("a", &weak()).unwrap().unwrap().to_json(),
+        catalog
+            .resolve_sandbox_policy("a", &weak())
+            .unwrap()
+            .unwrap()
+            .to_json(),
         j(r#"{"version":"0.8.0-alpha"}"#)
     );
 }
@@ -569,7 +646,11 @@ fn inspection_over_the_bundled_catalog() {
     let entries = list_catalog_entries().unwrap();
     let ids: Vec<&str> = entries.iter().map(|e| e.entry_id.as_str()).collect();
     assert_eq!(ids, ["tool:git", "tool:node", "tool:npm"]);
-    let npm = entries.iter().find(|e| e.entry_id == "tool:npm").unwrap().to_json();
+    let npm = entries
+        .iter()
+        .find(|e| e.entry_id == "tool:npm")
+        .unwrap()
+        .to_json();
     assert_eq!(
         npm.get("platformVariants").unwrap().as_array().unwrap()[0],
         j(&format!(
@@ -582,17 +663,28 @@ fn inspection_over_the_bundled_catalog() {
 
 #[test]
 fn module_level_functions_use_the_bundled_catalog() {
-    let ctx = weak().platform(Platform::Linux).architecture(Architecture::X64);
-    assert_eq!(resolve_sandbox_policy("definitely-unknown-tool", &ctx).unwrap(), None);
-    let result =
-        resolve_sandbox_policy_with_diagnostics(vec![ToolInput::from("definitely-unknown-tool")], &ctx).unwrap();
+    let ctx = weak()
+        .platform(Platform::Linux)
+        .architecture(Architecture::X64);
+    assert_eq!(
+        resolve_sandbox_policy("definitely-unknown-tool", &ctx).unwrap(),
+        None
+    );
+    let result = resolve_sandbox_policy_with_diagnostics(
+        vec![ToolInput::from("definitely-unknown-tool")],
+        &ctx,
+    )
+    .unwrap();
     assert_eq!(result.policy, None);
     assert_eq!(
         result.diagnostics.to_json().get("tools").unwrap(),
         &j(r#"[{"inputIndex":0,"matches":[]}]"#)
     );
     assert_eq!(
-        reason_of(resolve_sandbox_policy("git", &ctx.catalog_revision("1999-01-01.1"))),
+        reason_of(resolve_sandbox_policy(
+            "git",
+            &ctx.catalog_revision("1999-01-01.1")
+        )),
         ErrorReason::RevisionUnavailable
     );
 }
@@ -660,7 +752,11 @@ fn validation_selectors() {
         vec![entry("tool:a", &variants(&[v(""), v("")]))],
         "second architecture-neutral",
     );
-    validate(vec![entry("tool:a", &variants(&[v(""), v("x64"), v("arm64")]))]).unwrap();
+    validate(vec![entry(
+        "tool:a",
+        &variants(&[v(""), v("x64"), v("arm64")]),
+    )])
+    .unwrap();
     validate_err(
         vec![entry("tool:a", &variants(&[v("riscv")]))],
         "'entries[0].platformVariants[0].when.architecture' must be one of x64, arm64",
@@ -678,7 +774,10 @@ fn validation_policy_rules() {
         p(&format!(r#"{{"version":"{V}","containment":"lxc"}}"#)),
         "containment backend",
     );
-    validate_err(p(r#"{"version":"0.9.0"}"#), "not a SandboxPolicy version registered");
+    validate_err(
+        p(r#"{"version":"0.9.0"}"#),
+        "not a SandboxPolicy version registered",
+    );
     validate_err(
         p(r#"{"version":"0.10.0-alpha"}"#),
         "not a SandboxPolicy version registered",
@@ -694,7 +793,9 @@ fn validation_policy_rules() {
         "unsupported field",
     );
     validate_err(
-        p(&format!(r#"{{"version":"{V}","network":{{"allowOutbound":true}}}}"#)),
+        p(&format!(
+            r#"{{"version":"{V}","network":{{"allowOutbound":true}}}}"#
+        )),
         "unsupported field",
     );
     validate_err(
@@ -732,7 +833,9 @@ fn validation_policy_rules() {
         "must be an integer in 1..65535",
     );
     validate_err(
-        net(r#"{"egress":{"allow":[{"to":[{"cidr":"10.0.0.0/8"}],"ports":[{"port":10,"endPort":5}]}]}}"#),
+        net(
+            r#"{"egress":{"allow":[{"to":[{"cidr":"10.0.0.0/8"}],"ports":[{"port":10,"endPort":5}]}]}}"#,
+        ),
         "requires a lower or equal 'port'",
     );
     validate(net(r#"{"egress":{"deny":[{"ports":[{"port":22}]}]}}"#)).unwrap();
@@ -751,12 +854,21 @@ fn validation_policy_rules() {
 fn validation_identity_rules() {
     validate(vec![
         entry("tool:a", ""),
-        entry("tool:b", r#"{"identity":[{"kind":"invocation-name","names":["A"]}]}"#),
+        entry(
+            "tool:b",
+            r#"{"identity":[{"kind":"invocation-name","names":["A"]}]}"#,
+        ),
     ])
     .unwrap();
     validate(vec![
-        entry("tool:a", r#"{"identity":[{"kind":"purl","value":"pkg:npm/x"}]}"#),
-        entry("tool:b", r#"{"identity":[{"kind":"purl","value":"pkg:NPM/x"}]}"#),
+        entry(
+            "tool:a",
+            r#"{"identity":[{"kind":"purl","value":"pkg:npm/x"}]}"#,
+        ),
+        entry(
+            "tool:b",
+            r#"{"identity":[{"kind":"purl","value":"pkg:NPM/x"}]}"#,
+        ),
     ])
     .unwrap();
     validate_err(
@@ -795,13 +907,19 @@ fn validation_identity_rules() {
         "bare invocation name",
     );
     validate_err(
-        vec![entry("tool:a", r#"{"identity":[{"kind":"sha256","value":"x"}]}"#)],
+        vec![entry(
+            "tool:a",
+            r#"{"identity":[{"kind":"sha256","value":"x"}]}"#,
+        )],
         "not a supported identity kind",
     );
     validate_err(
         vec![
             entry("tool:a", ""),
-            entry("tool:a", r#"{"identity":[{"kind":"invocation-name","names":["z"]}]}"#),
+            entry(
+                "tool:a",
+                r#"{"identity":[{"kind":"invocation-name","names":["z"]}]}"#,
+            ),
         ],
         "duplicate entryId",
     );
@@ -833,13 +951,20 @@ fn validation_composition_vocabulary() {
     };
     err(
         with_dep(
-            &format!(r#"{{"version":"{V}","filesystem":{{"readwritePaths":["${{project_root}}"]}}}}"#),
-            &format!(r#"{{"version":"{V}","filesystem":{{"deniedPaths":["${{project_root}}/secrets"]}}}}"#),
+            &format!(
+                r#"{{"version":"{V}","filesystem":{{"readwritePaths":["${{project_root}}"]}}}}"#
+            ),
+            &format!(
+                r#"{{"version":"{V}","filesystem":{{"deniedPaths":["${{project_root}}/secrets"]}}}}"#
+            ),
         ),
         "'${project_root}/secrets' (deniedPaths) overlaps '${project_root}' (readwritePaths)",
     );
     err(
-        with_dep(&format!(r#"{{"version":"{V}"}}"#), r#"{"version":"0.8.0-alpha"}"#),
+        with_dep(
+            &format!(r#"{{"version":"{V}"}}"#),
+            r#"{"version":"0.8.0-alpha"}"#,
+        ),
         "mixed sandboxPolicy.version",
     );
     err(
@@ -864,9 +989,12 @@ fn validation_composition_vocabulary() {
 
 #[test]
 fn bundled_store_verifies_and_canonical_digest_ignores_formatting() {
-    let store = mxc_policy_catalog::bundled_catalog_store().unwrap();
+    let store = mxc_policy_store::bundled_catalog_store().unwrap();
     assert!(check_store_history(&store).is_empty());
-    assert_eq!(store.revision(None).unwrap().catalog_revision, store.default_revision());
+    assert_eq!(
+        store.revision(None).unwrap().catalog_revision,
+        store.default_revision()
+    );
     assert_eq!(
         canonical_json(&j(r#"{"b":1,"a":[2,{"d":3,"c":4}]}"#)),
         r#"{"a":[2,{"c":4,"d":3}],"b":1}"#
@@ -875,13 +1003,17 @@ fn bundled_store_verifies_and_canonical_digest_ignores_formatting() {
         canonical_sha256(&j(r#"{"a":1,"b":2}"#)),
         canonical_sha256(&j(r#"{"b":2,"a":1}"#))
     );
-    assert_ne!(canonical_sha256(&j(r#"{"a":1}"#)), canonical_sha256(&j(r#"{"a":2}"#)));
+    assert_ne!(
+        canonical_sha256(&j(r#"{"a":1}"#)),
+        canonical_sha256(&j(r#"{"a":2}"#))
+    );
 }
 
 #[test]
 fn tampered_revision_is_an_integrity_error_everywhere() {
     let digests = HashMap::from([("2000-01-01.1".to_string(), "0".repeat(64))]);
-    let store = Arc::new(store_with(&[revision(vec![entry("tool:a", "")])], None, &digests).unwrap());
+    let store =
+        Arc::new(store_with(&[revision(vec![entry("tool:a", "")])], None, &digests).unwrap());
     assert_eq!(reason_of(store.revision(None)), ErrorReason::Integrity);
     let catalog = PolicyCatalog::with_host(store, linux_x64());
     assert_eq!(
@@ -892,8 +1024,14 @@ fn tampered_revision_is_an_integrity_error_everywhere() {
         reason_of(catalog.resolve_sandbox_policy_with_diagnostics("a", &weak())),
         ErrorReason::Integrity
     );
-    assert_eq!(reason_of(catalog.list_catalog_entries()), ErrorReason::Integrity);
-    assert_eq!(reason_of(catalog.get_catalog_info()), ErrorReason::Integrity);
+    assert_eq!(
+        reason_of(catalog.list_catalog_entries()),
+        ErrorReason::Integrity
+    );
+    assert_eq!(
+        reason_of(catalog.get_catalog_info()),
+        ErrorReason::Integrity
+    );
 }
 
 #[test]
@@ -905,16 +1043,20 @@ fn revision_id_mismatch_and_invalid_manifest() {
     }
     let digests = HashMap::from([("2000-01-01.1".to_string(), canonical_sha256(&other))]);
     assert_eq!(
-        reason_of(store_with(&[relabeled.clone()], None, &digests).unwrap().revision(None)),
+        reason_of(
+            store_with(&[relabeled.clone()], None, &digests)
+                .unwrap()
+                .revision(None)
+        ),
         ErrorReason::Integrity
     );
     // Correct digest but wrong declared id → integrity (revision-id check).
     let digests = HashMap::from([("2000-01-01.1".to_string(), canonical_sha256(&other))]);
-    let source = mxc_policy_catalog::MemorySource {
+    let source = mxc_policy_store::MemorySource {
         files: HashMap::from([("revisions/2000-01-01.1.json".to_string(), other.clone())]),
-        ..mxc_policy_catalog::MemorySource::publishing(contract(), &[relabeled], None, &digests)
+        ..mxc_policy_store::MemorySource::publishing(contract(), &[relabeled], None, &digests)
     };
-    let error = mxc_policy_catalog::CatalogStore::new(source)
+    let error = mxc_policy_store::CatalogStore::new(source)
         .unwrap()
         .revision(None)
         .unwrap_err();
@@ -942,7 +1084,10 @@ fn revision_id_mismatch_and_invalid_manifest() {
 
 #[test]
 fn explicit_revisions_are_never_substituted() {
-    let r1 = revision_with(vec![entry("tool:a", ""), entry("tool:b", "")], "2000-01-01.1");
+    let r1 = revision_with(
+        vec![entry("tool:a", ""), entry("tool:b", "")],
+        "2000-01-01.1",
+    );
     let r2 = revision_with(
         vec![
             entry("tool:a", r#"{"entryRevision":2,"displayName":"renamed"}"#),
@@ -953,7 +1098,9 @@ fn explicit_revisions_are_never_substituted() {
     let catalog = PolicyCatalog::with_host(Arc::new(store_for(&[r1, r2]).unwrap()), linux_x64());
     let ctx = weak().project_root("/p");
     let of = |ctx: &ResolveContext| {
-        let r = catalog.resolve_sandbox_policy_with_diagnostics("a", ctx).unwrap();
+        let r = catalog
+            .resolve_sandbox_policy_with_diagnostics("a", ctx)
+            .unwrap();
         (
             r.diagnostics.catalog_revision.clone(),
             r.diagnostics.tools[0].matches[0].entry_revision,
@@ -982,11 +1129,17 @@ fn entry_revision_history() {
         "2000-01-01.1",
     ));
     let changed = v(revision_with(
-        vec![entry("tool:a", r#"{"displayName":"x"}"#), entry("tool:b", "")],
+        vec![
+            entry("tool:a", r#"{"displayName":"x"}"#),
+            entry("tool:b", ""),
+        ],
         "2000-01-02.1",
     ));
     let bumped = v(revision_with(
-        vec![entry("tool:a", ""), entry("tool:b", r#"{"entryRevision":2}"#)],
+        vec![
+            entry("tool:a", ""),
+            entry("tool:b", r#"{"entryRevision":2}"#),
+        ],
         "2000-01-02.1",
     ));
     let ok = v(revision_with(
@@ -1010,8 +1163,15 @@ fn entry_revision_history() {
 
 #[test]
 fn published_immutability() {
-    let published = PublishedRevision::new("2000-01-01.1", "revisions/2000-01-01.1.json", &"a".repeat(64));
-    let files = HashMap::from([("revisions/2000-01-01.1.json".to_string(), "{\"x\":1}\n".to_string())]);
+    let published = PublishedRevision::new(
+        "2000-01-01.1",
+        "revisions/2000-01-01.1.json",
+        &"a".repeat(64),
+    );
+    let files = HashMap::from([(
+        "revisions/2000-01-01.1.json".to_string(),
+        "{\"x\":1}\n".to_string(),
+    )]);
     let base = PublishedState {
         revisions: vec![published.clone()],
         files: files.clone(),
@@ -1019,14 +1179,24 @@ fn published_immutability() {
     let appended = PublishedState {
         revisions: vec![
             published.clone(),
-            PublishedRevision::new("2000-01-02.1", "revisions/2000-01-02.1.json", &"b".repeat(64)),
+            PublishedRevision::new(
+                "2000-01-02.1",
+                "revisions/2000-01-02.1.json",
+                &"b".repeat(64),
+            ),
         ],
-        files: HashMap::from([("revisions/2000-01-01.1.json".to_string(), "{\r\n \"x\": 1}".to_string())]),
+        files: HashMap::from([(
+            "revisions/2000-01-01.1.json".to_string(),
+            "{\r\n \"x\": 1}".to_string(),
+        )]),
     };
     assert!(check_published_immutability(&base, &appended).is_empty());
     let edited = PublishedState {
         revisions: vec![published.clone()],
-        files: HashMap::from([("revisions/2000-01-01.1.json".to_string(), "{\"x\":2}\n".to_string())]),
+        files: HashMap::from([(
+            "revisions/2000-01-01.1.json".to_string(),
+            "{\"x\":2}\n".to_string(),
+        )]),
     };
     assert_eq!(
         check_published_immutability(&base, &edited),

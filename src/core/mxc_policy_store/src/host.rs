@@ -55,7 +55,10 @@ fn host_platform() -> Result<Platform> {
         "linux" => Ok(Platform::Linux),
         _ => Err(PolicyCatalogError::new(
             ErrorReason::UnsupportedHost,
-            format!("host platform '{}' has no catalog selector", node_platform_name()),
+            format!(
+                "host platform '{}' has no catalog selector",
+                node_platform_name()
+            ),
         )),
     }
 }
@@ -115,7 +118,10 @@ fn parse_reg_output(output: &str) -> Option<String> {
         let start = from + found;
         let rest = &output[start + "processor_architecture".len()..];
         let trimmed = rest.trim_start_matches(crate::text::js_is_space);
-        if trimmed.len() < rest.len() && trimmed.len() >= 6 && trimmed[..6].eq_ignore_ascii_case("reg_sz") {
+        if trimmed.len() < rest.len()
+            && trimmed.len() >= 6
+            && trimmed[..6].eq_ignore_ascii_case("reg_sz")
+        {
             let after = &trimmed[6..];
             let value = after.trim_start_matches(crate::text::js_is_space);
             if value.len() < after.len() {
@@ -286,7 +292,10 @@ impl HostEnvironment for FixedHost {
     }
 
     fn symbol(&self, name: &str) -> Option<String> {
-        self.symbols.iter().find(|(n, _)| n == name).map(|(_, v)| v.clone())
+        self.symbols
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.clone())
     }
 }
 
@@ -298,8 +307,14 @@ mod tests {
     fn maps_machine_names() {
         assert_eq!(architecture_from_machine("AMD64"), Some(Architecture::X64));
         assert_eq!(architecture_from_machine("x86_64"), Some(Architecture::X64));
-        assert_eq!(architecture_from_machine("ARM64"), Some(Architecture::Arm64));
-        assert_eq!(architecture_from_machine(" aarch64\n"), Some(Architecture::Arm64));
+        assert_eq!(
+            architecture_from_machine("ARM64"),
+            Some(Architecture::Arm64)
+        );
+        assert_eq!(
+            architecture_from_machine(" aarch64\n"),
+            Some(Architecture::Arm64)
+        );
         assert_eq!(architecture_from_machine("riscv64"), None);
         assert_eq!(architecture_from_machine("x86"), None);
     }

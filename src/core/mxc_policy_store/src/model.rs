@@ -203,7 +203,9 @@ impl SymbolMap {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
-        self.0.iter().map(|(k, v)| (k, v.as_str().unwrap_or_default()))
+        self.0
+            .iter()
+            .map(|(k, v)| (k, v.as_str().unwrap_or_default()))
     }
 
     pub fn len(&self) -> usize {
@@ -259,7 +261,9 @@ impl ResolveContext {
     }
 
     pub fn symbol(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
-        self.symbols.get_or_insert_with(SymbolMap::new).insert(name, value);
+        self.symbols
+            .get_or_insert_with(SymbolMap::new)
+            .insert(name, value);
         self
     }
 
@@ -387,7 +391,10 @@ pub struct Diagnostics {
 impl Diagnostics {
     pub fn to_json(&self) -> Json {
         let mut object = JsonObject::new();
-        object.insert("catalogRevision", Json::String(self.catalog_revision.clone()));
+        object.insert(
+            "catalogRevision",
+            Json::String(self.catalog_revision.clone()),
+        );
         let tools = self
             .tools
             .iter()
@@ -474,7 +481,10 @@ impl CatalogIdentityMetadata {
     pub fn to_json(&self) -> Json {
         let mut o = JsonObject::new();
         match self {
-            CatalogIdentityMetadata::Purl { value, version_range } => {
+            CatalogIdentityMetadata::Purl {
+                value,
+                version_range,
+            } => {
                 o.insert("kind", "purl".into());
                 o.insert("value", value.as_str().into());
                 if let Some(range) = version_range {
@@ -546,7 +556,10 @@ impl CatalogEntryMetadata {
                     vo.insert("architecture", arch.as_str().into());
                 }
                 vo.insert("dependencyEntryIds", strings(&v.dependency_entry_ids));
-                vo.insert("sandboxPolicyVersion", v.sandbox_policy_version.as_str().into());
+                vo.insert(
+                    "sandboxPolicyVersion",
+                    v.sandbox_policy_version.as_str().into(),
+                );
                 Json::Object(vo)
             })
             .collect();
@@ -566,7 +579,10 @@ pub struct CatalogInfo {
 impl CatalogInfo {
     pub fn to_json(&self) -> Json {
         let mut o = JsonObject::new();
-        o.insert("catalogSchemaVersion", self.catalog_schema_version.as_str().into());
+        o.insert(
+            "catalogSchemaVersion",
+            self.catalog_schema_version.as_str().into(),
+        );
         o.insert("catalogRevision", self.catalog_revision.as_str().into());
         Json::Object(o)
     }

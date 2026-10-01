@@ -4,7 +4,9 @@
 //! Entry-revision monotonicity and published-revision immutability
 //! (TypeScript `src/history.ts`).
 
-use crate::catalog::{compare_catalog_revisions, entry_semantic_key, revision_number, CatalogRevision};
+use crate::catalog::{
+    compare_catalog_revisions, entry_semantic_key, revision_number, CatalogRevision,
+};
 use crate::json::{canonical_json, Json};
 use crate::store::CatalogStore;
 use std::cmp::Ordering;
@@ -23,7 +25,11 @@ pub fn check_entry_revisions(previous: &CatalogRevision, next: &CatalogRevision)
             next.catalog_revision, previous.catalog_revision
         ));
     }
-    let before: HashMap<&str, _> = previous.entries.iter().map(|e| (e.entry_id.as_str(), e)).collect();
+    let before: HashMap<&str, _> = previous
+        .entries
+        .iter()
+        .map(|e| (e.entry_id.as_str(), e))
+        .collect();
     for entry in &next.entries {
         let Some(old) = before.get(entry.entry_id.as_str()) else {
             continue;
@@ -150,7 +156,10 @@ fn canonical_text(text: Option<&String>) -> Option<String> {
 
 /// Published revisions keep their manifest entry, digest, and content; new
 /// revisions are only appended (design §10).
-pub fn check_published_immutability(base: &PublishedState, proposed: &PublishedState) -> Vec<String> {
+pub fn check_published_immutability(
+    base: &PublishedState,
+    proposed: &PublishedState,
+) -> Vec<String> {
     let mut errors = Vec::new();
     for (index, published) in base.revisions.iter().enumerate() {
         let name = describe_js(&published.catalog_revision);
@@ -162,7 +171,9 @@ pub fn check_published_immutability(base: &PublishedState, proposed: &PublishedS
             continue;
         };
         if now.file != published.file || now.sha256 != published.sha256 {
-            errors.push(format!("published revision '{name}' manifest entry was modified"));
+            errors.push(format!(
+                "published revision '{name}' manifest entry was modified"
+            ));
         }
         let base_content = canonical_text(base.file_text(published));
         let proposed_content = canonical_text(proposed.file_text(published));

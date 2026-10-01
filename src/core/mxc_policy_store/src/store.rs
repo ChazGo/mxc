@@ -5,8 +5,8 @@
 //! (TypeScript `src/store.ts`), plus the catalog bundled into this crate.
 
 use crate::catalog::{
-    compare_catalog_revisions, is_catalog_revision_id, validate_catalog_revision, validate_contract, CatalogContract,
-    CatalogRevision, CATALOG_SCHEMA_VERSION,
+    compare_catalog_revisions, is_catalog_revision_id, validate_catalog_revision,
+    validate_contract, CatalogContract, CatalogRevision, CATALOG_SCHEMA_VERSION,
 };
 use crate::errors::{invalid_catalog, ErrorReason, PolicyCatalogError, Result};
 use crate::json::{canonical_sha256, Json, JsonObject};
@@ -88,7 +88,10 @@ impl MemorySource {
                 .to_string()
         });
         let mut manifest = JsonObject::new();
-        manifest.insert("catalogSchemaVersion", Json::String(CATALOG_SCHEMA_VERSION.into()));
+        manifest.insert(
+            "catalogSchemaVersion",
+            Json::String(CATALOG_SCHEMA_VERSION.into()),
+        );
         manifest.insert("defaultRevision", Json::String(default));
         manifest.insert("revisions", Json::Array(listed));
         Self {
@@ -215,10 +218,18 @@ pub fn validate_manifest(raw: &Json) -> Result<CatalogManifest> {
             return invalid(format!("'{at}.file' must be '{expected_file}'"));
         }
         let sha256 = match item.get("sha256").and_then(Json::as_str) {
-            Some(d) if d.len() == 64 && d.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) => {
+            Some(d)
+                if d.len() == 64
+                    && d.bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) =>
+            {
                 d.to_string()
             }
-            _ => return invalid(format!("'{at}.sha256' must be a lower-case hex SHA-256 digest")),
+            _ => {
+                return invalid(format!(
+                    "'{at}.sha256' must be a lower-case hex SHA-256 digest"
+                ))
+            }
         };
         revisions.push(ManifestRevision {
             catalog_revision,
@@ -307,7 +318,12 @@ impl CatalogStore {
         if let Some(cached) = self.loaded.lock().expect("store cache lock").get(id) {
             return Ok(cached.clone());
         }
-        let Some(listed) = self.manifest.revisions.iter().find(|r| r.catalog_revision == id) else {
+        let Some(listed) = self
+            .manifest
+            .revisions
+            .iter()
+            .find(|r| r.catalog_revision == id)
+        else {
             return Err(PolicyCatalogError::new(
                 ErrorReason::RevisionUnavailable,
                 format!("catalog revision '{id}' is not installed"),
