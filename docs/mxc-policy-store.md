@@ -63,7 +63,9 @@ checklist in [`docs/authoring-a-new-feature.md`](authoring-a-new-feature.md):
 - **MXC SDK changes:** None. This proposal does not add catalog lookup, types,
   or resolver code to the MXC SDKs.
 - **Standalone libraries:** The dedicated catalog repository provides its own
-  library API for TypeScript/JavaScript, Rust, and C#/.NET. See
+  library API for TypeScript/JavaScript, Rust, and C#/.NET, each depending on
+  the corresponding MXC SDK and returning its existing `SandboxPolicy` type.
+  MXC does not depend on the catalog. See
   [§6](#6-intended-repository-and-packaging-boundary).
 
 The proposed **public preview** designation describes the catalog's support
@@ -74,19 +76,25 @@ Defaults and omission behavior are:
 
 - Existing callers do not perform catalog lookup automatically. A consumer
   must explicitly enable or invoke it.
-- Omitted `ResolveContext.platform` and `ResolveContext.architecture` use the
-  current host values.
+- Omitted `ResolveContext.platform` uses the current host platform.
+- Omitted `ResolveContext.architecture` uses the device's native system
+  architecture, not the architecture of the library's process or a detected
+  tool build. Explicit caller selection takes precedence. See the selection
+  rules and emulation risk in [§4.4](#44-platform-variants).
 - Omitted `ResolveContext.catalogRevision` uses the currently installed
   catalog revision.
 - Omitted `ResolveContext.allowWeakIdentityFallback` is `false`.
 - Omitted `projectRoot` and `symbols` provide no caller overrides. The resolver
-  may use approved host-known symbols, but it does not invent machine-specific
-  values. A selected entry with an unresolved required symbol is not
-  resolvable.
+  uses supported local discovery and shared documented defaults for required
+  symbols as specified in [§4.2](#42-entry-shape). It does not invent a project
+  root or an installation path. A selected entry with an unresolved required
+  symbol is not resolvable.
 - Omitted `packageUrl` or `detectedVersion` supplies no matching evidence. The
   resolver does not fabricate either value.
-- No acceptable or resolvable match returns `undefined`. The consumer's
-  restrictive baseline remains unchanged.
+- If no policy can be resolved, `getSandboxConfig` returns `undefined`.
+  `getSandboxConfigWithDiagnostics` instead returns a result whose `policy` is
+  `undefined`, preserving the diagnostics. The consumer's restrictive baseline
+  remains unchanged.
 
 ## 2. Ownership boundary
 
@@ -98,12 +106,15 @@ lifecycle.
 
 The catalog states a candidate minimum that a tool needs. It does not grant
 access, modify caller state, create a sandbox, or guarantee workflow success.
+Filesystem composition combines lower-bound requirements using the least
+restrictive access needed by the selected tools. This is distinct from the
+consumer's restrictive composition with its own security ceilings.
 
 Everything else is a consumer decision:
 
 - Whether automatic catalog lookup is enabled at all.
 - Access-profile mapping, elevation preference, and per-tool authorization.
-- Persistence of accepted requirements (which tool, which catalog/entry
+- Persistence of accepted requirements (which tools, which catalog/entry
   revision, when).
 - Composition with the consumer's own user, learned, and invocation-specific
   policy layers, and with non-overridable OS/enterprise/device ceilings.
@@ -111,9 +122,10 @@ Everything else is a consumer decision:
   sandbox creation.
 
 A catalog lookup can only ever narrow what a consumer still has to decide for
-itself. The resolver returns a candidate requirement or `undefined`; the
-consumer decides whether and how to act on it. This mirrors #779's floor/policy
-distinction, discussed further in
+itself. `getSandboxConfig` returns a candidate composed requirement or
+`undefined`; its diagnostics counterpart also reports how that result was
+obtained. The consumer decides whether and how to act on it. This mirrors
+#779's floor/policy distinction, discussed further in
 [§3](#3-relationship-to-the-config-floors-proposal): a resolved entry is a
 lower bound asserted by the tool ecosystem, never an upper bound the host is
 required to grant.
@@ -123,16 +135,16 @@ required to grant.
 | #779 (config floors) | This document (policy store) |
 |---|---|
 | One `schemaVersion` for the whole table | Four separate version dimensions: `catalogSchemaVersion`, `catalogRevision`, per-entry `entryRevision`, and per-variant `sandboxPolicy.version` ([§4.1](#41-versions)) |
-| `identity` predicates, unordered | `identity` explicitly ordered strongest to weakest, with defined match/fallback behavior ([§4.3](#43-identity)) |
+| Strongest satisfied identity predicate describes a match | All eligible matching entries contribute; identity evidence is retained without stronger matches suppressing weaker ones ([§4.3](#43-identity)) |
 | One `sandboxPolicy` per entry; `when.platform` only conditions dependencies | One complete `SandboxPolicy` per platform variant; a variant cannot name a containment backend ([§4.4](#44-platform-variants)) |
 | `requires` composition unspecified beyond "union" | Composition limited to a small, explicit, field-by-field set for the first contract version; everything else is rejected until a rule exists ([§4.5](#45-dependencies-and-composition)) |
-| Single resolver function, no separate catalog-inspection API | Resolver split from a separate metadata/inspection API ([§5](#5-api-surface)) |
+| `getSandboxConfigForTool(tools: string[])` returns one composed policy | `getSandboxConfig` accepts one tool or an array and returns one policy; `getSandboxConfigWithDiagnostics` adds attribution, with catalog inspection kept separate ([§5](#5-api-surface)) |
 | No revision/publication model | Immutable published catalog revisions; corrections publish a new revision ([§10](#10-immutable-revisions)) |
 
-The data model, the floor/policy direction argument, the identity layering
-problem (invocation name vs. launcher artifact vs. executing image), and the
-trust framing all carry forward from #779 essentially unchanged; this document
-does not re-derive them, and cites the relevant #779 section instead.
+The data model, the floor/policy direction argument, multi-tool composition,
+and the identity layering problem (invocation name vs. launcher artifact vs.
+executing image) build on #779. The matching, composition, and trust refinements
+are stated here rather than implied by that reference.
 
 ## 4. Data model
 
@@ -200,12 +212,86 @@ Invariants:
   schema for its declared `version`. The catalog schema does not duplicate
   that validation.
 
+Symbol definitions are shared across entries and versioned with the selected
+catalog revision. Each definition describes the symbol's permitted sources
+and may include a `defaults` map from platform to path template. This extends
+the catalog contract, not `SandboxPolicy`. Entries continue to reference
+symbols rather than repeat defaults. For example, default metadata in the
+shared symbol registry can include:
+
+```json
+{
+  "symbols": {
+    "npm_cache": {
+      "defaults": {
+        "linux": "${user_home}/.npm",
+        "macos": "${user_home}/.npm"
+      }
+    }
+  }
+}
+```
+
+This is a metadata fragment, not a complete symbol definition. Default
+templates may reference approved host-known symbols; they cannot contain
+commands or executable discovery logic. Shared definitions and defaults are
+covered by the catalog revision's integrity validation and cannot change
+behind a pinned revision.
+
+For symbols required by selected entries and dependencies, precedence is:
+
+1. Explicit caller values from `projectRoot` or `symbols`, as applicable.
+2. Supported local discovery, including `PATH`, known host locations, and
+   relevant tool configuration overrides.
+3. A documented default for the selected platform, if applicable.
+4. Unresolved, with diagnostics and no partial policy.
+
+Tool-specific discovery runs in the library, not in catalog-supplied code.
+It does not execute candidate tools, install software, or contact the network.
+Automatic discovery and host-derived values describe the current host and
+environment; callers targeting another execution environment supply overrides.
+A failed configuration read is an explicit library error, not evidence that
+no override exists and a default should be used. Discovery does not verify
+tool identity. The diagnostics operation reports the source and resolved value
+of each discovered or defaulted symbol through `diagnostics.warnings`.
+
 ### 4.3 Identity
 
-`identity` is an ordered list, strongest predicate first, per the layering
-#779 §3.1 establishes (invocation name vs. launcher artifact vs. executing
-image; falsifiable-against-a-local-artifact as the admission test for a new
-kind). This document adds:
+`identity` describes the predicates a candidate can satisfy for an entry,
+using the layering #779 §3.1 establishes (invocation name vs. launcher artifact
+vs. executing image; falsifiable-against-a-local-artifact as the admission test
+for a new kind).
+
+Caller-supplied identity is not verified identity. A `packageUrl` match does
+not prove that the installed tool belongs to that package; the caller is
+responsible for verifying that association. The library does not inspect the
+tool to verify it.
+
+Invocation-name matching is locale-independent and case-insensitive on every
+platform. This affects catalog lookup only: it does not change the caller's
+command, the OS's executable lookup rules, or package-identity matching.
+
+Matching is additive across entries. For each input tool, the resolver collects
+every entry with a satisfied, eligible identity predicate and an applicable
+platform/architecture variant. It does not choose a single winning entry:
+
+- A package-identity match does not suppress another entry's eligible
+  invocation-name match. Equal-strength matches to different entries also
+  contribute; they are not ambiguity errors.
+- Identity strength describes the matching evidence, not precedence between
+  entries. Diagnostics retain all satisfied identity predicates for each
+  contributing entry.
+- Multiple predicates matching the same entry do not add its policy multiple
+  times. Entries shared across input tools or dependency chains likewise
+  contribute once, while diagnostics preserve the per-input matches.
+- Multiple matching entries for one input produce a diagnostic warning, not
+  a refusal. Their policies must still satisfy the composition rules in
+  [§4.5](#45-dependencies-and-composition).
+- Diagnostic tool records follow input order, matches are ordered by
+  `entryId`, and matched predicates follow their declaration order within the
+  entry. Catalog file order does not select or exclude a match.
+
+The existing matching qualifications remain:
 
 - A version range on an identity predicate is advisory matching evidence, not
   a gate. A detected mismatch returns a diagnostic alongside the resolved
@@ -214,7 +300,10 @@ kind). This document adds:
 - Invocation-name-only identity is the always-available fallback, not the
   default outcome. Whether a consumer accepts an invocation-name-only match
   automatically, or requires opt-in, is unresolved. See
-  [§13](#13-open-questions).
+  [§13](#13-open-questions). Under the current proposed default, an entry
+  matched only by invocation name participates when
+  `allowWeakIdentityFallback` is `true`. Compose-all-matches does not bypass
+  that option.
 
 ### 4.4 Platform variants
 
@@ -230,12 +319,43 @@ interface PlatformVariantSelector {
 
 A platform variant is a complete requirement statement: one full
 `SandboxPolicy`, not a patch applied to a base policy, plus any
-platform-specific dependencies. Variants are never merged. Selection first
-filters by `platform`, then prefers an exact `architecture` match over a
-variant that omits `architecture`. Catalog validation rejects duplicate exact
-selectors and more than one architecture-neutral variant for the same
-platform. If neither an exact nor architecture-neutral variant exists, the
-entry is unsupported on that host.
+platform-specific dependencies. Variants are never merged. Architecture is a
+catalog selector, not a field added to the embedded `SandboxPolicy`. Omitting
+`when.architecture` makes a catalog variant architecture-neutral; omitting the
+caller's `ResolveContext.architecture` instead requests the host default.
+
+Selection first filters by platform, then uses the following precedence:
+
+| Caller context | Preferred variant | Fallback |
+|---|---|---|
+| Explicit `architecture: "x64"` | x64 for the selected platform | Architecture-neutral for that platform |
+| Explicit `architecture: "arm64"` | ARM64 for the selected platform | Architecture-neutral for that platform |
+| Architecture omitted | Device's native system architecture for the selected platform | Architecture-neutral for that platform |
+
+The native system architecture is the architecture reported by the host OS,
+not the architecture of the process hosting the library. For example, on an
+ARM64 device with both x64 and ARM64 catalog variants and no neutral variant,
+omitting architecture selects ARM64. An explicit `architecture: "x64"` selects
+x64 on that same device. The resolver does not require a neutral variant to
+return a result when the effective architecture has an exact match.
+
+Catalog validation rejects duplicate exact selectors and more than one
+architecture-neutral variant for the same platform. If neither an exact nor
+architecture-neutral variant exists, that entry contributes no match, not an
+empty policy or a variant for a different architecture. A failure to determine
+the native system architecture when it is needed is a library error, not a
+guessed selection.
+
+**Emulation risk:** A host-derived default does not establish the architecture
+of the installed tool. An x64 tool running under emulation on an ARM64 device
+may need the x64 variant rather than the default ARM64 variant. The resolver
+does not inspect or run the tool to discover its architecture. Callers that
+know the relevant tool and runtime requirements should select architecture
+explicitly and remain responsible for deciding whether the result applies.
+Neither explicit selection nor a host default guarantees that the returned
+policy is sufficient or minimal. Host-derived selection and neutral fallback
+are surfaced through `diagnostics.warnings` by the diagnostics API
+([§5.1](#51-runtime-lookup)).
 
 A platform variant must not name a specific MXC containment backend. Policies
 stay backend-neutral; the selected backend still decides whether a stated
@@ -250,55 +370,125 @@ dependency inventory, so it does not evaluate that range or use it for
 matching. It returns the range as unevaluated metadata for consumer inspection.
 Catalog validation checks only that the range is syntactically valid.
 Resolution is otherwise transitive, cycle-rejecting, and deterministic, and
-the resolver returns the full dependency chain alongside the result.
+the diagnostics API returns the resolved dependency metadata alongside the
+policy.
 
-Unlike #779, this document does not treat "union the policies" as sufficient
-composition. Silently unioning arbitrary `SandboxPolicy` objects across a
-dependency chain hides exactly the kind of conflicting-field problem that
-made #779 exclude `proxy` from the embedded object. For the first contract
-version, cross-entry composition is limited to the exact
+The same composition rules apply to all entries matched by one tool, entries
+matched by different tools in an array, and their transitive dependencies.
+Each selected entry contributes its policy once, even when reached through
+multiple inputs or dependency edges. Repeated contribution is de-duplicated
+by entry ID within the selected catalog revision, not by discarding match
+attribution. A shared `ResolveContext` applies to the whole lookup.
+
+Following #779's floor semantics, filesystem composition preserves the access
+required by all selected tools rather than intersecting their requirements.
+An overlapping read-only requirement must not suppress another tool's needed
+write access, and a catalog-provided deny must not block a required read or
+write path. This is not a rule for merging consumer authorization policy.
+For the first contract version, cross-entry composition is limited to the exact
 `filesystem.deniedPaths`, `filesystem.readonlyPaths`, and
 `filesystem.readwritePaths` fields:
 
-1. Every policy in the dependency closure must declare the same
-   `sandboxPolicy.version`.
-2. Paths are resolved, normalized using the selected platform's path rules,
-   and de-duplicated within the same access class.
-3. Catalog validation rejects equal or ancestor/descendant paths that occur in
-   different access classes. It never chooses between denied, read-only, and
-   read-write access implicitly.
-4. The non-conflicting, normalized lists are merged into the returned policy.
+1. Every policy in the selected entries and their dependency closure must
+   declare the same `sandboxPolicy.version`.
+2. At lookup time, resolve all required symbols and normalize paths using the
+   selected platform's path rules before comparing equal or
+   ancestor/descendant paths. Combine the selected entries and dependencies,
+   de-duplicating paths within each access class.
+3. Preserve every required read-write subtree. Remove read-only entries equal
+   to or contained within a read-write subtree, since read-write already
+   satisfies their read requirement. Retain a read-only ancestor of a
+   read-write subtree without promoting the whole ancestor to read-write.
+4. Remove each catalog-provided deny that overlaps any required read-only or
+   read-write path, whether equal, an ancestor, or a descendant. Remove the
+   entire deny entry, not an invented exception beneath it. Retain
+   non-overlapping denies.
+5. Return the composed policy and make the access changes available through
+   diagnostics. The same rules apply to overlaps within one selected entry
+   and across multiple entries; matching or traversal order must not change
+   the effective access.
+
+Filesystem comparison is separate from invocation-name matching. Equality,
+de-duplication, and ancestor checks honor the applicable filesystem and
+directory case-sensitivity, not a blanket OS assumption. When that information
+cannot be determined, compare case-sensitively, preserve differently cased
+paths as distinct, and report the assumption in diagnostics. Returned paths
+retain their casing; comparison must not lowercase the policy paths. Another
+target environment must not inherit this host's filesystem case rules.
+
+| Resolved requirements | Composed filesystem policy |
+|---|---|
+| Read-only `/work` and read-write `/work` | Read-write `/work`; omit read-only `/work` |
+| Read-write `/work` and read-only `/work/tools` | Read-write `/work`; omit read-only `/work/tools` |
+| Read-only `/work` and read-write `/work/cache` | Retain read-only `/work` and read-write `/work/cache`; do not make all of `/work` writable |
+| Denied `/data` and read-write `/data/cache` | Remove denied `/data`; retain read-write `/data/cache` and report that the entire `/data` deny was removed |
+| Denied `/secrets` and read-write `/work` | Retain both non-overlapping entries |
+
+These are composition rules for the returned MXC `SandboxPolicy`, not changes
+to MXC's enforcement precedence. Simply concatenating a conflicting deny or
+read-only entry with a grant is insufficient: the restrictive entry could
+still prevent the access the composed floor is intended to request.
+
+Removing a parent deny removes its protection for the entire subtree, not
+just the overlapping required path. It does not itself add a grant to that
+subtree, but other grants can now apply there. Diagnostics must identify the
+removed deny and this broader effect. Caller-owned denies and other user,
+enterprise, device, or backend restrictions are never inputs to this
+least-restrictive catalog composition and must not be removed by it.
+
+Publication checks validate policy shapes, symbols, and supported composition
+fields and exercise the rules with known paths and fixtures. Equal or nested
+filesystem requirements are not by themselves invalid catalog data. Caller
+symbol values can introduce additional overlaps, so the resolver must always
+apply these rules after substitution and normalization at lookup time.
+An overlap covered by these rules is not a composition error; missing required
+symbols or unsupported composed fields retain their existing failure behavior.
 
 The v1 contract does not compose `network`. In particular, it defines no merge
 for `network.egress.default`, `network.egress.allow`,
 `network.egress.deny`, `network.ingress.default`, or
-`network.ingress.hostLoopback`. Catalog validation rejects a dependency closure
+`network.ingress.hostLoopback`. Composition rejects a selected set of entries
 where policies from more than one entry would require composing any `network`
 field. The same rejection applies to timeout, clipboard, lifecycle, UI, proxy,
-and every other policy field without an explicit cross-entry rule. Entries
-without dependencies may still use catalog-supported policy fields because no
-cross-entry merge occurs.
+and every other policy field without an explicit cross-entry rule. A lookup
+resolving to only one entry without dependencies may still use
+catalog-supported policy fields because no cross-entry merge occurs.
 
 ## 5. API surface
 
-The standalone libraries expose two API groups, kept deliberately separate so
-that "resolve one tool's requirement" stays a cheap, hot-path-safe call and
-never implicitly returns the whole catalog. These are in-process library
-calls, not a hosted service or additions to the MXC SDKs.
+The standalone libraries separate runtime resolution from catalog inspection.
+Resolution accepts one tool or an array and composes all applicable matching
+entries and dependencies into one `SandboxPolicy`. Callers choose a policy-only
+operation or a diagnostic operation over the same resolution logic. Neither
+implicitly returns the whole catalog. These are in-process library calls, not
+a hosted service or additions to the MXC SDKs.
 
 The signatures below use TypeScript to describe the shared contract. Rust and
 C# expose the same operations and metadata with idiomatic names and types.
-A no-match result is `undefined` in TypeScript/JavaScript, `None` in Rust, and
-`null` in C#. Library failures remain distinct from a no-match result.
+TypeScript and C# expose single-tool and array overloads; Rust uses an idiomatic
+one-or-many input type because it does not support function overloading. An
+absent policy is `undefined` in TypeScript/JavaScript, `None` in Rust, and
+`null` in C#. Library failures remain distinct from policy absence.
 
 ### 5.1 Runtime lookup
 
+Failures reuse existing MXC error codes, which are sufficient for normal
+programmatic handling. An optional `details.reason` may provide a stable,
+catalog-specific distinction for logging, investigation, or finer handling
+when the code alone is too broad. Callers need not branch on it; an absent or
+unrecognized reason retains the same handling as the primary code. A reason
+must not duplicate a distinction already expressed by an existing MXC code.
+
 ```ts
+import type { SandboxPolicy } from "@microsoft/mxc-sdk";
+
 interface ToolCandidate {
   invocationName: string;
   packageUrl?: string;
   detectedVersion?: string;
 }
+
+type ToolInput = string | ToolCandidate;
 
 interface ResolveContext {
   projectRoot?: string;
@@ -309,33 +499,111 @@ interface ResolveContext {
   allowWeakIdentityFallback?: boolean;
 }
 
-interface ResolvedToolEntry {
-  entryId: string;
-  entryRevision: number;
-  catalogRevision: string;
-  matchedIdentity: { kind: string; strength: "strong" | "weak" };
-  resolvedDependencies: Array<{
-    entryId: string;
-    entryRevision: number;
-    requiredVersionRange?: string;
-  }>;
-  policy: SandboxPolicy;
-  warnings: string[];
+interface SandboxConfigResolution {
+  policy: SandboxPolicy | undefined;
+  diagnostics: {
+    catalogRevision: string;
+    tools: Array<{
+      inputIndex: number;
+      matches: Array<{
+        entryId: string;
+        entryRevision: number;
+        matchedIdentities: Array<{
+          kind: string;
+          strength: "strong" | "weak";
+        }>;
+      }>;
+    }>;
+    resolvedDependencies: Array<{
+      entryId: string;
+      entryRevision: number;
+      requiredVersionRange?: string;
+    }>;
+    warnings: string[];
+  };
 }
 
-resolveCatalogEntry(
-  tool: ToolCandidate,
+declare function getSandboxConfig(
+  tool: ToolInput,
   ctx?: ResolveContext
-): ResolvedToolEntry | undefined;
+): SandboxPolicy | undefined;
+
+declare function getSandboxConfig(
+  tools: readonly ToolInput[],
+  ctx?: ResolveContext
+): SandboxPolicy | undefined;
+
+declare function getSandboxConfigWithDiagnostics(
+  tool: ToolInput,
+  ctx?: ResolveContext
+): SandboxConfigResolution;
+
+declare function getSandboxConfigWithDiagnostics(
+  tools: readonly ToolInput[],
+  ctx?: ResolveContext
+): SandboxConfigResolution;
 ```
 
-`resolveCatalogEntry` is singular by design, not an array-in/array-out call:
-a caller composing and persisting requirements per tool (rather than as one
-opaque merged blob) needs each result independently addressable and
-independently attributable. A caller resolving several tools calls it once
-per tool. `undefined` means no acceptable or resolvable identity/platform
-match, never an empty policy (same distinction #779 makes; see
-[§4.2](#42-entry-shape)).
+A string input is shorthand for `{ invocationName: tool }`; it supplies no
+package or version evidence and follows the same weak-identity option as an
+object input. For example, name-only lookup under the current proposed opt-in
+rule is:
+
+```ts
+const ctx = { allowWeakIdentityFallback: true };
+const policy = getSandboxConfig("npm", ctx);
+const combinedPolicy = getSandboxConfig(["git", "npm"], ctx);
+const result = getSandboxConfigWithDiagnostics("npm", ctx);
+const combinedResult =
+  getSandboxConfigWithDiagnostics(["git", "npm"], ctx);
+```
+
+Single-tool lookup is equivalent to a one-element array; its diagnostic
+`inputIndex` is `0`. A caller retaining separate policies per tool can use
+single-tool calls. A caller wanting one sandbox for several tools passes an
+array. Both forms compose every eligible matching entry, not just the
+strongest match, and the selected dependencies.
+
+`getSandboxConfig` returns the composed `SandboxPolicy` directly, not a wrapper
+or a `ContainerConfig`. It is the exact type provided by the corresponding MXC
+SDK, not a catalog-owned lookalike. Callers can pass an accepted policy directly
+to that SDK without conversion or serialization. The `policy` field returned
+by `getSandboxConfigWithDiagnostics` uses that same SDK type, with attribution
+and warnings from the same resolution pass. Callers choose one operation;
+retrieving diagnostics does not require a second lookup or process-global
+"last result" state.
+
+Following #779, an unmatched input contributes no requirements while matched
+inputs still contribute. Each input has a diagnostic record; an unmatched
+input has an empty `matches` list and a warning. An empty input array or an
+all-unmatched lookup produces no policy, not an empty policy:
+`getSandboxConfig` returns `undefined`, while the diagnostics operation returns
+a `SandboxConfigResolution` with `policy: undefined`. An empty array has no
+per-input records. Unresolved required symbols in selected entries prevent a
+policy from being returned and produce diagnostics; they are not grounds for
+silently omitting a selected requirement to produce a partial policy.
+
+Multiple matching entries for one input are listed in `matches`, with a
+warning identifying that input and the contributing entry IDs. Shared entries
+remain attributed to every matching input even though their policy is
+composed once. Dependency diagnostics retain each distinct
+entry/revision/required-version-range combination, ordered by those fields;
+repeated metadata does not mean repeated policy contribution.
+
+When architecture is omitted, diagnostics include a warning naming the
+effective native system architecture and stating that the tool's architecture
+was not verified. Architecture-neutral fallback is also identified. These
+diagnostics describe selection; they do not attest to the installed tool's
+architecture. The policy-only operation does not expose warnings or
+attribution; consumers needing them use `getSandboxConfigWithDiagnostics`.
+
+Filesystem composition diagnostics report read-only requirements superseded
+by read-write requirements and catalog denies removed to satisfy required
+access. Each warning identifies the resolved paths, access classes, and
+contributing entry IDs. A removed deny warning names the full removed scope
+and explains that other grants may now apply throughout it, not only at the
+overlap. Both APIs return the same composed policy; callers needing to review
+these adjustments use `getSandboxConfigWithDiagnostics`.
 
 ### 5.2 Setup and inspection
 
@@ -379,8 +647,9 @@ provenance, but not an unresolved or resolved policy body.
 A consumer that uses this API:
 
 1. Decides whether automatic lookup is enabled at all.
-2. Stores any accepted result per tool, keyed by `entryId`, `entryRevision`,
-   and `catalogRevision`, never as an unattributed merged policy blob.
+2. When persisting an accepted policy, retains its `catalogRevision` and
+   contributing entry IDs/revisions from diagnostics, whether the policy
+   covers one tool or several.
 3. Keeps catalog-derived requirements in a layer separate from its own user,
    learned, and invocation-specific policy.
 4. Applies its own authorization, elevation, and restrictive-composition
@@ -390,7 +659,8 @@ A consumer that uses this API:
 6. Fails closed when a required entry cannot be realized on the current
    host/backend. It falls back to its own restrictive baseline and does not
    run uncontained.
-7. Records matched identity, catalog/entry revision, warnings, and approval
+7. Uses the diagnostics operation when attribution or audit is needed, and
+   records matched identities, catalog/entry revisions, warnings, and approval
    state in its own audit trail.
 
 The catalog libraries never write a consumer's policy store. A consumer's own
@@ -406,39 +676,63 @@ validation, and publication workflow belong there. This specification remains
 in MXC while the proposed contract is reviewed. No catalog repository or
 package is created by this proposal.
 
-MXC retains the existing `SandboxPolicy` contract. The catalog libraries
-produce policy data conforming to that contract; they do not require an MXC
-executor or execution library to perform lookup. A consumer that uses MXC
-passes its final, authorized policy to an existing MXC SDK separately.
-Catalog and library releases do not require an MXC SDK release or changes to
-MXC repository governance.
+MXC retains the existing `SandboxPolicy` contract and SDK types. Each catalog
+library has a required dependency on its language's MXC SDK and constructs
+that SDK's policy type. The dependency runs only from the catalog to MXC:
+MXC neither references the catalog nor performs catalog lookup. A consumer
+passes its final, authorized policy directly to the existing MXC SDK.
+Standalone means separate repository, API, and release ownership, not absence
+of SDK dependencies. SDK dependencies may bring native build or package
+assets; catalog lookup itself does not invoke MXC sandbox execution.
+Catalog and library releases using supported SDK contracts do not require
+an MXC SDK release or changes to MXC repository governance.
 
 ### 6.1 Library distribution and consumption
 
 The initial library language coverage matches MXC's current first-party SDK
 languages, but the packages are owned and released by the catalog project:
 
-| Language | Distribution | API form |
+| Language | Distribution | MXC SDK dependency and policy type |
 |---|---|---|
-| TypeScript / JavaScript | npm package | JavaScript library with TypeScript declarations |
-| Rust | Cargo crate | Public Rust library API |
-| C# / .NET | NuGet package | Managed library API |
+| TypeScript / JavaScript | npm package | `SandboxPolicy` from `@microsoft/mxc-sdk` |
+| Rust | Cargo crate | `mxc_sdk::SandboxPolicy` from `mxc-sdk` |
+| C# / .NET | NuGet package | `Microsoft.Mxc.Sdk.SandboxPolicy` from `Microsoft.Mxc.Sdk` |
 
 Repository and package names remain to be selected. This language match does
 not require copying MXC's native-binding architecture or exposing sandbox
 execution operations.
 
+Each library declares compatible MXC SDK versions. The catalog and caller must
+resolve compatible SDK dependencies with the same policy type identity,
+including crate source/version in Rust. Returned policies must use fields and
+contract versions supported by that SDK; unsupported data must not be silently
+dropped to fit its types.
+
 A consumer:
 
 1. Installs and pins the standalone library package for its language. Each
    package includes a reviewed default catalog revision for local use.
-2. Calls `getCatalogInfo()` or `listCatalogEntries()` for inspection, or
-   `resolveCatalogEntry()` for one tool, using the corresponding language API.
-3. Handles no match without widening its restrictive baseline. For a match,
-   it reviews the returned policy, identity, revisions, and warnings and
-   applies the consumer obligations in [§5.3](#53-consumer-obligations).
+2. Calls `getCatalogInfo()` or `listCatalogEntries()` for inspection.
+   `getSandboxConfig()` returns a policy for one tool or an array;
+   `getSandboxConfigWithDiagnostics()` adds match attribution and warnings.
+3. Handles policy absence without widening its restrictive baseline. It
+   reviews the composed policy and uses the diagnostics operation when it
+   needs contributing identities, revisions, and warnings, applying the
+   consumer obligations in [§5.3](#53-consumer-obligations).
 4. Supplies its final policy to its chosen execution integration. The catalog
    library does not launch a sandbox.
+
+The library API reference and repository/package READMEs must state:
+
+> Returns a candidate MXC `SandboxPolicy` combining the access requirements of
+> all matching tools and their dependencies. Overlapping filesystem
+> requirements use the least restrictive access needed to satisfy the combined
+> requirements, including removal of conflicting catalog-provided denies.
+> This is not authorization or a guarantee of workflow success. The caller
+> decides whether to accept the requested access and must preserve its own
+> user, enterprise, and device restrictions. Use
+> `getSandboxConfigWithDiagnostics` to review contributing entries and access
+> changes, including the full scope of any removed deny.
 
 Lookup is local and does not download updates, contact a hosted service, or
 run the candidate tool. `ResolveContext.catalogRevision` selects an available
@@ -457,16 +751,26 @@ rewrite a consumer's previously accepted per-tool policies.
 ### 6.2 Cross-language consistency and support
 
 All three libraries use the same catalog format and shared conformance
-fixtures. Given the same catalog revision, candidate, and explicit resolution
-context, they must agree on matching, variant selection, dependency metadata,
-resolved policy, warnings, and failure categories. Language-specific absence
-and error types must preserve those distinctions.
+fixtures. Given the same catalog revision, tool inputs, explicit resolution
+context, and relevant host/filesystem observations, they must agree on matching,
+variant selection, dependency metadata, effective policy, diagnostic meaning,
+and failure categories. This is semantic consistency, not byte-identical
+output or reproduction of another language's runtime behavior.
+
+Each binding uses consistent, idiomatic result and error handling for its
+language. Equivalent failures map to the corresponding existing MXC error
+codes, while error types, message wording, and language-specific representations
+may differ. Callers need not understand another binding or parse message text.
+Shared fixtures compare policy semantics and required diagnostic information,
+including prescribed ordering, rather than identical warning prose or
+incidental serialization. The catalog digest format remains shared as
+specified in [§10](#10-immutable-revisions).
 
 Shared fixtures cover platform path semantics as well as ordinary lookup;
 matching function names alone is not compatibility. Package CI must also
 exercise installation, public API usage, and host-derived defaults on the
 supported platforms. Implementation sharing between languages is a separate
-engineering decision, not a requirement to depend on MXC's engine.
+engineering decision; catalog resolution does not move into MXC's engine.
 
 Supporting three languages includes maintaining parity, dependencies,
 documentation, and releases, not only writing the initial implementations.
@@ -481,7 +785,7 @@ are intended to retire together when Learning Mode replaces this workflow.
   range(s), platform evidence, a minimized requirement set, test fixtures,
   and provenance.
 - CI validates schema conformance, exact `SandboxPolicy` version registration,
-  identity uniqueness, dependency closure and cycle-freedom, symbol validity,
+  entry-ID uniqueness, dependency closure and cycle-freedom, symbol validity,
   absence of unsafe user-specific literal paths, unsupported-field rejection,
   deterministic resolution, and package inclusion.
 - A new entry or a requirement expansion requires one catalog-owner approval
@@ -528,6 +832,13 @@ outcomes:
   consumer instead approves or adopts it and its ceiling permits the request,
   the effective policy contains unnecessary capability.
 
+Even correct entries can yield a broader combined request than any one tool
+needs. Read-write requirements supersede overlapping catalog read-only
+requirements, and a conflicting parent deny is removed in full under
+[§4.5](#45-dependencies-and-composition). These changes are intentional and
+reported by the diagnostics API; they are not permission to remove a
+consumer's own restrictions.
+
 What changes from #779 is the review bar. #779 described community-contributed,
 unsigned, unwarranted data. This contract requires named-role approval
 ([§7](#7-contribution-and-review)) before an entry publishes, and publishes
@@ -548,13 +859,25 @@ fix to an over-broad entry, publishes a new `catalogRevision` and bumps the
 affected `entryRevision`; it never rewrites a revision a consumer may already
 have cached or recorded in an audit trail.
 
+In addition to schema validation, verify the stored revision content,
+including shared symbol definitions, against its packaged expected digest
+when loading it. A mismatch is an explicit library failure, not a no-match
+result. Validated immutable data may be cached; each lookup need not rehash it.
+The packaging format defines the digest input consistently across languages,
+without requiring a custom JSON parser or canonicalization implementation.
+
+This lightweight check detects content that no longer matches the packaged
+revision metadata. It does not independently authenticate the publisher or
+protect against replacing both content and digest; authenticity remains a
+property of the trusted package or artifact distribution channel.
+
 ## 11. Backward compatibility
 
 - No change to `SandboxPolicy` or `ContainerConfig` schema.
 - No change to executor behavior.
-- No change to the MXC SDK APIs or dependencies. Catalog lookup requires an
-  explicit call to a standalone library; existing MXC callers see no behavior
-  change.
+- No change to the MXC SDK APIs and no catalog dependency added to MXC.
+  The catalog libraries depend on MXC SDKs, not the reverse. Catalog lookup
+  requires an explicit call; existing MXC callers see no behavior change.
 - Catalog schema and API compatibility are limited to the stopgap's support
   horizon. Retirement in favor of Learning Mode is an expected outcome, not a
   normal promotion milestone.
@@ -564,23 +887,71 @@ have cached or recorded in an audit trail.
 **Resolver libraries (TypeScript/JavaScript, Rust, and C#/.NET)**
 
 - shared conformance fixtures produce equivalent results and failure
-  categories in all three languages
-- single tool returns the expected entry; unknown tool returns `undefined`,
-  or the language-equivalent absence value, never an empty policy
-- omitted context uses host platform/architecture, the installed catalog
-  revision, no caller symbol overrides, and no weak-identity fallback
-- an unresolved required symbol returns `undefined`, never a partial policy
-- identity match strength selection and weak-identity fallback behavior
+  categories in all three languages without requiring identical message text
+  or language-specific representations; each binding's error handling is
+  consistent and uses the corresponding MXC error codes
+- one-tool and one-element-array overloads produce equivalent policies and
+  diagnostics; the simple API returns the same policy as the diagnostic API
+- multiple input tools compose all matching entries and dependencies into one
+  policy; repeated inputs or shared dependencies do not duplicate contributions
+- known and unknown inputs compose the known requirements and report each
+  unmatched input; empty and all-unmatched arrays return no policy, never an
+  empty policy, while the diagnostic API preserves the resolution metadata
+- omitted context uses host platform and native system architecture, the
+  installed catalog revision, no caller symbol overrides, and no weak-identity
+  fallback
+- an unresolved required symbol prevents policy output, with diagnostics,
+  rather than silently omitting selected requirements
+- caller symbol overrides precede discovery, which precedes documented
+  defaults; only required symbols are resolved, with source/value diagnostics
+- failed configuration reads are errors, not default selection; another
+  target environment does not inherit this host's discovered paths
+- pinned catalog revisions retain their shared symbol definitions and defaults;
+  unsupported default templates and executable discovery data are rejected
+- one input matching several entries composes all eligible matches, including
+  equal-strength matches; a stronger match does not suppress a weaker eligible
+  match, and diagnostics preserve all matching entries and identity evidence
+- multiple predicates matching the same entry contribute that policy once;
+  file order does not change matching or composition
+- string shorthand and object inputs obey the same weak-identity fallback
+  option; additive matching does not bypass it
+- invocation-name case variants match identically on all platforms without
+  changing command spelling or package-identity matching
+- filesystem equality, de-duplication, and ancestor checks follow the actual
+  case rules, including case-sensitive macOS volumes and Windows directories;
+  unknown sensitivity preserves differently cased paths with a diagnostic
 - version-range mismatch produces a warning, not a refusal
 - exact-architecture variant precedes the platform-only variant; duplicate
   selectors are rejected; no matching variant produces `undefined`
+- on an ARM64 host with both architecture-specific variants and no neutral
+  variant, omitted architecture selects ARM64; explicit x64 selects x64
+- a library process running as x64 under emulation on an ARM64 host still
+  defaults to the native ARM64 system architecture, not its process
+  architecture
+- a missing exact variant falls back to the platform's neutral variant;
+  a different architecture's variant is never used as a fallback
+- successful host-derived selection and neutral fallback produce the
+  diagnostics specified in [§5.1](#51-runtime-lookup); host-architecture
+  detection failure produces a library error, not a guessed match
 - dependency chain resolution, including cycles (terminate, no duplication)
 - dependency `versionRange` is returned as unevaluated metadata and never used
   for v1 resolver matching
-- restricted composition rules ([§4.5](#45-dependencies-and-composition)):
-  same-class path de-duplication; cross-class path overlap, mixed policy
-  versions, network fields, and other unsupported composed fields are rejected
-  at validation time rather than resolved
+- filesystem floor composition ([§4.5](#45-dependencies-and-composition)):
+  same-class de-duplication; equal read-only/read-write paths become read-write;
+  read-write ancestors subsume read-only descendants, while read-only
+  ancestors remain read-only outside required writable subtrees
+- literal paths and distinct symbols that resolve to equal or nested paths
+  follow the same lookup-time composition rules; catalog publication checks
+  do not substitute for this runtime pass
+- catalog denies equal to, above, or below required read/write paths are
+  removed; non-overlapping denies remain; warnings identify source entries,
+  paths, access changes, and the full scope of removed parent denies
+- overlaps within one entry, across matched inputs, and through dependencies
+  behave identically; both APIs return equivalent composed policies, and
+  entry/input traversal order does not change effective access
+- mixed policy versions, network fields, and other unsupported composed fields
+  remain rejected, including incompatible entries selected together only at
+  lookup time
 - symbol resolution on Windows, Linux, and macOS
 
 **Data (CI)**
@@ -593,16 +964,26 @@ have cached or recorded in an audit trail.
 
 **Integration**
 
-- each package installs and performs lookup without an MXC executor or
-  execution library; lookup requires no network access
+- each package installs with its declared MXC SDK dependency and performs
+  lookup without invoking sandbox execution; lookup requires no network access
+- compiled consumer examples in all three languages pass both the direct
+  result and the diagnostic result's policy to existing MXC SDK APIs without
+  casts, adapters, or serialization; the same SDK policy type is used throughout
 - the bundled catalog revision matches `getCatalogInfo()`; selecting an
   unavailable revision fails explicitly, without falling back to another
   revision
+- changing stored catalog content without updating its expected digest fails
+  on load even when the changed content still passes schema validation
 - a package update leaves previously accepted consumer policies unchanged
 - a representative tool that fails under a minimal consumer policy succeeds
   once its resolved entry is composed in
+- the composed MXC policy realizes the documented read-only/read-write
+  nesting without unnecessarily promoting a read-only parent to read-write;
+  retained backend precedence does not reintroduce removed catalog conflicts
 - the same tool still fails when the consumer's policy forbids what the entry
   requests (the floor never widens the consumer's ceiling)
+- a caller-owned deny still prevents access even when an overlapping
+  catalog-provided deny was removed during floor composition
 
 ## 13. Open questions
 
@@ -614,8 +995,8 @@ Recommended answers are proposals for review, not decisions.
 | Is invocation-name-only identity accepted automatically, or does it require explicit consumer opt-in? | Treat it as a fallback requiring explicit opt-in (`allowWeakIdentityFallback`), not the default. |
 | What happens on a detected tool-version mismatch: `undefined`, or a warning-bearing result the consumer may still use? | Return the resolved result with a warning; refusing outright removes information the consumer needs to decide for itself. |
 | Are private or enterprise catalog overlays in scope, and if so with what precedence? | Defer until the shared catalog contract and its API are stable; define precedence explicitly before any library implementation adds overlay support. |
-| Should the first contract version's composition vocabulary expand beyond [§4.5](#45-dependencies-and-composition) before implementation? | No. Start with conflict-rejecting filesystem composition and expand only with an explicit, reviewed rule per field. |
-| Who owns catalog schema, data, and library API review? | Assign catalog, library, and security reviewers in the dedicated repository; no MXC SDK integration is proposed. |
+| Should the first contract version's composition vocabulary expand beyond [§4.5](#45-dependencies-and-composition) before implementation? | No. Start with least-restrictive filesystem floor composition and expand only with an explicit, reviewed rule per field. |
+| Who owns catalog schema, data, and library API review? | Assign catalog, library, and security reviewers in the dedicated repository; MXC SDKs remain unaware of the catalog. |
 | Should the libraries share a resolver implementation or implement the contract independently? | Choose based on dependency footprint and maintenance cost, with shared conformance fixtures required either way. |
 
 ## 14. Related work
