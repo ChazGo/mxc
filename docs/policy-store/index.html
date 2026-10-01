@@ -73,19 +73,31 @@
               A consumer explicitly passes one tool or an array. The TypeScript, Rust,
               or .NET library resolves its local catalog and returns that SDK's exact
               <code>SandboxPolicy</code>, or <code>undefined</code> when nothing matches.
-              <code>getSandboxConfigWithDiagnostics</code> adds attribution and warnings.
+              <code>resolveSandboxPolicyWithDiagnostics</code> adds attribution and warnings.
             </p>
           </div>
           <div class="api-examples">
-            <pre><code>getSandboxConfig(
-  tool: ToolInput | readonly ToolInput[],
+            <pre><code>declare function resolveSandboxPolicy(
+  tool: ToolInput,
   ctx?: ResolveContext
-): SandboxPolicy | undefined</code></pre>
+): SandboxPolicy | undefined;
+declare function resolveSandboxPolicy(
+  tools: readonly ToolInput[],
+  ctx?: ResolveContext
+): SandboxPolicy | undefined;
+declare function resolveSandboxPolicyWithDiagnostics(
+  tool: ToolInput,
+  ctx?: ResolveContext
+): SandboxConfigResolution;
+declare function resolveSandboxPolicyWithDiagnostics(
+  tools: readonly ToolInput[],
+  ctx?: ResolveContext
+): SandboxConfigResolution;</code></pre>
             <div class="usage-note usage-example">
               <span>Name-only lookup requires weak-identity opt-in</span>
               <code>const ctx = { projectRoot: "C:\\workspace\\project",</code>
               <code>  allowWeakIdentityFallback: true };</code>
-              <code>getSandboxConfig("npm", ctx);</code>
+              <code>resolveSandboxPolicy("npm", ctx);</code>
             </div>
           </div>
           <a href="https://github.com/microsoft/mxc/pull/1309">microsoft/mxc#1309</a>
@@ -276,7 +288,7 @@
               <foreignObject x="288" y="578" width="264" height="86">
                 <div class="svg-node-content">
                   <span>Catalog library</span>
-                  <strong class="api-signature">getSandboxConfig(tool, ctx)</strong>
+                  <strong class="api-signature">resolveSandboxPolicy(tool, ctx)</strong>
                   <small>Explicit local lookup for one tool</small>
                 </div>
               </foreignObject>

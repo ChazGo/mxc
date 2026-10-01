@@ -5,7 +5,7 @@ const details = {
     heading: "Tool invocation",
     summary:
       "The consumer starts with the tool it intends to run and request-local context such as the project root or explicit symbol overrides. This illustrative per-tool flow looks up one tool at a time; the API also accepts an array for one combined policy.",
-    code: 'getSandboxConfig("npm", ctx)',
+    code: 'resolveSandboxPolicy("npm", ctx)',
     items: [
       "A string input supplies only an invocation name, with no package or version evidence",
       "An object input can add packageUrl and detectedVersion; the caller verifies them",
@@ -68,12 +68,12 @@ const details = {
   api: {
     number: "LIB",
     owner: "Catalog library",
-    heading: "getSandboxConfig",
+    heading: "resolveSandboxPolicy",
     summary:
       "A standalone TypeScript, Rust, or .NET library resolves one tool or an array into one composed policy. It returns the corresponding MXC SDK's exact SandboxPolicy type, so a consumer can pass an accepted result to the SDK without conversion. These are in-process calls, not MXC SDK additions or a hosted service.",
-    code: "getSandboxConfig(tool | tools, ctx?)",
+    code: "resolveSandboxPolicy(tool, ctx)",
     items: [
-      "getSandboxConfigWithDiagnostics returns the same policy plus attribution and warnings",
+      "resolveSandboxPolicyWithDiagnostics returns the same policy plus attribution and warnings",
       "Omitted context uses host platform, native architecture, and the installed catalog revision",
       "ctx.projectRoot and ctx.symbols override discovery and documented defaults",
       "Returns undefined when nothing matches; a library error stays distinct from absence",
