@@ -31,14 +31,15 @@
 
     <div class="hero-content">
       <div>
-        <div class="eyebrow"><span class="status-dot"></span> Proposed public preview</div>
+        <div class="eyebrow"><span class="status-dot"></span> Proposed MXC SDK feature</div>
         <h1>A shared floor, not a shared mutable policy</h1>
         <p class="lede">
-          A proposed catalog, owned outside MXC, describes the minimum sandbox
-          requirements of known tools in reviewed, immutable revisions. Its libraries
-          return the MXC SDK's own <code>SandboxPolicy</code>. Each consumer owns lookup,
-          authorization, composition, persistence, audit, and sandbox creation. It is a
-          temporary bridge until Learning Mode replaces it.
+          Proposed MXC SDK APIs resolve reviewed, statically bundled requirements for
+          known tools into an MXC <code>SandboxPolicy</code>. Each consumer owns lookup,
+          authorization, composition, persistence, audit, and sandbox creation. The
+          floors are best-effort compatibility data, not a guarantee that a workflow
+          succeeds. Learning Mode complements them by discovering requirements the
+          bundled catalog does not yet describe.
         </p>
         <div class="hero-actions">
           <a class="button primary" href="#architecture">Explore the design</a>
@@ -67,13 +68,16 @@
       <div class="architecture-shell">
         <div class="api-callout">
           <div>
-            <span class="card-label">Proposed catalog library API</span>
-            <h3>Standalone libraries return the MXC SDK's policy type</h3>
+            <span class="card-label">Proposed MXC SDK API - pending API review</span>
+            <h3>MXC SDK APIs return the existing policy type</h3>
             <p>
-              A consumer explicitly passes one tool or an array. The TypeScript, Rust,
-              or .NET library resolves its local catalog and returns that SDK's exact
-              <code>SandboxPolicy</code>, or <code>undefined</code> when nothing matches.
-              <code>resolveSandboxPolicyWithDiagnostics</code> adds attribution and warnings.
+              A consumer explicitly passes one tool or an array. The MXC SDK resolves
+              its bundled V1 catalog and returns <code>SandboxPolicy</code>, or
+              <code>undefined</code> when nothing matches.
+              <code>resolveSandboxPolicyWithDiagnostics</code> adds attribution and
+              warnings. The APIs are proposed and pending API sign-off before check-in.
+              Their names may change during review, including removal of "Sandbox" to
+              align with MXC naming.
             </p>
           </div>
           <div class="api-examples">
@@ -109,12 +113,12 @@ export declare function resolveSandboxPolicyWithDiagnostics(
             <desc id="flow-description">
               An illustrative consumer, shown with OpenClaw-style per-tool storage,
               checks for a stored per-tool floor. On a miss, it checks whether it has
-              explicitly enabled catalog lookup. If enabled, it calls a standalone
-              catalog library, which reads an immutable local catalog revision and
-              resolves it. A returned floor can be stored per tool after review. An
+              explicitly enabled catalog lookup. If enabled, it calls the MXC SDK,
+              which reads its statically bundled catalog revision and resolves it. A
+              returned floor can be stored per tool after review. An
               undefined result and the disabled path both keep the consumer's
               restrictive baseline. All paths compose policy, apply hard constraints,
-              and create the final MXC sandbox through the MXC SDK.
+              and create the final MXC sandbox.
             </desc>
             <defs>
               <marker id="arrow-head" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
@@ -125,7 +129,7 @@ export declare function resolveSandboxPolicyWithDiagnostics(
             <rect class="flow-lane openclaw-lane" x="20" y="45" width="1860" height="400" rx="22"></rect>
             <rect class="flow-lane mxc-lane" x="20" y="500" width="1860" height="260" rx="22"></rect>
             <text class="lane-title" x="48" y="82">CONSUMER (ILLUSTRATIVE OPENCLAW CHOICES) - WRITABLE POLICY, APPROVAL, AND UX</text>
-            <text class="lane-title" x="48" y="537">CATALOG PROJECT (OUTSIDE MXC) - READ-ONLY DATA AND LIBRARY RESOLUTION</text>
+            <text class="lane-title" x="48" y="537">MXC SDK - READ-ONLY BUNDLED CATALOG AND POLICY RESOLUTION</text>
 
             <path class="flow-arrow" d="M250 190 H315"></path>
             <path class="flow-arrow" d="M485 190 H550"></path>
@@ -287,7 +291,7 @@ export declare function resolveSandboxPolicyWithDiagnostics(
               <rect x="270" y="560" width="300" height="120" rx="16"></rect>
               <foreignObject x="288" y="578" width="264" height="86">
                 <div class="svg-node-content">
-                  <span>Catalog library</span>
+                  <span>MXC SDK</span>
                   <strong class="api-signature">resolveSandboxPolicy(tool, ctx)</strong>
                   <small>Explicit local lookup for one tool</small>
                 </div>
@@ -356,15 +360,15 @@ export declare function resolveSandboxPolicyWithDiagnostics(
       <div class="ownership-grid">
         <article class="ownership-card mxc">
           <span class="ownership-tag">Shared and read-only</span>
-          <h3>Proposed catalog project</h3>
+          <h3>MXC SDK and bundled catalog</h3>
           <ul>
-            <li>Known-tool requirement catalog in immutable revisions</li>
+            <li>Known-tool requirement catalog bundled with the SDK release</li>
             <li>Catalog schema, validation, and integrity digests</li>
             <li>Matching, dependency closure, and filesystem floor composition</li>
-            <li>TypeScript, Rust, and .NET libraries on real MXC SDK types</li>
+            <li>Proposed TypeScript, Rust, and .NET SDK APIs</li>
             <li>Lookup diagnostics and catalog inspection</li>
           </ul>
-          <p class="boundary-note">MXC keeps <code>SandboxPolicy</code> and its SDKs and never calls the catalog. The catalog returns requirements, not permission.</p>
+          <p class="boundary-note">The APIs and static V1 data live in the MXC repository and ship in the existing SDK packages. They are targeted for a later release after MXC 1.0, with a catalog schema that remains compatible within MXC 1.x. Lookup is an SDK API, not a hosted service or CLI.</p>
         </article>
 
         <article class="ownership-card agent">
@@ -408,7 +412,7 @@ export declare function resolveSandboxPolicyWithDiagnostics(
           </summary>
           <div class="consumer-detail">
             <p>
-              The same library contract can support another agent that needs shared
+              The same proposed MXC SDK contract can support another agent that needs
               known-tool requirements while retaining its own settings and policy
               experience. A direct catalog integration is not committed by the
               public design sources.
@@ -451,15 +455,15 @@ export declare function resolveSandboxPolicyWithDiagnostics(
         <li>
           <span class="flow-number">2</span>
           <div>
-            <h3>Review and publish a catalog entry</h3>
-            <p>The requirement is generalized, validated, and reviewed, then published in an immutable revision. Corrections publish a new revision.</p>
+            <h3>Review and bundle a catalog entry</h3>
+            <p>The requirement is generalized, validated, and reviewed, then included in an immutable catalog revision bundled with an SDK release. Corrections ship in a later bundled revision.</p>
           </div>
         </li>
         <li>
           <span class="flow-number">3</span>
           <div>
-            <h3>Resolve through a catalog library</h3>
-            <p>On an explicit call, the library composes every eligible match and dependency, resolves symbols, and returns the SDK's <code>SandboxPolicy</code> or <code>undefined</code>. Lookup is local: it never runs the tool or uses the network.</p>
+            <h3>Resolve through the MXC SDK</h3>
+            <p>On an explicit call, the SDK composes every eligible match and dependency from its bundled catalog, resolves symbols, and returns <code>SandboxPolicy</code> or <code>undefined</code>. Lookup is local: it never runs the tool or downloads policy data.</p>
           </div>
         </li>
         <li>
@@ -496,12 +500,12 @@ export declare function resolveSandboxPolicyWithDiagnostics(
       </div>
 
       <div class="question-grid">
-        <article><span>Repository</span><h3>What is the dedicated repository's name, owning team, and reviewer set?</h3></article>
+        <article><span>API naming</span><h3>Should the proposed names drop "Sandbox" to align with the broader MXC naming direction?</h3></article>
         <article><span>Identity</span><h3>Does invocation-name-only matching require explicit consumer opt-in?</h3></article>
+        <article><span>Intent</span><h3>Must lookup include operation intent, such as Git pull versus push, when one executable needs different floors?</h3></article>
         <article><span>Version mismatch</span><h3>Does a detected tool-version mismatch return the policy with a warning rather than nothing?</h3></article>
         <article><span>Overlays</span><h3>Are private or enterprise catalog overlays in scope, and with what precedence?</h3></article>
         <article><span>Composition</span><h3>Should composition expand beyond filesystem floors before implementation?</h3></article>
-        <article><span>Implementation</span><h3>Should the three libraries share one resolver or conform independently to shared fixtures?</h3></article>
       </div>
     </section>
 
@@ -517,7 +521,7 @@ export declare function resolveSandboxPolicyWithDiagnostics(
         <a href="https://github.com/ChazGo/mxc/blob/ed8a75c01f9c69f0a55fe9d7cdc2af39a764b42f/docs/mxc-policy-store.md">
           <span>Feature spec</span>
           <strong>microsoft/mxc#1309 - Known-tool policy floors</strong>
-          <small>Proposed public-preview catalog and library contract, pinned to revision ed8a75c.</small>
+          <small>Earlier contract draft pinned to revision ed8a75c; this page reflects subsequent placement and release decisions.</small>
         </a>
         <a href="https://github.com/microsoft/mxc/pull/779">
           <span>Design proposal</span>
@@ -532,9 +536,10 @@ export declare function resolveSandboxPolicyWithDiagnostics(
       </div>
 
       <p class="as-of">
-        Design status as of October 1, 2026, checked against spec revision ed8a75c of
-        microsoft/mxc#1309. This page describes proposed behavior, not shipped MXC,
-        catalog, or agent runtime behavior. The earlier
+        Design status as of October 1, 2026. The linked spec revision is an earlier
+        contract draft; this page reflects subsequent placement and release decisions.
+        The APIs remain pending review and are not part of MXC 1.0; a later MXC SDK
+        release is targeted. The earlier
         <a href="https://github.com/ChazGo/mxc/pull/1">draft prototype (ChazGo/mxc#1)</a>
         predates this contract revision.
       </p>

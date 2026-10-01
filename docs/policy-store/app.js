@@ -9,6 +9,7 @@ const details = {
     items: [
       "A string input supplies only an invocation name, with no package or version evidence",
       "An object input can add packageUrl and detectedVersion; the caller verifies them",
+      "Operation intent, such as Git pull versus push, remains an open identity input",
       "Project context lets symbols such as ${project_root} resolve correctly",
     ],
   },
@@ -33,7 +34,7 @@ const details = {
       "Existing callers never look up the catalog automatically. A consumer must explicitly enable or invoke lookup. Whether a given product, such as OpenClaw, offers that setting or turns it on is that product's decision; this page does not assume a default.",
     code: "catalog lookup = consumer opt-in",
     items: [
-      "Enabled calls the catalog library once for the missing tool",
+      "Enabled calls the MXC SDK once for the missing tool",
       "Disabled keeps the consumer's restrictive baseline",
       "Name-only matches also need allowWeakIdentityFallback: true",
       "The setting controls lookup, not OS or enterprise ceilings",
@@ -44,12 +45,12 @@ const details = {
     owner: "Consumer owned",
     heading: "Keep restrictive baseline",
     summary:
-      "When lookup is disabled, or the library returns undefined because nothing matched or a required symbol could not be resolved, the consumer's restrictive baseline remains unchanged. Absence is never treated as an empty policy or a reason to run uncontained.",
+      "When lookup is disabled, or the SDK returns undefined because nothing matched or a required symbol could not be resolved, the consumer's restrictive baseline remains unchanged. Absence is never treated as an empty policy or a reason to run uncontained.",
     code: "policy === undefined → baseline unchanged",
     items: [
       "The baseline is the consumer's choice, not catalog data",
       "The baseline is not stored as the tool's floor",
-      "A later invocation can look up a newly published floor",
+      "A later SDK release can include a newly reviewed floor",
     ],
   },
   stored: {
@@ -57,7 +58,7 @@ const details = {
     owner: "Consumer owned",
     heading: "Load stored floor",
     summary:
-      "When the consumer already holds an accepted record for the tool, it loads that floor and proceeds without resolving the catalog again. Installing a newer catalog does not rewrite previously accepted policies.",
+      "When the consumer already holds an accepted record for the tool, it loads that floor and proceeds without resolving the catalog again. Updating to an SDK release with a newer bundled catalog does not rewrite previously accepted policies.",
     code: "storedFloor = policyStore.get(toolId)",
     items: [
       "The floor remains separate from user and learned overrides",
@@ -67,21 +68,22 @@ const details = {
   },
   api: {
     number: "LIB",
-    owner: "Catalog library",
+    owner: "MXC SDK",
     heading: "resolveSandboxPolicy",
     summary:
-      "A standalone TypeScript, Rust, or .NET library resolves one tool or an array into one composed policy. It returns the corresponding MXC SDK's exact SandboxPolicy type, so a consumer can pass an accepted result to the SDK without conversion. These are in-process calls, not MXC SDK additions or a hosted service.",
+      "Proposed TypeScript, Rust, and .NET MXC SDK APIs resolve one tool or an array into one composed SandboxPolicy. They are pending API sign-off before check-in, target a later SDK release, and are not part of MXC 1.0.",
     code: "resolveSandboxPolicy(tool, ctx)",
     items: [
       "resolveSandboxPolicyWithDiagnostics returns the same policy plus attribution and warnings",
+      "The proposed names may change during API review, including removal of Sandbox",
       "Omitted context uses host platform, native architecture, and the installed catalog revision",
       "ctx.projectRoot and ctx.symbols override discovery and documented defaults",
-      "Returns undefined when nothing matches; a library error stays distinct from absence",
+      "Returns undefined when nothing matches; an SDK error stays distinct from absence",
     ],
   },
   floor: {
     number: "03",
-    owner: "Library output",
+    owner: "SDK output",
     heading: "Policy floor",
     summary:
       "The returned floor is a candidate SandboxPolicy combining the known minimum requirements of every matched tool and dependency. It is compatibility input, not authorization or a guarantee of workflow success.",
@@ -94,10 +96,10 @@ const details = {
   },
   catalog: {
     number: "DATA",
-    owner: "Catalog project",
+    owner: "MXC SDK",
     heading: "Read reviewed floor",
     summary:
-      "The library reads a local, immutable catalog revision. Its content, including shared symbol defaults, is checked against the packaged digest on load. Lookup never downloads updates or contacts a service.",
+      "The SDK reads a local, immutable catalog revision bundled statically with that SDK release. Its content, including shared symbol defaults, is checked against the packaged digest on load. Lookup never downloads updates or contacts a service.",
     code: "ctx.catalogRevision ?? installed default",
     items: [
       "Entries carry identity, platform variants, dependencies, and provenance",
@@ -107,7 +109,7 @@ const details = {
   },
   resolution: {
     number: "LIB",
-    owner: "Catalog library",
+    owner: "MXC SDK",
     heading: "Resolve requirement",
     summary:
       "The resolver adds every eligible matching entry and dependency, selects platform and architecture variants, resolves symbols, and composes filesystem floors. It never runs the candidate tool.",
@@ -128,7 +130,7 @@ const details = {
     code: "policyStore.set(toolId, acceptedFloor, revisions)",
     items: [
       "Catalog-derived requirements stay in a layer separate from user and learned policy",
-      "The library never writes the consumer's store",
+      "The SDK never writes the consumer's store",
       "The stored record then follows the same composition path as a stored hit",
     ],
   },
@@ -137,7 +139,7 @@ const details = {
     owner: "Consumer owned",
     heading: "Floor returned?",
     summary:
-      "The consumer branches on the library result. A SandboxPolicy can be reviewed and stored. Undefined means no policy was resolved, so the restrictive baseline stays in effect.",
+      "The consumer branches on the SDK result. A SandboxPolicy can be reviewed and stored. Undefined means no policy was resolved, so the restrictive baseline stays in effect.",
     code: "result === undefined ? baseline : review(result)",
     items: [
       "SandboxPolicy flows to review and per-tool storage",
@@ -176,10 +178,11 @@ const details = {
     owner: "Execution result",
     heading: "Final MXC sandbox",
     summary:
-      "The consumer passes its final, authorized policy to the existing MXC SDK. MXC neither references the catalog nor performs catalog lookup.",
+      "The consumer passes its final, authorized policy through the MXC SDK after the proposed lookup API resolves the SDK's bundled catalog.",
     code: "createConfigFromPolicy(effectivePolicy)",
     items: [
       "The existing MXC configuration path remains unchanged",
+      "The catalog schema stays compatible within MXC 1.x",
       "Contained execution receives only the effective composed policy",
       "The consumer records revisions, matches, warnings, and approvals in its own audit trail",
     ],
