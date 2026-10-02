@@ -32,6 +32,7 @@ pub mod json;
 pub mod model;
 pub mod paths;
 pub mod purl;
+pub mod request;
 pub mod resolver;
 pub mod store;
 mod text;

@@ -9,7 +9,7 @@
 use mxc_policy_store::tooling::{Json, JsonObject};
 use mxc_policy_store::{
     Architecture, CatalogStore, ErrorReason, FixedHost, MemorySource, Platform, PolicyCatalog,
-    PolicyCatalogError, ResolveContext, SymbolMap, ToolCandidate, ToolInput, ToolInputs,
+    PolicyCatalogError, ResolveContext, ToolInputs,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -113,55 +113,12 @@ pub fn reason_of<T: std::fmt::Debug>(result: Result<T, PolicyCatalogError>) -> E
     error.reason()
 }
 
-fn candidate(value: &Json) -> ToolInput {
-    match value {
-        Json::String(s) => ToolInput::Name(s.clone()),
-        Json::Object(o) => ToolInput::Candidate(ToolCandidate {
-            invocation_name: o
-                .get("invocationName")
-                .and_then(Json::as_str)
-                .unwrap()
-                .to_string(),
-            package_url: o
-                .get("packageUrl")
-                .and_then(Json::as_str)
-                .map(str::to_string),
-            detected_version: o
-                .get("detectedVersion")
-                .and_then(Json::as_str)
-                .map(str::to_string),
-        }),
-        other => panic!("unsupported tool input {other}"),
-    }
-}
-
-/// Fixture `tools` (single input or array) as library inputs.
+/// Fixture `tools` (single input or array), through the binding parser.
 pub fn tools_from(value: &Json) -> ToolInputs {
-    match value {
-        Json::Array(items) => ToolInputs(items.iter().map(candidate).collect()),
-        single => ToolInputs(vec![candidate(single)]),
-    }
+    mxc_policy_store::request::parse_tool_inputs(value).expect("fixture tools parse")
 }
 
-/// Fixture `context` as a library context.
+/// Fixture `context`, through the binding parser.
 pub fn context_from(value: Option<&Json>) -> ResolveContext {
-    let mut ctx = ResolveContext::new();
-    let Some(value) = value else { return ctx };
-    let s = |k: &str| value.get(k).and_then(Json::as_str).map(str::to_string);
-    ctx.project_root = s("projectRoot");
-    ctx.platform = s("platform");
-    ctx.architecture = s("architecture");
-    ctx.catalog_revision = s("catalogRevision");
-    ctx.allow_weak_identity_fallback = value
-        .get("allowWeakIdentityFallback")
-        .and_then(Json::as_bool)
-        == Some(true);
-    if let Some(symbols) = value.get("symbols").and_then(Json::as_object) {
-        let mut map = SymbolMap::new();
-        for (k, v) in symbols.iter() {
-            map.insert(k, v.as_str().unwrap());
-        }
-        ctx.symbols = Some(map);
-    }
-    ctx
+    mxc_policy_store::request::parse_resolve_context(value).expect("fixture context parses")
 }

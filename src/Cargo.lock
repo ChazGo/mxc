@@ -1630,6 +1630,7 @@ dependencies = [
  "bwrap_common",
  "libc",
  "mxc_engine",
+ "mxc_policy_store",
  "serde_json",
  "wxc_common",
 ]

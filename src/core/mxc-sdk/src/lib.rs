@@ -155,6 +155,8 @@
 //! `mxc-sdk` re-exports the curated surface and wraps the engine's streaming
 //! handle in [`Sandbox`].
 
+pub mod policy_store;
+
 pub mod sandbox;
 
 pub mod telemetry;

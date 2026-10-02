@@ -22,6 +22,8 @@ test-support = ["wxc_common/test-support"]
 [dependencies]
 wxc_common.workspace = true
 mxc_engine = { workspace = true }
+mxc_policy_store.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 serde_json = { workspace = true }
