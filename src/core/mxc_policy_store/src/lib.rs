@@ -37,6 +37,7 @@ pub mod resolver;
 pub mod store;
 mod text;
 pub mod validate;
+pub mod vers;
 pub mod version_range;
 
 pub use errors::{ErrorCode, ErrorReason, PolicyCatalogError};
@@ -80,3 +81,5 @@ pub mod tooling {
     };
     pub use crate::version_range::{is_valid_version_range, satisfies_version_range};
 }
+
+pub use vers::{VersRange, Version, VersionScheme};
