@@ -4,12 +4,12 @@ const details = {
     owner: "Consumer runtime",
     heading: "Tool invocation",
     summary:
-      "The consumer starts with the tool it intends to run and request-local context such as the project root or explicit symbol overrides. This illustrative per-tool flow looks up one tool at a time; the API also accepts an array for one combined policy.",
-    code: 'resolveSandboxPolicy("npm", ctx)',
+      "The consumer starts with one tool or an array and request-local context such as the project root or explicit symbol overrides. Each candidate can include strong package identity, a fallback invocation name, a detected version, and an operation intent.",
+    code: 'resolveSandboxPolicy({ invocationName: "git", intent: "push" }, ctx)',
     items: [
-      "A string input supplies only an invocation name, with no package or version evidence",
-      "An object input can add packageUrl and detectedVersion; the caller verifies them",
-      "Operation intent, such as Git pull versus push, remains an open identity input",
+      "packageUrl is the strong match; invocationName is the explicitly enabled fallback",
+      "Invocation-name matching ignores case on Windows and macOS and is exact on Linux",
+      "An object input can add intent and detectedVersion; the caller verifies all supplied identity",
       "Project context lets symbols such as ${project_root} resolve correctly",
     ],
   },
@@ -71,14 +71,14 @@ const details = {
     owner: "MXC SDK",
     heading: "resolveSandboxPolicy",
     summary:
-      "Proposed TypeScript, Rust, and .NET MXC SDK APIs resolve one tool or an array into one composed SandboxPolicy. They are pending API sign-off before check-in, target a later SDK release, and are not part of MXC 1.0.",
+      "Proposed TypeScript, Rust, and .NET MXC SDK APIs resolve one tool or an array into one composed SandboxPolicy. The Rust mxc_policy_store core serves every SDK; Node and .NET wrap it through mxc_ffi. The APIs are pending sign-off, target a later release, and are not part of MXC 1.0.",
     code: "resolveSandboxPolicy(tool, ctx)",
     items: [
       "resolveSandboxPolicyWithDiagnostics returns the same policy plus attribution and warnings",
       "The proposed names may change during API review, including removal of Sandbox",
       "Omitted context uses host platform, native architecture, and the installed catalog revision",
       "ctx.projectRoot and ctx.symbols override discovery and documented defaults",
-      "Returns undefined when nothing matches; an SDK error stays distinct from absence",
+      "Returns undefined when no pair contributes; .NET failures throw MxcException with Reason",
     ],
   },
   floor: {
@@ -86,11 +86,11 @@ const details = {
     owner: "SDK output",
     heading: "Policy floor",
     summary:
-      "The returned floor is a candidate SandboxPolicy combining the known minimum requirements of every matched tool and dependency. It is compatibility input, not authorization or a guarantee of workflow success.",
+      "The returned floor is a candidate SandboxPolicy combining the known minimum requirements of every contributing tool-plus-intent pair and dependency. It is compatibility input, not authorization or a guarantee of workflow success.",
     code: "SandboxPolicy | undefined",
     items: [
-      "Composition preserves the least restrictive filesystem access the tools need",
-      "A missing entry leaves the consumer's existing baseline in effect",
+      "Filesystem and scoped network requirements combine to satisfy every contributing pair",
+      "Unmatched tools and unsupported intents contribute nothing while other inputs still resolve",
       "The consumer decides whether the requested access is permitted",
     ],
   },
@@ -102,7 +102,8 @@ const details = {
       "The SDK reads a local, immutable catalog revision bundled statically with that SDK release. Its content, including shared symbol defaults, is checked against the packaged digest on load. Lookup never downloads updates or contacts a service.",
     code: "ctx.catalogRevision ?? installed default",
     items: [
-      "Entries carry identity, platform variants, dependencies, and provenance",
+      "Entries carry one default, add-only host/version overlays, intents, dependencies, and provenance",
+      "Every entry declares one of five version schemes: npm, semver, pypi, nuget, or intdot",
       "A requested revision that is unavailable is an error, not a substitution",
       "Consumers cannot write approvals or learned changes into the catalog",
     ],
@@ -112,13 +113,13 @@ const details = {
     owner: "MXC SDK",
     heading: "Resolve requirement",
     summary:
-      "The resolver adds every eligible matching entry and dependency, selects platform and architecture variants, resolves symbols, and composes filesystem floors. It never runs the candidate tool.",
+      "For each input, the resolver selects one identity match, starts with its conservative default, applies at most one add-only platform/architecture overlay and one non-overlapping version overlay, then selects intent. It never runs the candidate tool.",
     code: "return SandboxPolicy | undefined",
     items: [
-      "Matching is additive: a stronger match does not suppress a weaker eligible one",
-      "Invocation names match case-insensitively; paths follow the real filesystem's case rules",
-      "Read-write supersedes overlapping read-only; a conflicting catalog deny is removed entirely",
-      "Unresolved required symbols return no policy, never a partial one",
+      "Valid uncovered versions use the default with version_out_of_range; unparseable versions contribute nothing",
+      "An unsupported named intent contributes nothing instead of falling back to base or every intent",
+      "Read-write supersedes overlapping read-only; conflicting catalog denies are removed and diagnosed",
+      "Unsupported compositions fail rather than approximating broader access",
     ],
   },
   persist: {
@@ -156,6 +157,7 @@ const details = {
     code: "floor + consumer policy + approval",
     items: [
       "Diagnostics show superseded read-only paths and the full scope of removed catalog denies",
+      "A no-network pair does not veto scoped network access required by another pair",
       "Caller-owned denies are never removed by catalog composition",
       "Consumer settings and UI remain outside the read-only catalog",
     ],

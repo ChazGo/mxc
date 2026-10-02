@@ -72,16 +72,39 @@
             <h3>MXC SDK APIs return the existing policy type</h3>
             <p>
               A consumer explicitly passes one tool or an array. The MXC SDK resolves
-              its bundled V1 catalog and returns <code>SandboxPolicy</code>, or
-              <code>undefined</code> when nothing matches.
+              each tool-plus-intent pair from its bundled V1 catalog and returns one
+              composed <code>SandboxPolicy</code>, or <code>undefined</code> when no
+              pair contributes.
               <code>resolveSandboxPolicyWithDiagnostics</code> adds attribution and
-              warnings. The APIs are proposed and pending API sign-off before check-in.
-              Their names may change during review, including removal of "Sandbox" to
-              align with MXC naming.
+              per-input statuses. Package URL is the strong identity; invocation name
+              is the explicitly enabled fallback. The APIs are proposed and pending API
+              sign-off before check-in. Their names may change during review, including
+              removal of "Sandbox" to align with MXC naming.
             </p>
           </div>
           <div class="api-examples">
-            <pre><code>export declare function resolveSandboxPolicy(
+            <pre><code>import type {
+              SandboxConfigResolution,
+              SandboxPolicy,
+            } from "@microsoft/mxc-sdk";
+
+            export interface ToolCandidate {
+              invocationName: string;
+              packageUrl?: string;
+              detectedVersion?: string;
+              intent?: string;
+            }
+            export type ToolInput = string | ToolCandidate;
+            export interface ResolveContext {
+              projectRoot?: string;
+              symbols?: Record&lt;string, string&gt;;
+              platform?: "windows" | "linux" | "macos";
+              architecture?: "x64" | "arm64";
+              catalogRevision?: string;
+              allowWeakIdentityFallback?: boolean;
+            }
+
+            export declare function resolveSandboxPolicy(
   tool: ToolInput,
   ctx?: ResolveContext
 ): SandboxPolicy | undefined;
@@ -99,9 +122,10 @@ export declare function resolveSandboxPolicyWithDiagnostics(
 ): SandboxConfigResolution;</code></pre>
             <div class="usage-note usage-example">
               <span>Name-only lookup requires weak-identity opt-in</span>
-              <code>const ctx = { projectRoot: "C:\\workspace\\project",</code>
+              <code>const ctx: ResolveContext = { projectRoot: "C:\\workspace\\project",</code>
               <code>  allowWeakIdentityFallback: true };</code>
-              <code>resolveSandboxPolicy("npm", ctx);</code>
+              <code>resolveSandboxPolicy({ invocationName: "git",</code>
+              <code>  detectedVersion: "2.45", intent: "push" }, ctx);</code>
             </div>
           </div>
           <a href="https://github.com/microsoft/mxc/pull/1309">microsoft/mxc#1309</a>
@@ -114,11 +138,13 @@ export declare function resolveSandboxPolicyWithDiagnostics(
               An illustrative consumer, shown with OpenClaw-style per-tool storage,
               checks for a stored per-tool floor. On a miss, it checks whether it has
               explicitly enabled catalog lookup. If enabled, it calls the MXC SDK,
-              which reads its statically bundled catalog revision and resolves it. A
-              returned floor can be stored per tool after review. An
-              undefined result and the disabled path both keep the consumer's
-              restrictive baseline. All paths compose policy, apply hard constraints,
-              and create the final MXC sandbox.
+              which reads its statically bundled catalog revision and resolves each
+              requested tool-plus-intent pair. Contributing pairs compose into one
+              floor; unmatched, unparseable-version, and unsupported-intent pairs
+              contribute nothing. A returned floor can be stored per tool after
+              review. An undefined result and the disabled path both keep the
+              consumer's restrictive baseline. All paths apply hard constraints and
+              create the final MXC sandbox.
             </desc>
             <defs>
               <marker id="arrow-head" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
@@ -293,7 +319,7 @@ export declare function resolveSandboxPolicyWithDiagnostics(
                 <div class="svg-node-content">
                   <span>MXC SDK</span>
                   <strong class="api-signature">resolveSandboxPolicy(tool, ctx)</strong>
-                  <small>Explicit local lookup for one tool</small>
+                  <small>Explicit local lookup for one tool or an array</small>
                 </div>
               </foreignObject>
             </g>
@@ -315,7 +341,7 @@ export declare function resolveSandboxPolicyWithDiagnostics(
                 <div class="svg-node-content">
                   <span>Resolver</span>
                   <strong>Resolve requirement</strong>
-                  <small>Matches, dependencies, variant, symbols, composition</small>
+                  <small>Identity, overlays, intent, dependencies, composition</small>
                 </div>
               </foreignObject>
             </g>
@@ -364,11 +390,12 @@ export declare function resolveSandboxPolicyWithDiagnostics(
           <ul>
             <li>Known-tool requirement catalog bundled with the SDK release</li>
             <li>Catalog schema, validation, and integrity digests</li>
-            <li>Matching, dependency closure, and filesystem floor composition</li>
+            <li>Identity, version, platform, architecture, and intent resolution</li>
+            <li>Dependency closure plus filesystem and network floor composition</li>
             <li>Proposed TypeScript, Rust, and .NET SDK APIs</li>
             <li>Lookup diagnostics and catalog inspection</li>
           </ul>
-          <p class="boundary-note">The APIs and static V1 data live in the MXC repository and ship in the existing SDK packages. They are targeted for a later release after MXC 1.0, with a catalog schema that remains compatible within MXC 1.x. Lookup is an SDK API, not a hosted service or CLI.</p>
+          <p class="boundary-note">The APIs and static V1 data live in the MXC repository and ship in the existing SDK packages. The Rust <code>mxc_policy_store</code> core performs resolution; Node and .NET wrap it through <code>mxc_ffi</code>. They are targeted for a later release after MXC 1.0, with a catalog schema that remains compatible within MXC 1.x. Lookup is an SDK API, not a hosted service or CLI. .NET failures use <code>MxcException</code> with a <code>Reason</code> property for an optional stable catalog-specific reason.</p>
         </article>
 
         <article class="ownership-card agent">
@@ -442,7 +469,77 @@ export declare function resolveSandboxPolicyWithDiagnostics(
           <span class="kicker">Proposed data flow</span>
           <h2>From reviewed requirement to contained execution</h2>
         </div>
+        <p>Every entry has one conservative default. Resolution applies only additive overlays, then selects intent.</p>
       </div>
+
+      <div class="resolver-model" aria-label="Effective policy construction order">
+        <article>
+          <span>1. Default</span>
+          <strong>Conservative common floor</strong>
+          <small>Required once per entry, with base policy and common intents.</small>
+        </article>
+        <b aria-hidden="true">+</b>
+        <article>
+          <span>2. Host overlay</span>
+          <strong>Platform + architecture</strong>
+          <small>At most one matching additive overlay.</small>
+        </article>
+        <b aria-hidden="true">+</b>
+        <article>
+          <span>3. Version overlay</span>
+          <strong>Zero or one VERS range</strong>
+          <small>Non-overlapping and parsed with the entry's required scheme.</small>
+        </article>
+        <b aria-hidden="true">+</b>
+        <article>
+          <span>4. Intent</span>
+          <strong>Named operation or all</strong>
+          <small>A named intent must exist; omission selects every effective intent.</small>
+        </article>
+      </div>
+      <p class="model-equation"><code>effective policy = default + platform/architecture additions + at most one version variant + selected intent</code></p>
+
+      <div class="resolution-grid">
+        <article class="status-card">
+          <span class="card-label">Identity and version selection</span>
+          <h3>One deterministic result per requested pair</h3>
+          <p><code>packageUrl</code> is the strong identity and <code>invocationName</code> is the fallback. Invocation names compare case-insensitively on Windows and macOS, and exactly on Linux. Each entry declares <code>versionScheme</code> as <code>npm</code>, <code>semver</code>, <code>pypi</code>, <code>nuget</code>, or <code>intdot</code>.</p>
+          <div class="status-table-shell">
+            <table>
+              <thead><tr><th>Situation</th><th>Status</th><th>Contribution</th></tr></thead>
+              <tbody>
+                <tr><td>No version</td><td><code>matched_default</code></td><td>Default</td></tr>
+                <tr><td>Version inside one range</td><td><code>matched_version</code></td><td>Default + variant</td></tr>
+                <tr><td>Valid version outside every range, including an empty range list</td><td><code>version_out_of_range</code></td><td>Default</td></tr>
+                <tr><td>Unparseable version</td><td><code>version_unparseable</code></td><td>Nothing</td></tr>
+                <tr><td>Undefined named intent</td><td><code>intent_unsupported</code></td><td>Nothing</td></tr>
+                <tr><td>No intent</td><td>Version status</td><td>Base + all effective intents</td></tr>
+                <tr><td>Unmatched tool</td><td><code>tool_unmatched</code></td><td>Nothing</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="status-note">Other pairs still resolve, so one result may cover only part of an array request. An out-of-range version with an unsupported intent emits both diagnostics. Selection never substitutes a different range or entry.</p>
+        </article>
+
+        <article class="git-example">
+          <span class="card-label">Illustrative Git entry</span>
+          <h3>Small overlays, complete rendered review</h3>
+          <div class="git-layers">
+            <div><b>Default</b><span>Read Git; read/write project; <code>fetch</code> and <code>push</code>.</span></div>
+            <div><b>Windows</b><span>Add read access to <code>${programData}/Git</code>.</span></div>
+            <div><b><code>&gt;=2.40 &lt;2.50</code></b><span>Add the SSH dependency only to inherited <code>push</code>.</span></div>
+            <div><b><code>&gt;=2.50 &lt;3</code></b><span>Add the new <code>bundle-fetch</code> intent, cache path, and HTTPS rule.</span></div>
+          </div>
+          <p>Git 2.45 + <code>push</code> includes the default, Windows path, push rule, and SSH dependency. Git 2.55 + <code>bundle-fetch</code> includes that newer intent but not the other range's SSH addition. With no version, <code>bundle-fetch</code> is unsupported and contributes no base policy.</p>
+          <p>Publication materializes every platform × architecture × version × intent policy, validates it against the MXC schema, proves the default is a subset, rejects overlapping ranges or narrowing operations, and produces a rendered view for reviewers.</p>
+        </article>
+      </div>
+
+      <aside class="composition-callout">
+        <span class="card-label">Composition across contributing pairs</span>
+        <h3>Satisfy every selected requirement, never a broader approximation</h3>
+        <p>A tool with no network need does not veto another tool's scoped network requirement. Read-write supersedes overlapping read-only access. Catalog denies that conflict with required access are removed and diagnosed, while caller-owned restrictions remain authoritative. If selected requirements cannot be represented by the defined filesystem and network rules, resolution fails instead of granting broader access.</p>
+      </aside>
 
       <ol class="flow-list">
         <li>
@@ -456,14 +553,14 @@ export declare function resolveSandboxPolicyWithDiagnostics(
           <span class="flow-number">2</span>
           <div>
             <h3>Review and bundle a catalog entry</h3>
-            <p>The requirement is generalized, validated, and reviewed, then included in an immutable catalog revision bundled with an SDK release. Corrections ship in a later bundled revision.</p>
+            <p>The common default and add-only overlays are generalized, materialized, validated, and reviewed, then included in an immutable catalog revision bundled with an SDK release. Corrections ship in a later bundled revision.</p>
           </div>
         </li>
         <li>
           <span class="flow-number">3</span>
           <div>
             <h3>Resolve through the MXC SDK</h3>
-            <p>On an explicit call, the SDK composes every eligible match and dependency from its bundled catalog, resolves symbols, and returns <code>SandboxPolicy</code> or <code>undefined</code>. Lookup is local: it never runs the tool or downloads policy data.</p>
+            <p>On an explicit call, the SDK selects one entry per input, applies its default and additive overlays, selects intent, resolves dependencies and symbols, and composes contributing pairs. Lookup is local: it never runs the tool or downloads policy data.</p>
           </div>
         </li>
         <li>
@@ -501,11 +598,8 @@ export declare function resolveSandboxPolicyWithDiagnostics(
 
       <div class="question-grid">
         <article><span>API naming</span><h3>Should the proposed names drop "Sandbox" to align with the broader MXC naming direction?</h3></article>
-        <article><span>Identity</span><h3>Does invocation-name-only matching require explicit consumer opt-in?</h3></article>
-        <article><span>Intent</span><h3>Must lookup include operation intent, such as Git pull versus push, when one executable needs different floors?</h3></article>
-        <article><span>Version mismatch</span><h3>Does a detected tool-version mismatch return the policy with a warning rather than nothing?</h3></article>
-        <article><span>Overlays</span><h3>Are private or enterprise catalog overlays in scope, and with what precedence?</h3></article>
-        <article><span>Composition</span><h3>Should composition expand beyond filesystem floors before implementation?</h3></article>
+        <article><span>Validation</span><h3>Which authoritative MXC validator checks effective policies and maps their policy versions to the selected 1.x contract?</h3></article>
+        <article><span>Package URL</span><h3>Which normalization and equality rules apply to encoding, case, qualifiers, versions, subpaths, and malformed input?</h3></article>
       </div>
     </section>
 
@@ -536,7 +630,7 @@ export declare function resolveSandboxPolicyWithDiagnostics(
       </div>
 
       <p class="as-of">
-        Design status as of October 1, 2026. The linked spec revision is an earlier
+        Design status as of October 2, 2026. The linked spec revision is an earlier
         contract draft; this page reflects subsequent placement and release decisions.
         The APIs remain pending review and are not part of MXC 1.0; a later MXC SDK
         release is targeted. The earlier

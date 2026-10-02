@@ -795,6 +795,137 @@ h3 {
   overflow: hidden;
 }
 
+.resolver-model {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.resolver-model article,
+.status-card,
+.git-example,
+.composition-callout {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.resolver-model article {
+  min-height: 170px;
+}
+
+.resolver-model > b {
+  align-self: center;
+  color: var(--cyan);
+  font-size: 1.5rem;
+}
+
+.resolver-model span,
+.resolver-model strong,
+.resolver-model small {
+  display: block;
+}
+
+.resolver-model span {
+  color: var(--cyan);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.resolver-model strong {
+  margin: 14px 0 10px;
+}
+
+.resolver-model small,
+.status-card p,
+.git-example p,
+.composition-callout p {
+  color: var(--muted);
+}
+
+.model-equation {
+  margin: 18px 0 42px;
+  text-align: center;
+}
+
+.model-equation code {
+  display: inline-block;
+  padding: 9px 13px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.resolution-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 20px;
+}
+
+.status-card h3,
+.git-example h3,
+.composition-callout h3 {
+  margin: 10px 0 14px;
+}
+
+.status-table-shell {
+  overflow-x: auto;
+  margin: 22px 0;
+}
+
+.status-table-shell table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.status-table-shell th,
+.status-table-shell td {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.status-table-shell th {
+  background: var(--surface-2);
+}
+
+.status-note {
+  margin-bottom: 0;
+}
+
+.git-layers {
+  display: grid;
+  gap: 10px;
+  margin: 22px 0;
+}
+
+.git-layers div {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 14px;
+  padding: 12px;
+  border-left: 3px solid var(--cyan);
+  background: var(--surface-2);
+}
+
+.git-layers span {
+  color: var(--muted);
+}
+
+.composition-callout {
+  margin: 20px 0 42px;
+  border-left: 4px solid var(--blue);
+}
+
+.composition-callout p {
+  margin-bottom: 0;
+}
+
 .flow-list li {
   display: grid;
   grid-template-columns: 52px 1fr;
@@ -912,8 +1043,17 @@ footer {
 
   .consumer-grid,
   .question-grid,
-  .source-list {
+  .source-list,
+  .resolution-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .resolver-model {
+    grid-template-columns: 1fr;
+  }
+
+  .resolver-model > b {
+    justify-self: center;
   }
 }
 
@@ -936,7 +1076,8 @@ footer {
   .consumer-grid,
   .flow-list,
   .question-grid,
-  .source-list {
+  .source-list,
+  .resolution-grid {
     grid-template-columns: 1fr;
   }
 
@@ -968,6 +1109,10 @@ footer {
 
   .flow-list li:nth-last-child(2) {
     border-bottom: 1px solid var(--line);
+  }
+
+  .git-layers div {
+    grid-template-columns: 1fr;
   }
 
   footer {
