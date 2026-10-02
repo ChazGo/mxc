@@ -162,6 +162,25 @@ export {
 
 export { MxcSandboxProcess } from './sandbox-process.js';
 
+// PROTOTYPE, pending API review: the policy store (bundled catalog lookup).
+export {
+  type CatalogPlatform,
+  type CatalogArchitecture,
+  type ToolCandidate,
+  type ToolInput,
+  type ResolveContext,
+  type IdentityStrength,
+  type PolicyResolutionDiagnostics,
+  type SandboxConfigResolution,
+  type CatalogIdentityMetadata,
+  type CatalogEntryMetadata,
+  type CatalogInfo,
+  resolveSandboxPolicy,
+  resolveSandboxPolicyWithDiagnostics,
+  getCatalogInfo,
+  listCatalogEntries,
+} from './policy-store.js';
+
 // Export telemetry consent functions and types
 export {
   TelemetryConfig,
