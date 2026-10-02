@@ -315,8 +315,12 @@ mod tests {
         );
     }
 
+    /// The builder carries only the caller's capabilities. The ProcessContainer
+    /// backend derives `internetClient` and `privateNetworkClientServer` from
+    /// the normalized directional network policy, so a request built here and
+    /// an SDK-emitted exact document share one derivation.
     #[test]
-    fn directional_network_adds_required_capabilities() {
+    fn directional_network_leaves_capability_derivation_to_the_backend() {
         let network = NetworkSection {
             egress: Some(NetworkEgressSection {
                 default: Some(NetworkAction::Allow),
@@ -331,24 +335,18 @@ mod tests {
 
         let request = build_request_with_containment(
             &policy_with_network(Some(network)),
-            &Containment::ProcessContainer(ProcessContainer::default()),
+            &Containment::ProcessContainer(ProcessContainer {
+                capabilities: vec!["registryRead".to_string()],
+                ..ProcessContainer::default()
+            }),
             TEST_COMMAND,
             None,
         )
         .expect("directional network request should build");
 
-        assert!(request
-            .inner
-            .policy
-            .capabilities
-            .iter()
-            .any(|capability| capability == "internetClient"));
-        assert!(request
-            .inner
-            .policy
-            .capabilities
-            .iter()
-            .any(|capability| capability == "privateNetworkClientServer"));
+        assert_eq!(request.inner.policy.capabilities, ["registryRead"]);
+        assert!(request.inner.policy.network_egress.is_some());
+        assert!(request.inner.policy.network_ingress.is_some());
     }
 
     #[test]

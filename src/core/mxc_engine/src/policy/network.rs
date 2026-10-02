@@ -3,15 +3,6 @@
 
 //! Network policy authoring types.
 
-#[cfg(test)]
-#[allow(dead_code)]
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) enum ProxySpec {
-    BuiltinTestServer,
-    Localhost(u16),
-}
-
 /// Network section of a [`SandboxPolicy`](super::SandboxPolicy).
 ///
 /// The v1 high-level SDK exposes directional policy only. Exact legacy
@@ -20,23 +11,6 @@ pub(crate) enum ProxySpec {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[non_exhaustive]
 pub struct NetworkSection {
-    // Retained only for legacy internal tests that exercise historical
-    // conversion behavior. They are absent from production builds.
-    #[cfg(test)]
-    #[allow(dead_code)]
-    pub(crate) allow_outbound: bool,
-    #[cfg(test)]
-    #[allow(dead_code)]
-    pub(crate) allow_local_network: bool,
-    #[cfg(test)]
-    #[allow(dead_code)]
-    pub(crate) allowed_hosts: Vec<String>,
-    #[cfg(test)]
-    #[allow(dead_code)]
-    pub(crate) blocked_hosts: Vec<String>,
-    #[cfg(test)]
-    #[allow(dead_code)]
-    pub(crate) proxy: Option<ProxySpec>,
     /// Outbound network policy.
     #[serde(default)]
     pub egress: Option<NetworkEgressSection>,

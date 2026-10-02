@@ -1,5 +1,57 @@
 # MXC Versioning Design
 
+## Architecture at a glance
+
+Versioning determines **which configuration contract is accepted**, not which
+backend implementation runs or what the host can enforce. Keep these decisions
+separate:
+
+| Decision | Authority |
+| --- | --- |
+| Which fields and values exist? | The exact Rust contract types and registration in `mxc_config_contract`. Published contracts are immutable; the development contract can evolve. |
+| Which exact contract does a typed SDK emit? | `sdkMajorTargets` in `schemas/schema-version.json`, checked against the exact Rust registry. Callers select a major-version SDK API, not an exact JSON version. |
+| Which exact contract does raw JSON use? | The caller's declared, registered `version`. A version range or development opt-in cannot authorize another spelling. |
+| Which backend and policy can run? | `mxc_engine` resolves the backend and checks authorization; host capabilities and backend validation determine what can actually be enforced. |
+
+Typed authoring and raw JSON converge before backend execution:
+
+```mermaid
+flowchart LR
+    typed["Typed SDK policy or lifecycle request"]
+    target["SDK-owned published exact target"]
+    raw["Raw JSON with caller-declared version"]
+    contract["Registered exact Rust contract"]
+    adapter["Version-specific adapter"]
+    normalized["Shared normalization<br/>ExecutionRequest and typed lifecycle operation"]
+    engine["Engine routing and authorization"]
+    backend["Host-capability validation and enforcement"]
+
+    typed --> target --> contract
+    raw --> contract
+    contract --> adapter --> normalized --> engine --> backend
+```
+
+Rust builders construct exact contract values in memory. Node and .NET exact
+writers serialize those values to JSON for the native boundary. In either
+case, version-specific adapters and shared normalization own the conversion
+to runtime requests; SDK policy types and generated schemas do not form
+another native configuration authority. The
+[native-ingress section](#native-ingress) identifies the deprecated binding
+exceptions that remain while the migration is staged.
+
+Publication, SDK targeting, and runtime authorization are independent:
+opening `1.1.0-alpha` does not change V1's published target, and accepting
+that exact development contract does not grant experimental backend access.
+Conversely, experimental authorization does not make a field legal in an
+older contract or override backend policy validation.
+
+The sections below distinguish the [three version axes](#the-three-version-axes),
+[contract shipping and parsing](#schema-shipping-model),
+[SDK major targets](#high-level-sdk-major-targets), and
+[backend authorization](#experimental-flag). Artifact regeneration belongs in
+[Schema Code Generation](schema-codegen.md); backend execution flow is covered
+by [Architecture](architecture.md).
+
 ## Core Concepts
 
 ### Policy = Intent
@@ -115,9 +167,10 @@ parser simply stops accepting those versions (the supported floor is
 `0.6.0-alpha`). Released schemas are never edited or deleted.
 
 The development artifact is generated from the exact
-  `mxc_config_contract::dev` model. It describes all eight closed one-shot and
-  state-aware roots, including recursively closed experimental structures, and
-  is the authoritative contract for declared `1.1.0-alpha` requests.
+`mxc_config_contract::dev` model. It describes all eight closed one-shot and
+state-aware roots, including recursively closed experimental structures. The
+registered Rust types remain the authority for declared `1.1.0-alpha`
+requests; the schema is their derived editor and validation artifact.
 
 Raw JSON is parsed with the exact registered contract named by its `version`
 field. High-level Rust, .NET, and Node v1 builders do not accept a caller-supplied
@@ -217,8 +270,10 @@ accepted by v1.0.
 
 Schemas in `stable/` are immutable: they document the input shape that was
 promised at release. They are **not** authoritative for runtime security
-defaults. `wxc-exec` is the trust boundary and may apply stricter defaults
-than a stable schema declares when a security issue requires it.
+defaults. Native contract parsing and backend validation form the trust
+boundary for both executor and library callers. Runtime enforcement may apply
+stricter defaults than a stable schema declares when a security issue requires
+it.
 
 For example, an older stable schema may declare
 `network.defaultPolicy` defaulting to `"allow"`. The runtime may treat an
@@ -234,17 +289,20 @@ Development features use their intended permanent top-level locations in the
 mutable exact contract. JSON location, publication eligibility, and runtime
 authorization are separate concerns. This gives editors full autocomplete and
 validation without requiring a later field move when a feature graduates.
-Today, the `--experimental` flag is a global runtime toggle that enables all
-features which still require authorization; per-feature gating is under
-consideration.
+The engine-owned backend registry in
+`src/core/mxc_engine/src/backend_registry.rs` records which backend selections
+require runtime experimental authorization. Contract publication does not
+implicitly change that classification. The flag does not enable otherwise
+invalid fields or bypass backend enforcement.
 
 **Rules:**
 - **Published contract contents** — shipped, stable, and immutable.
 - **Development contract contents** — mutable fields and roots at their
   permanent locations. Inclusion does not imply runtime authorization.
-- **Promotion:** When a feature is ready to ship, include it in the published
-  exact contract and remove its runtime experimental gate. Its JSON location
-  does not change.
+- **Promotion:** Publish the feature in an exact stable contract without
+  changing its JSON location. Update backend experimental classification
+  separately when that backend is ready for production; publishing a field
+  alone does not remove a backend's authorization requirement.
 
 ### Published-contract history
 
@@ -293,6 +351,26 @@ baselines are captured when the v1.0 SDK surface is established rather than
 through empty placeholder
 descriptors.
 
+### Native ingress
+
+The exact JSON execution surface uses `mxc_run_json`, `mxc_spawn_json`, and
+the state-aware JSON exports. Typed binding writers select the SDK-owned
+contract; raw APIs preserve the caller's exact document. These exports use
+the registered contract parser and take non-configuration controls, including
+experimental authorization, as typed FFI arguments rather than JSON fields.
+The [SDK conformance fixtures](../tests/policy/README.md#sdk-v1-conformance-fixtures)
+pair high-level invocations with independently hand-authored expected exact
+documents to check mapping intent across SDKs.
+
+**Migration status:** Node/.NET one-shot execution and the .NET request probe
+still use deprecated private binding ingress, including its legacy JSON
+experimental switch. [Node migration](https://github.com/microsoft/mxc/pull/1350)
+and [.NET migration](https://github.com/microsoft/mxc/pull/1351) move those
+callers to exact JSON; [cleanup](https://github.com/microsoft/mxc/pull/1352)
+then removes the private parser/exports and remaining SDK serde support.
+Their detailed rollout is tracked in those migration changes, not by a
+second configuration contract in this versioning design.
+
 ### Experimental Flag
 
 The experimental flag must be supported at every layer of the stack:
@@ -305,14 +383,16 @@ lxc-exec config.json --experimental
 wxc-exec.exe --experimental config.json
 ```
 
-The parser **always** parses fields defined by the selected exact contract
-regardless of the flag; parsing is flag-independent. The `--experimental` flag only sets
-`request.experimental_enabled`:
-- When set, the runners apply the parsed experimental features alongside the
-  stable features
-- When unset, `experimental_enabled` is false and the runners **ignore** the
-  parsed features that still require authorization — no error, those features
-  are just not applied
+The parser **always** parses fields defined by the selected exact contract;
+parsing is flag-independent. The flag authorizes selecting an experimental
+backend (MicroVM, Hyperlight, or Windows Sandbox). Without it, native refuses
+the request with
+`backend_unavailable` on every one-shot and state-aware entry point. The flag
+is ignored for production backends, including production-backend fields in a
+development contract; unsupported policy still fails closed rather than being
+silently ignored. Contract version and backend authorization are separate.
+The authorization switch is excluded from policy identity because it does not
+change the selected backend's enforcement.
 
 **2. SDK:** policy APIs come from `@microsoft/mxc-sdk/v1`; raw config
 spawning comes from `@microsoft/mxc-sdk`.

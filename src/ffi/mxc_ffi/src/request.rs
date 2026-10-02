@@ -2,6 +2,17 @@
 // Licensed under the MIT License.
 
 //! Co-versioned JSON request contract used by language bindings.
+//!
+//! **Deprecated.** This private binding request backs the deprecated
+//! [`mxc_run_request`](crate::mxc_run_request) and
+//! [`mxc_spawn_request`](crate::streaming::mxc_spawn_request) exports and the
+//! temporary .NET binding-request probe. Node and .NET one-shot bindings still
+//! use this request until their migrations switch to
+//! [`mxc_run_json`](crate::mxc_run_json) and
+//! [`mxc_spawn_json`](crate::streaming::mxc_spawn_json) instead; this module is
+//! removed with the private execution and probe exports. This transitional
+//! format still reads experimental authorization from its own JSON; exact
+//! configuration entry points accept authorization only as typed arguments.
 
 use std::collections::BTreeMap;
 
@@ -433,6 +444,26 @@ fn malformed_request(error: serde_json::Error) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capture_denials_parse_from_camel_case_json() {
+        let capture: CaptureDenials = serde_json::from_value(serde_json::json!({
+            "mode": "allow",
+            "outputPath": "/tmp/denials.json",
+            "retainEtl": true,
+        }))
+        .expect("captureDenials parses");
+        assert_eq!(
+            capture.mode,
+            mxc_sdk::v1::configs::CaptureDenialsMode::Allow
+        );
+        assert_eq!(capture.output_path.as_deref(), Some("/tmp/denials.json"));
+        assert!(capture.retain_etl);
+
+        let capture: CaptureDenials =
+            serde_json::from_value(serde_json::json!({})).expect("empty captureDenials parses");
+        assert_eq!(capture, CaptureDenials::default());
+    }
 
     #[test]
     fn process_container_filesystem_is_accepted_by_native_contract() {
