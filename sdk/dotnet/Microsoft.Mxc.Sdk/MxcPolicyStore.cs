@@ -22,9 +22,16 @@ namespace Microsoft.Mxc.Sdk;
 /// V1 catalog is compiled in and nothing is downloaded.
 /// </para>
 /// <para>
+/// Each catalog entry has one unversioned default plus additive platform,
+/// version (purl <c>vers</c> range), and intent overlays. A
+/// <see cref="ToolInput"/> may carry a <see cref="ToolInput.DetectedVersion"/>
+/// and an <see cref="ToolInput.Intent"/> (for example <c>fetch</c> versus
+/// <c>push</c> for git); each tool and intent pair resolves independently, and
+/// the pairs compose into one floor.
+/// </para>
+/// <para>
 /// Names and shapes are proposed and may change before sign-off (for example,
-/// the names may drop "Sandbox", and lookup may gain an intent such as
-/// <c>git pull</c> versus <c>git push</c>). This API is not part of MXC 1.0.
+/// the names may drop "Sandbox"). This API is not part of MXC 1.0.
 /// </para>
 /// <para>
 /// Failures throw <see cref="MxcException"/>: <see cref="MxcException.Code"/>
@@ -225,7 +232,7 @@ public static class MxcPolicyStore
     }
 
     private static readonly ResolutionDiagnostics EmptyDiagnostics =
-        new(string.Empty, Array.Empty<ToolDiagnostics>(), Array.Empty<ResolvedDependency>(), Array.Empty<string>());
+        new(string.Empty, Array.Empty<ToolDiagnostics>(), Array.Empty<ResolvedDependency>(), Array.Empty<ResolutionWarning>());
 
     private sealed record NativeRequest(
         [property: JsonPropertyName("tools")] IReadOnlyList<ToolInput> Tools,
@@ -267,13 +274,28 @@ public static class CatalogArchitectures
 public sealed record ToolInput(
     [property: JsonPropertyName("invocationName")] string InvocationName)
 {
-    /// <summary>A verified Package URL, for example <c>pkg:npm/npm</c>. A strong identity.</summary>
+    /// <summary>
+    /// A Package URL without a version, for example <c>pkg:npm/npm</c>. A strong
+    /// identity. A version embedded in the purl is ignored with a warning.
+    /// </summary>
     [JsonPropertyName("packageUrl")]
     public string? PackageUrl { get; init; }
 
-    /// <summary>The detected tool version, compared with reviewed version ranges.</summary>
+    /// <summary>
+    /// The tool version the caller detected. It selects at most one reviewed
+    /// version range; no other version evidence is inferred.
+    /// </summary>
     [JsonPropertyName("detectedVersion")]
     public string? DetectedVersion { get; init; }
+
+    /// <summary>
+    /// The intended operation, for example <c>fetch</c> or <c>push</c>. When
+    /// omitted, the base policy plus every intent of the effective policy
+    /// applies. An intent the effective policy does not define contributes
+    /// nothing.
+    /// </summary>
+    [JsonPropertyName("intent")]
+    public string? Intent { get; init; }
 
     /// <summary>String shorthand for <c>new ToolInput(name)</c>.</summary>
     public static implicit operator ToolInput(string invocationName) => new(invocationName);
@@ -312,27 +334,176 @@ public sealed record ResolveContext
 /// <param name="Strength"><c>strong</c> or <c>weak</c>.</param>
 public sealed record MatchedIdentity(string Kind, string Strength);
 
+/// <summary>How a detected version selected the effective policy.</summary>
+/// <param name="Status">
+/// <c>matched_default</c>, <c>matched_version</c>, <c>version_out_of_range</c>,
+/// or <c>version_unparseable</c>.
+/// </param>
+public sealed record VersionSelection(string Status)
+{
+    /// <summary>The caller's detected version, when supplied.</summary>
+    public string? DetectedVersion { get; init; }
+
+    /// <summary>The selected <c>vers</c> range; only for <c>matched_version</c>.</summary>
+    public string? SelectedVersionRange { get; init; }
+}
+
+/// <summary>Which intents of the effective policy were selected.</summary>
+/// <param name="Mode"><c>named</c>, <c>all</c>, or <c>unsupported</c>.</param>
+/// <param name="Selected">Selected intent names, sorted; empty when unsupported.</param>
+public sealed record IntentSelection(string Mode, IReadOnlyList<string> Selected)
+{
+    /// <summary>The requested intent, when one was supplied.</summary>
+    public string? Requested { get; init; }
+}
+
 /// <summary>One entry matched by one input.</summary>
 public sealed record ToolMatch(
     string EntryId,
     int EntryRevision,
-    IReadOnlyList<MatchedIdentity> MatchedIdentities);
+    IReadOnlyList<MatchedIdentity> MatchedIdentities,
+    VersionSelection VersionSelection,
+    IntentSelection? IntentSelection = null);
 
 /// <summary>Per-input attribution, in input order.</summary>
-public sealed record ToolDiagnostics(int InputIndex, IReadOnlyList<ToolMatch> Matches);
+/// <param name="InputIndex">The input's position.</param>
+/// <param name="Status">
+/// The pair's version status (see <see cref="VersionSelection.Status"/>), or
+/// <c>intent_unsupported</c> / <c>tool_unmatched</c> when it contributes nothing.
+/// </param>
+/// <param name="Matches">At most one entry; empty for <c>tool_unmatched</c>.</param>
+public sealed record ToolDiagnostics(int InputIndex, string Status, IReadOnlyList<ToolMatch> Matches);
 
 /// <summary>A dependency pulled in by a match.</summary>
 public sealed record ResolvedDependency(
     string EntryId,
     int EntryRevision,
-    string? RequiredVersionRange = null);
+    VersionSelection VersionSelection,
+    IntentSelection IntentSelection)
+{
+    /// <summary>The dependency's declared <c>vers</c> range, when one is declared.</summary>
+    public string? RequiredVersionRange { get; init; }
+}
+
+/// <summary>
+/// A diagnostics warning. Free-text warnings carry only
+/// <see cref="Message"/>; structured per-input warnings also carry
+/// <see cref="Code"/> and <see cref="InputIndex"/>.
+/// </summary>
+/// <param name="Message">The human-readable warning.</param>
+[JsonConverter(typeof(ResolutionWarningConverter))]
+public sealed record ResolutionWarning(string Message)
+{
+    /// <summary>
+    /// <c>version_out_of_range</c>, <c>version_unparseable</c>,
+    /// <c>intent_unsupported</c>, or <c>tool_unmatched</c>; <see langword="null"/>
+    /// for a free-text warning.
+    /// </summary>
+    public string? Code { get; init; }
+
+    /// <summary>The input the structured warning is about.</summary>
+    public int? InputIndex { get; init; }
+
+    /// <summary>The matched entry, when there is one.</summary>
+    public string? EntryId { get; init; }
+
+    /// <summary>The caller's detected version, when supplied.</summary>
+    public string? DetectedVersion { get; init; }
+
+    /// <summary>The requested intent, when supplied.</summary>
+    public string? Intent { get; init; }
+}
+
+/// <summary>Reads a warning that is either a string or a structured object.</summary>
+internal sealed class ResolutionWarningConverter : JsonConverter<ResolutionWarning>
+{
+    public override ResolutionWarning Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            return new ResolutionWarning(reader.GetString()!);
+        }
+
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException("A warning must be a string or an object.");
+        }
+
+        using var document = JsonDocument.ParseValue(ref reader);
+        string? message = null, code = null, entryId = null, detectedVersion = null, intent = null;
+        int? inputIndex = null;
+        foreach (var property in document.RootElement.EnumerateObject())
+        {
+            switch (property.Name)
+            {
+                case "message": message = property.Value.GetString(); break;
+                case "code": code = property.Value.GetString(); break;
+                case "inputIndex": inputIndex = property.Value.GetInt32(); break;
+                case "entryId": entryId = property.Value.GetString(); break;
+                case "detectedVersion": detectedVersion = property.Value.GetString(); break;
+                case "intent": intent = property.Value.GetString(); break;
+                default: throw new JsonException($"Unexpected warning field '{property.Name}'.");
+            }
+        }
+
+        if (message is null || code is null || inputIndex is null)
+        {
+            throw new JsonException("A structured warning needs code, inputIndex, and message.");
+        }
+
+        return new ResolutionWarning(message)
+        {
+            Code = code,
+            InputIndex = inputIndex,
+            EntryId = entryId,
+            DetectedVersion = detectedVersion,
+            Intent = intent,
+        };
+    }
+
+    public override void Write(
+        Utf8JsonWriter writer,
+        ResolutionWarning value,
+        JsonSerializerOptions options)
+    {
+        if (value.Code is null)
+        {
+            writer.WriteStringValue(value.Message);
+            return;
+        }
+
+        writer.WriteStartObject();
+        writer.WriteString("code", value.Code);
+        writer.WriteNumber("inputIndex", value.InputIndex ?? 0);
+        if (value.EntryId is not null)
+        {
+            writer.WriteString("entryId", value.EntryId);
+        }
+
+        if (value.DetectedVersion is not null)
+        {
+            writer.WriteString("detectedVersion", value.DetectedVersion);
+        }
+
+        if (value.Intent is not null)
+        {
+            writer.WriteString("intent", value.Intent);
+        }
+
+        writer.WriteString("message", value.Message);
+        writer.WriteEndObject();
+    }
+}
 
 /// <summary>Match attribution and warnings from one resolution pass.</summary>
 public sealed record ResolutionDiagnostics(
     string CatalogRevision,
     IReadOnlyList<ToolDiagnostics> Tools,
     IReadOnlyList<ResolvedDependency> ResolvedDependencies,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<ResolutionWarning> Warnings);
 
 /// <summary>
 /// <b>PROTOTYPE, pending API review.</b> Result of
@@ -352,19 +523,46 @@ public sealed record CatalogIdentityMetadata(string Kind)
     /// <summary>The package URL, for <c>purl</c>.</summary>
     public string? Value { get; init; }
 
-    /// <summary>The reviewed version range, for <c>purl</c>, when declared.</summary>
-    public string? VersionRange { get; init; }
-
     /// <summary>The names, for <c>invocation-name</c>.</summary>
     public IReadOnlyList<string>? Names { get; init; }
 }
 
-/// <summary>Platform variant metadata.</summary>
-public sealed record CatalogVariantMetadata(
+/// <summary>An intent an entry or overlay defines or extends.</summary>
+public sealed record CatalogIntentMetadata(string Name, IReadOnlyList<string> DependencyEntryIds)
+{
+    /// <summary>Example subcommands, when the catalog lists them.</summary>
+    public IReadOnlyList<string>? ExampleSubcommands { get; init; }
+}
+
+/// <summary>The entry's unversioned default.</summary>
+public sealed record CatalogDefaultMetadata(
+    IReadOnlyList<string> DependencyEntryIds,
+    string SandboxPolicyVersion,
+    IReadOnlyList<CatalogIntentMetadata> Intents);
+
+/// <summary>An additive platform overlay.</summary>
+/// <param name="Platform">A <see cref="CatalogPlatforms"/> value.</param>
+/// <param name="Architecture">A <see cref="CatalogArchitectures"/> value, or <see langword="null"/> for every architecture.</param>
+/// <param name="DependencyEntryIds">Added dependencies.</param>
+/// <param name="IntentAdditions">Extensions of intents the default declares.</param>
+/// <param name="Intents">Intents the overlay introduces.</param>
+public sealed record CatalogPlatformVariantMetadata(
     string Platform,
     string? Architecture,
     IReadOnlyList<string> DependencyEntryIds,
-    string SandboxPolicyVersion);
+    IReadOnlyList<CatalogIntentMetadata> IntentAdditions,
+    IReadOnlyList<CatalogIntentMetadata> Intents);
+
+/// <summary>An additive version overlay, selected by a purl <c>vers</c> range.</summary>
+/// <param name="VersionRange">The <c>vers</c> range.</param>
+/// <param name="DependencyEntryIds">Added dependencies.</param>
+/// <param name="IntentAdditions">Extensions of intents the default declares.</param>
+/// <param name="Intents">Intents the overlay introduces.</param>
+public sealed record CatalogVersionVariantMetadata(
+    string VersionRange,
+    IReadOnlyList<string> DependencyEntryIds,
+    IReadOnlyList<CatalogIntentMetadata> IntentAdditions,
+    IReadOnlyList<CatalogIntentMetadata> Intents);
 
 /// <summary>Entry provenance.</summary>
 public sealed record CatalogProvenance(string Method, string SourceRevision);
@@ -375,6 +573,9 @@ public sealed record CatalogEntryMetadata(
     string EntryId,
     int EntryRevision,
     string DisplayName,
+    string VersionScheme,
     IReadOnlyList<CatalogIdentityMetadata> Identity,
-    IReadOnlyList<CatalogVariantMetadata> PlatformVariants,
+    CatalogDefaultMetadata Default,
+    IReadOnlyList<CatalogPlatformVariantMetadata> PlatformVariants,
+    IReadOnlyList<CatalogVersionVariantMetadata> VersionVariants,
     CatalogProvenance Provenance);

@@ -79,6 +79,8 @@
          tests (src/ffi/mxc_ffi). They live outside this SDK because both
          languages assert against them; see tests/policy/README.md. -->
     <EmbeddedResource Include="..\..\..\tests\policy\*.json" Link="policy\%(Filename)%(Extension)" />
+    <!-- PROTOTYPE policy store conformance cases, shared with the Rust crates. -->
+    <EmbeddedResource Include="..\..\..\src\core\mxc_policy_store\conformance\fixtures\bundled-catalog.json" LogicalName="PolicyStore.bundled-catalog.json" />
   </ItemGroup>
 
 </Project>

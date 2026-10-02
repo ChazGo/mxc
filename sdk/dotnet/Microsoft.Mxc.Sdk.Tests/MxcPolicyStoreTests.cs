@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Mxc.Sdk;
 using Xunit;
 
@@ -40,9 +42,25 @@ public class MxcPolicyStoreTests
 
         var npm = Assert.Single(entries, entry => entry.EntryId == "tool:npm");
         Assert.Contains(npm.Identity, identity => identity.Kind == "purl" && identity.Value == "pkg:npm/npm");
-        Assert.Contains(npm.PlatformVariants, variant =>
-            variant.Platform == CatalogPlatforms.Linux
-            && variant.DependencyEntryIds.Contains("tool:node"));
+        Assert.Equal("npm", npm.VersionScheme);
+        Assert.Contains("tool:node", npm.Default.DependencyEntryIds);
+
+        var git = Assert.Single(entries, entry => entry.EntryId == "tool:git");
+        Assert.Equal("intdot", git.VersionScheme);
+        Assert.Equal(new[] { "fetch", "local", "push" }, git.Default.Intents.Select(i => i.Name).Order());
+        var windows = Assert.Single(git.PlatformVariants);
+        Assert.Equal(CatalogPlatforms.Windows, windows.Platform);
+        Assert.Null(windows.Architecture);
+        Assert.Collection(
+            git.VersionVariants,
+            older =>
+            {
+                Assert.Equal("vers:intdot/>=2.40|<2.50", older.VersionRange);
+                var push = Assert.Single(older.IntentAdditions);
+                Assert.Equal("push", push.Name);
+                Assert.Equal(new[] { "tool:ssh" }, push.DependencyEntryIds);
+            },
+            newer => Assert.Equal("bundle-fetch", Assert.Single(newer.Intents).Name));
     }
 
     [Fact]
@@ -100,6 +118,141 @@ public class MxcPolicyStoreTests
         var resolution = MxcPolicyStore.ResolveSandboxPolicyWithDiagnostics(Npm, LinuxContext);
 
         Assert.Contains(resolution.Diagnostics.ResolvedDependencies, dep => dep.EntryId == "tool:node");
+    }
+
+    private static readonly ResolveContext GitContext = LinuxContext with
+    {
+        Symbols = new Dictionary<string, string>
+        {
+            ["git_prefix"] = "/usr/bin",
+            ["ssh_prefix"] = "/usr/lib/ssh",
+            ["temp_dir"] = "/tmp",
+        },
+    };
+
+    private static ToolInput Git(string? version, string? intent) =>
+        new("git") { PackageUrl = "pkg:generic/git", DetectedVersion = version, Intent = intent };
+
+    [Fact]
+    public void ResolveSandboxPolicyWithDiagnostics_SelectsAVersionRangeAndAnIntent()
+    {
+        var push = MxcPolicyStore.ResolveSandboxPolicyWithDiagnostics(Git("2.45.1", "push"), GitContext);
+
+        var tool = Assert.Single(push.Diagnostics.Tools);
+        Assert.Equal("matched_version", tool.Status);
+        var match = Assert.Single(tool.Matches);
+        Assert.Equal("vers:intdot/>=2.40|<2.50", match.VersionSelection.SelectedVersionRange);
+        Assert.Equal("push", match.IntentSelection!.Requested);
+        Assert.Equal("named", match.IntentSelection.Mode);
+        Assert.Equal("tool:ssh", Assert.Single(push.Diagnostics.ResolvedDependencies).EntryId);
+        Assert.Equal(new[] { "/usr/bin", "/usr/lib/ssh" }, push.Policy!.Filesystem!.ReadonlyPaths);
+        Assert.Single(push.Policy.Network!.Egress!.Allow!);
+    }
+
+    [Fact]
+    public void ResolveSandboxPolicyWithDiagnostics_ReportsStructuredWarnings()
+    {
+        var outOfRange = MxcPolicyStore.ResolveSandboxPolicyWithDiagnostics(Git("2.30.0", "bundle-fetch"), GitContext);
+
+        Assert.Null(outOfRange.Policy);
+        var tool = Assert.Single(outOfRange.Diagnostics.Tools);
+        Assert.Equal("intent_unsupported", tool.Status);
+        Assert.Equal("version_out_of_range", Assert.Single(tool.Matches).VersionSelection.Status);
+        Assert.Collection(
+            outOfRange.Diagnostics.Warnings,
+            warning =>
+            {
+                Assert.Equal("version_out_of_range", warning.Code);
+                Assert.Equal(0, warning.InputIndex);
+                Assert.Equal("tool:git", warning.EntryId);
+                Assert.Equal("2.30.0", warning.DetectedVersion);
+            },
+            warning => Assert.Equal("intent_unsupported", warning.Code));
+
+        var weak = MxcPolicyStore.ResolveSandboxPolicyWithDiagnostics(
+            "git",
+            GitContext with { AllowWeakIdentityFallback = true });
+        var text = Assert.Single(weak.Diagnostics.Warnings);
+        Assert.Null(text.Code);
+        Assert.Contains("weak identity", text.Message);
+    }
+
+    [Fact]
+    public void ResolveSandboxPolicy_PairsCompose()
+    {
+        var policy = MxcPolicyStore.ResolveSandboxPolicy(
+            new[] { Git(null, "local"), Git(null, "fetch"), Git(null, "push") },
+            GitContext);
+
+        Assert.Equal(2, policy!.Network!.Egress!.Allow!.Count);
+    }
+
+    [Fact]
+    public void ResolveSandboxPolicy_EmptyIntentIsInvalid()
+    {
+        var error = Assert.Throws<MxcException>(() =>
+            MxcPolicyStore.ResolveSandboxPolicy(Git(null, string.Empty), GitContext));
+
+        Assert.Equal("invalid_context", error.Reason);
+    }
+
+    private static readonly JsonSerializerOptions FixtureJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+    };
+
+    private static ToolInput FixtureTool(JsonElement tool) => tool.ValueKind == JsonValueKind.String
+        ? tool.GetString()!
+        : tool.Deserialize<ToolInput>(FixtureJsonOptions)!;
+
+    /// <summary>
+    /// Every host-independent bundled conformance case gives the same result
+    /// through the C# surface as through the Rust crates.
+    /// </summary>
+    [Fact]
+    public void ResolveSandboxPolicyWithDiagnostics_MatchesTheBundledConformanceFixtures()
+    {
+        using var stream = typeof(MxcPolicyStoreTests).Assembly
+            .GetManifestResourceStream("PolicyStore.bundled-catalog.json")!;
+        using var fixture = JsonDocument.Parse(stream);
+        var ran = 0;
+        foreach (var testCase in fixture.RootElement.GetProperty("cases").EnumerateArray())
+        {
+            if (testCase.TryGetProperty("host", out _))
+            {
+                continue;
+            }
+
+            var name = testCase.GetProperty("name").GetString();
+            var raw = testCase.GetProperty("tools");
+            var tools = raw.ValueKind == JsonValueKind.Array
+                ? raw.EnumerateArray().Select(FixtureTool).ToArray()
+                : new[] { FixtureTool(raw) };
+            var context = testCase.TryGetProperty("context", out var c)
+                ? c.Deserialize<ResolveContext>(FixtureJsonOptions)
+                : null;
+
+            if (testCase.TryGetProperty("expectError", out var expectError))
+            {
+                var error = Assert.Throws<MxcException>(() =>
+                    MxcPolicyStore.ResolveSandboxPolicyWithDiagnostics(tools, context));
+                Assert.Equal(expectError.GetProperty("reason").GetString(), error.Reason);
+            }
+            else
+            {
+                var expected = MxcPolicyStore.ParseResolution(testCase.GetProperty("expect").GetRawText());
+                var actual = MxcPolicyStore.ResolveSandboxPolicyWithDiagnostics(tools, context);
+                Assert.True(
+                    JsonSerializer.Serialize(expected, FixtureJsonOptions) == JsonSerializer.Serialize(actual, FixtureJsonOptions),
+                    name);
+            }
+
+            ran++;
+        }
+
+        Assert.True(ran >= 15, $"ran {ran} cases");
     }
 
     [Fact]

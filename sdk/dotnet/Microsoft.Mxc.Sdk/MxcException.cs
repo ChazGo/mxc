@@ -41,6 +41,7 @@ public sealed class MxcException : Exception
     /// <summary>
     /// <b>PROTOTYPE, pending API review.</b> The policy store's stable failure
     /// reason: <c>invalid_catalog</c>, <c>composition_conflict</c>,
+    /// <c>ambiguous_match</c>,
     /// <c>invalid_context</c>, <c>unsupported_host</c>, <c>integrity</c>, or
     /// <c>revision_unavailable</c>. <see langword="null"/> for every failure
     /// that did not come from <see cref="MxcPolicyStore"/>.
