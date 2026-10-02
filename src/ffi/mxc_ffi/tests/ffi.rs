@@ -18,6 +18,8 @@ use mxc_ffi::{
     mxc_error_detail_free, mxc_probe_request_json, mxc_probe_request_json_with_error,
     mxc_probe_sandbox_request_json_with_error, MxcErrorDetail,
 };
+#[cfg(target_os = "linux")]
+use mxc_ffi::{mxc_error_detail_free, mxc_spawn_request, MxcErrorDetail, MxcSandbox};
 
 /// An empty, all-null result to hand to `mxc_run_request`.
 fn zeroed_result() -> MxcRunResult {
@@ -311,4 +313,43 @@ fn extern_run_executes_command() {
 
     // SAFETY: `out` was filled by `mxc_run_request`.
     unsafe { mxc_run_result_free(&mut out) };
+}
+
+/// Pins that `mxc_spawn_request` reaches the LXC backend rather than refusing
+/// the containment.
+///
+/// The empty distribution makes LXC refuse before creating a container, so the
+/// result is the same on every Linux host.
+#[cfg(target_os = "linux")]
+#[test]
+fn extern_spawn_request_reaches_the_lxc_backend() {
+    let request = CString::new(
+        r#"{
+            "policy": {},
+            "command": "echo hello-lxc",
+            "containment": { "type": "lxc", "distribution": "", "release": "" }
+        }"#,
+    )
+    .unwrap();
+    let mut handle: *mut MxcSandbox = ptr::null_mut();
+    // SAFETY: `MxcErrorDetail` contains integers and nullable pointers.
+    let mut error: MxcErrorDetail = unsafe { std::mem::zeroed() };
+    // SAFETY: valid request and writable fresh out-parameters.
+    let status = unsafe { mxc_spawn_request(request.as_ptr(), &mut handle, &mut error) };
+
+    assert_ne!(
+        status,
+        mxc_ffi::MXC_STATUS_UNSUPPORTED_CONTAINMENT,
+        "the engine must route LXC to a real backend arm on Linux"
+    );
+    assert!(handle.is_null());
+    // SAFETY: the message is a valid C string filled by `mxc_spawn_request`.
+    let message = unsafe { CStr::from_ptr(error.message_utf8) }
+        .to_str()
+        .unwrap();
+    // Only the LXC backend produces a message opening with `LXC`.
+    assert!(message.starts_with("LXC"), "unexpected message: {message}");
+
+    // SAFETY: `error` was filled by `mxc_spawn_request`.
+    unsafe { mxc_error_detail_free(&mut error) };
 }
