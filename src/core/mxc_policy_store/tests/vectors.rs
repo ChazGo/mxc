@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Shared vectors in `../conformance/vectors/` (generated from the
-//! TypeScript implementation).
+//! Frozen vectors in `../conformance/vectors/`. They were generated from the
+//! original TypeScript prototype and are now maintained by hand.
 
 mod common;
 

@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 //! Entry-revision monotonicity and published-revision immutability
-//! (TypeScript `src/history.ts`).
 
 use crate::catalog::{
     compare_catalog_revisions, entry_semantic_key, revision_number, CatalogRevision,

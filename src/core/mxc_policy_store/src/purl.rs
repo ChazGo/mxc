@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Package URL parsing reduced to identity matching (TypeScript `src/purl.ts`).
+//! Package URL parsing reduced to identity matching.
 
 /// A parsed package URL.
 #[derive(Clone, Debug, PartialEq, Eq)]

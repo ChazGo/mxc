@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Ports of the TypeScript unit suites (`tests/unit/resolver.test.ts`,
-//! `validation.test.ts`, `store.test.ts`).
+//! Ports of the original TypeScript prototype's resolver, validation, and
+//! store unit suites.
 
 mod common;
 
@@ -690,7 +690,7 @@ fn module_level_functions_use_the_bundled_catalog() {
 }
 
 // ---------------------------------------------------------------------------
-// Validation (validation.test.ts)
+// Validation
 // ---------------------------------------------------------------------------
 
 fn dep(id: &str) -> String {
@@ -984,7 +984,7 @@ fn validation_composition_vocabulary() {
 }
 
 // ---------------------------------------------------------------------------
-// Store and history (store.test.ts)
+// Store and history
 // ---------------------------------------------------------------------------
 
 #[test]

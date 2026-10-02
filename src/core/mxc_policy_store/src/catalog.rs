@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 //! Contract and revision validation, variant selection, dependency closure,
-//! and composition limits (TypeScript `src/catalog.ts`). Error messages are
-//! identical to TypeScript.
+//! and composition limits. Error messages match the original TypeScript
+//! prototype byte for byte, so the frozen conformance vectors still apply.
 
 use crate::errors::{invalid_catalog, Result};
 use crate::json::{cmp_utf16, js_number_to_string, js_to_string, Json, JsonObject};

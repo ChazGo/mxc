@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Runtime lookup and inspection (TypeScript `src/resolver.ts`).
+//! Runtime lookup and inspection.
 
 use crate::catalog::{
     composition_violation, dependency_closure, entry_index, find_cross_class_overlap,

@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 //! Runs every language-neutral conformance fixture in
-//! `../conformance/fixtures/*.json` with the same expectations as the
-//! TypeScript suite.
+//! `../conformance/fixtures/*.json`. The mxc-sdk and mxc_ffi suites replay
+//! the same fixtures through their binding entry points.
 
 mod common;
 

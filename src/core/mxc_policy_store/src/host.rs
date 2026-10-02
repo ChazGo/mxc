@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 //! Host platform, native system architecture, and approved host symbols
-//! (TypeScript `src/host.ts`).
 //!
 //! The native architecture is the device's, not the process's or the
 //! compile target's:

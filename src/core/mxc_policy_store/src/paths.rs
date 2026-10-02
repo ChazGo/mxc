@@ -3,7 +3,7 @@
 
 //! Node.js `path.win32` / `path.posix` `normalize`, `isAbsolute`, and
 //! `parse().root`, ported from Node v24.20.0 `lib/path.js`, plus the catalog
-//! helpers built on them (TypeScript `normalizePath`, `isAbsolutePath`,
+//! helpers built on them (ported from the TypeScript prototype's `normalizePath`, `isAbsolutePath`,
 //! `pathKeySegments`).
 //!
 //! The algorithms run over UTF-16 code units, exactly like JavaScript, so
@@ -432,7 +432,7 @@ pub fn case_key(value: &str, platform: Platform) -> String {
 }
 
 /// Normalizes a path with the platform's rules, then removes trailing
-/// separators unless only the root remains (TypeScript `normalizePath`).
+/// separators unless only the root remains (the prototype's `normalizePath`).
 pub fn normalize_path(value: &str, platform: Platform) -> String {
     let (normalized, root_len) = if platform == Platform::Windows {
         let n = win32_normalize_units(&u(value));

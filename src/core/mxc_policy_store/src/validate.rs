@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 //! Catalog-directory validation and the `--base-ref` published-revision
-//! immutability check (TypeScript `src/validate.ts`). Tooling only: the
+//! immutability check Tooling only: the
 //! runtime lookup path never runs git.
 
 use crate::errors::{invalid_catalog, PolicyCatalogError};
@@ -31,7 +31,7 @@ pub struct CatalogValidationReport {
 }
 
 impl CatalogValidationReport {
-    /// The report as `policy-catalog validate` prints it (absent fields omitted).
+    /// The report as JSON (absent fields omitted).
     pub fn to_json(&self) -> Json {
         let mut o = JsonObject::new();
         o.insert("ok", Json::Bool(self.ok));

@@ -2,8 +2,7 @@
 // Licensed under the MIT License.
 
 //! Error codes reused from MXC's closed `MxcError` code set, plus a stable,
-//! language-neutral sub-reason carried in `details.reason` (TypeScript
-//! `src/errors.ts`). Warnings stay plain strings.
+//! language-neutral sub-reason carried in `details.reason` by the SDKs. Warnings stay plain strings.
 
 use std::fmt;
 
@@ -88,7 +87,7 @@ impl fmt::Display for ErrorReason {
     }
 }
 
-/// A library failure. `message()` is `[<code>] <message>`, exactly as in TypeScript.
+/// A library failure. `message()` is `[<code>] <message>`, exactly as in the original TypeScript prototype.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PolicyCatalogError {
     reason: ErrorReason,

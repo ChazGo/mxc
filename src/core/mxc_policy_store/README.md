@@ -19,7 +19,7 @@ SHA-256 on first use. Nothing is downloaded. Every MXC SDK uses this crate:
 |-----|-------------|
 | Rust (`mxc-sdk`) | `mxc_sdk::policy_store::{resolve_sandbox_policy, resolve_sandbox_policy_with_diagnostics, get_catalog_info, list_catalog_entries}` |
 | Node (`@microsoft/mxc-sdk`) | `resolveSandboxPolicy`, `resolveSandboxPolicyWithDiagnostics`, `getCatalogInfo`, `listCatalogEntries` through `mxc_ffi` |
-| C# (`Microsoft.Mxc.Sdk`) | `PolicyStore.ResolveSandboxPolicy`, `PolicyStore.ResolveSandboxPolicyWithDiagnostics`, `PolicyStore.GetCatalogInfo`, `PolicyStore.ListCatalogEntries` through `mxc_ffi` |
+| C# (`Microsoft.Mxc.Sdk`) | `MxcPolicyStore.ResolveSandboxPolicy`, `MxcPolicyStore.ResolveSandboxPolicyWithDiagnostics`, `MxcPolicyStore.GetCatalogInfo`, `MxcPolicyStore.ListCatalogEntries` through `mxc_ffi` |
 
 This crate returns its own catalog-shaped policy model. `mxc-sdk` converts it
 to `mxc_sdk::policy::SandboxPolicy`, and `mxc_ffi` hands the same JSON to the

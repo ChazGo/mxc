@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Public request and result types (design §5), mirroring TypeScript
-//! `src/types.ts`. Every result type renders to the exact JSON shape the
-//! TypeScript library produces (`to_json`), with absent optional fields
+//! Public request and result types (design §5). Every result type renders to
+//! the exact JSON shape the original TypeScript prototype produced, which the
+//! SDK bindings and conformance vectors rely on (`to_json`), with absent optional fields
 //! omitted rather than written as `null`.
 
 use crate::json::{Json, JsonObject};
@@ -229,7 +229,7 @@ impl<K: Into<String>, V: Into<String>> FromIterator<(K, V)> for SymbolMap {
 
 /// Runtime lookup context (design §5.1). `platform` and `architecture` are
 /// the caller's raw strings so that an unsupported value is reported as
-/// `malformed_request` (`invalid_context`) exactly like TypeScript.
+/// `malformed_request` (`invalid_context`) exactly like the original TypeScript prototype.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ResolveContext {
     pub project_root: Option<String>,

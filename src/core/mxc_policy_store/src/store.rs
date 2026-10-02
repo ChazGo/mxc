@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 //! Manifest validation and lazy, digest-checked, validated revision loading
-//! (TypeScript `src/store.ts`), plus the catalog bundled into this crate.
+//! plus the catalog bundled into this crate.
 
 use crate::catalog::{
     compare_catalog_revisions, is_catalog_revision_id, validate_catalog_revision,
@@ -179,7 +179,7 @@ fn invalid<T>(message: impl AsRef<str>) -> Result<T> {
     Err(invalid_catalog(message))
 }
 
-/// Validates `manifest.json` (TypeScript `validateManifest`).
+/// Validates `manifest.json` (the prototype's `validateManifest`).
 pub fn validate_manifest(raw: &Json) -> Result<CatalogManifest> {
     let Some(object) = raw.as_object() else {
         return invalid("manifest root must be an object");

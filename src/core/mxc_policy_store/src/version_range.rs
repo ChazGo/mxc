@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Minimal version-range support for catalog v1, identical to TypeScript
-//! `src/version-range.ts`.
+//! Minimal version-range support for catalog v1, identical to the original
+//! TypeScript prototype.
 //!
 //! ```text
 //! range         := comparatorSet ( "||" comparatorSet )*
