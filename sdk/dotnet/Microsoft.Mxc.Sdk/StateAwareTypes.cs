@@ -37,11 +37,9 @@ public enum StateAwareNetworkDefault
 public sealed class StateAwareNetworkPolicy
 {
     /// <summary>Directional outbound posture for WSLC provision.</summary>
-    [JsonConverter(typeof(NonNullNetworkSectionJsonConverter<NetworkEgressPolicy>))]
     public NetworkEgressPolicy? Egress { get; set; }
 
     /// <summary>Directional inbound and host-loopback posture for WSLC provision.</summary>
-    [JsonConverter(typeof(NonNullNetworkSectionJsonConverter<NetworkIngressPolicy>))]
     public NetworkIngressPolicy? Ingress { get; set; }
 }
 

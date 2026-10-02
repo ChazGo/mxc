@@ -162,12 +162,10 @@ public sealed class NetworkPolicy
 {
     /// <summary>Outbound network policy.</summary>
     [JsonPropertyName("egress")]
-    [JsonConverter(typeof(NonNullNetworkSectionJsonConverter<NetworkEgressPolicy>))]
     public NetworkEgressPolicy? Egress { get; set; }
 
     /// <summary>Inbound and host-loopback policy.</summary>
     [JsonPropertyName("ingress")]
-    [JsonConverter(typeof(NonNullNetworkSectionJsonConverter<NetworkIngressPolicy>))]
     public NetworkIngressPolicy? Ingress { get; set; }
 
     /// <summary>Runtime network values.</summary>

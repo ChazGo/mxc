@@ -164,3 +164,30 @@ jobs:
             throw 'Expected both backend-switch tests to run and pass with none skipped. The optional-backend lane is no longer verifying the enabled branch.'
           }
           Write-Host 'Optional backend switches verified against native availability.'
+
+      # Native AOT publish gate for the SDK's JSON layer, on every OS matrix job.
+      - name: AOT publish gate (SDK JSON layer)
+        shell: pwsh
+        run: |
+          $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+          if ($IsLinux) {
+            sudo apt-get update
+            sudo apt-get install -y clang zlib1g-dev
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to install Native AOT prerequisites (clang, zlib1g-dev).' }
+            $rid = "linux-$arch"; $exeName = 'Microsoft.Mxc.Sdk.AotSmokeTest'
+          }
+          elseif ($IsMacOS) { $rid = "osx-$arch"; $exeName = 'Microsoft.Mxc.Sdk.AotSmokeTest' }
+          else { $rid = "win-$arch"; $exeName = 'Microsoft.Mxc.Sdk.AotSmokeTest.exe' }
+          $log = Join-Path $env:RUNNER_TEMP 'dotnet-aot-publish.log'
+          $pub = Join-Path $env:RUNNER_TEMP 'aot-smoke-publish'
+          dotnet publish Microsoft.Mxc.Sdk.AotSmokeTest -c Release -r $rid -o $pub --nologo 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { throw "AOT publish exited $LASTEXITCODE" }
+          $out = Get-Content -LiteralPath $log -Raw
+          if ($out -match 'warning IL|AOT analysis|Trim analysis') {
+            throw 'AOT publish emitted an IL/AOT/trim warning. The SDK JSON layer is no longer reflection-free.'
+          }
+          $exe = Join-Path $pub $exeName
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Published AOT executable not found: $exe" }
+          & $exe
+          if ($LASTEXITCODE -ne 0) { throw "AOT smoke test exited $LASTEXITCODE" }
+          Write-Host "AOT publish gate passed on ${rid}: reflection-free JSON layer verified."

@@ -4,7 +4,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.Mxc.Sdk.Native;
 using NativeSandbox = Microsoft.Mxc.Sdk.Native.MxcSandbox;
 
@@ -23,20 +22,6 @@ public static class MxcSandbox
     {
         NativeLibraryResolver.Initialize();
     }
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters =
-        {
-            new JsonStringEnumConverter(JsonNamingPolicy.CamelCase),
-        },
-    };
-
-    private static readonly JsonSerializerOptions ProbeJsonOptions = new(JsonOptions)
-    {
-        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-    };
 
     internal static IRequestProbeInterop RequestProbeInterop { get; set; } =
         PInvokeRequestProbeInterop.Instance;
@@ -85,7 +70,7 @@ public static class MxcSandbox
     /// </remarks>
     internal static IReadOnlyList<AvailableBackend> ParseAvailableBackends(string json)
     {
-        var backends = JsonSerializer.Deserialize<NativeAvailableBackend[]>(json, JsonOptions)
+        var backends = MxcJson.Deserialize<NativeAvailableBackend[]>(json)
             ?? throw new JsonException("Native backend discovery returned null JSON.");
         return backends.Select(MapAvailableBackend).ToArray();
     }
@@ -101,7 +86,7 @@ public static class MxcSandbox
             var json = ReadOwnedJson(
                 NativeMethods.mxc_platform_support_json(),
                 "probing platform support");
-            var support = JsonSerializer.Deserialize<NativePlatformSupport>(json, JsonOptions)
+            var support = MxcJson.Deserialize<NativePlatformSupport>(json)
                 ?? throw new JsonException("Native platform support returned null JSON.");
             return new PlatformSupport
             {
@@ -191,7 +176,7 @@ public static class MxcSandbox
 
     internal static ProbeOutput ParseProbeOutput(string json)
     {
-        var output = JsonSerializer.Deserialize<NativeProbeOutput>(json, ProbeJsonOptions)
+        var output = MxcJson.Deserialize<NativeProbeOutput>(json, MxcJson.ProbeOptions)
             ?? throw new JsonException("native request probe returned null JSON.");
         var warnings = output.Warnings
             ?? throw new JsonException("native request probe returned null warnings.");
@@ -430,13 +415,13 @@ public static class MxcSandbox
     internal static string SerializePolicy(SandboxPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(policy);
-        return JsonSerializer.Serialize(policy, JsonOptions);
+        return MxcJson.Serialize(policy, MxcJson.Options);
     }
 
     internal static string SerializeRequest(SandboxRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return JsonSerializer.Serialize(PrepareRequest(request), JsonOptions);
+        return MxcJson.Serialize(PrepareRequest(request), MxcJson.Options);
     }
 
     private static SandboxRequest PrepareRequest(SandboxRequest request)
@@ -594,10 +579,10 @@ public static class MxcSandbox
     private static SandboxOutputMetadata? DeserializeOutputMetadata(string? json) =>
         string.IsNullOrEmpty(json)
             ? null
-            : JsonSerializer.Deserialize<SandboxOutputMetadata>(json);
+            : MxcJson.Deserialize<SandboxOutputMetadata>(json);
 
     private static IReadOnlyList<string> DeserializeWarnings(string? json) =>
         string.IsNullOrEmpty(json)
             ? Array.Empty<string>()
-            : JsonSerializer.Deserialize<string[]>(json) ?? Array.Empty<string>();
+            : MxcJson.Deserialize<string[]>(json) ?? Array.Empty<string>();
 }
