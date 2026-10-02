@@ -187,7 +187,7 @@ const VERSION_FILE: &str = "VERSION";
 
 /// Pinned to the `hyperlight-unikraft` release in Cargo.toml: a rootfs
 /// only boots on the kernel and driver protocol of its own release.
-const ROOTFS_TAG: &str = "initrd-v0.14.1";
+const ROOTFS_TAG: &str = "initrd-v0.17.0";
 const ROOTFS_PATH_IN_IMAGE: &str = "/initrd.cpio";
 /// Where host directories appear in the guest: `/host/<basename>`.
 const GUEST_MOUNT_ROOT: &str = "/host";
@@ -1736,6 +1736,11 @@ mod tests {
             .nth(1)
             .and_then(|rest| rest.split('"').next())
             .expect("a pinned version");
+        // A caret requirement would let a lockfile refresh take a later
+        // release whose kernel no longer boots the rootfs at ROOTFS_TAG.
+        let version = version
+            .strip_prefix('=')
+            .expect("an exact (`=`) requirement");
         assert_eq!(ROOTFS_TAG, format!("initrd-v{version}"));
     }
 
