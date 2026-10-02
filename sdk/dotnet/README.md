@@ -549,6 +549,60 @@ PSReadLine directory required when `pwsh.exe` is present.
 The profile helper discovers per-user tool installations, while the temporary
 files helper grants the configured host temporary directory read-write.
 
+### Policy store (prototype)
+
+> **PROTOTYPE, pending API review.** These APIs are proposed and may change
+> before sign-off. They are not part of MXC 1.0.
+
+`MxcPolicyStore` resolves known tools (for example `git`, `node`, `npm`) to a
+candidate floor `SandboxPolicy` from a reviewed catalog bundled in `mxc_ffi`.
+Nothing is downloaded. A floor is a best-effort starting point, not a
+guarantee, and it never grants access by itself: review it, compose it with
+your own policy, then run. It complements Learning Mode rather than replacing
+it.
+
+```csharp
+var context = new ResolveContext
+{
+    ProjectRoot = "/work/repo",
+    Symbols = new Dictionary<string, string>
+    {
+        ["node_prefix"] = "/opt/node",
+        ["npm_prefix"] = "/opt/npm",
+        ["npm_cache"] = "/home/me/.npm",
+    },
+};
+
+// The SDK's own SandboxPolicy, or null when nothing resolves.
+SandboxPolicy? floor = MxcPolicyStore.ResolveSandboxPolicy(
+    new ToolInput("npm") { PackageUrl = "pkg:npm/npm" }, context);
+
+// One floor for a git fetch and push. DetectedVersion selects a version
+// overlay; Intent narrows the floor to what that intent needs.
+var gitContext = context with
+{
+    Symbols = new Dictionary<string, string>(context.Symbols!) { ["git_prefix"] = "/usr" },
+};
+var resolution = MxcPolicyStore.ResolveSandboxPolicyWithDiagnostics(
+    new[]
+    {
+        new ToolInput("git") { PackageUrl = "pkg:generic/git", DetectedVersion = "2.45.1", Intent = "fetch" },
+        new ToolInput("git") { PackageUrl = "pkg:generic/git", DetectedVersion = "2.45.1", Intent = "push" },
+    },
+    gitContext);
+// resolution.Diagnostics.Tools[i].Status: "matched_default", "matched_version",
+// "version_out_of_range", "version_unparseable", "intent_unsupported", or "tool_unmatched".
+```
+
+Name-only inputs (`"git"`) need `AllowWeakIdentityFallback = true`. Each input
+resolves independently, so a result may cover only some of the requested
+tools. Each `ResolutionWarning` in `Diagnostics.Warnings` has a `Message`;
+structured per-input warnings also carry `Code`, `InputIndex`, and related
+fields, while `Code` is `null` for free-text warnings. `GetCatalogInfo()` and `ListCatalogEntries()` inspect the bundled catalog.
+Failures throw `MxcException`: `Code` carries the `ErrorCode` and `Reason`
+carries the stable store reason (for example `invalid_context`). `Reason` is
+`null` for failures outside the policy store. See [`docs/policy-store/`](../../docs/policy-store/README.md).
+
 ### Denial capture (Windows)
 
 Select explicit ProcessContainer containment and set
@@ -776,7 +830,8 @@ Exposes **run-to-completion** (`Run` / `RunAsync`), **streaming**
 ProcessContainer, Linux Bubblewrap, macOS Seatbelt, and Windows
 IsolationSession and WSLC for run/stream; the state-aware lifecycle supports
 IsolationSession, Windows Sandbox, and WSLC on Windows. Windows Sandbox
-requires experimental opt-in; IsolationSession and WSLC do not).
+requires experimental opt-in; IsolationSession and WSLC do not). It also
+exposes the prototype policy store (`MxcPolicyStore`, pending API review).
 
 `SchemaVersions` exposes the minimum and maximum accepted schema versions, the
 latest stable schema, and the backend-specific state-aware defaults. These

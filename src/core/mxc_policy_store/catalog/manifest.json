@@ -1,0 +1,10 @@
+{
+  "catalogSchemaVersion": "1",
+  "defaultRevision": "2026-10-02.1",
+  "revisions": [
+    {
+      "catalogRevision": "2026-10-02.1",
+      "file": "revisions/2026-10-02.1.json"
+    }
+  ]
+}

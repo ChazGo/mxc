@@ -708,6 +708,60 @@ Windows Sandbox and WSLc relay attached output without interactive stdin.
 stdout and stdin are both terminals; use `sandbox::exec` for a typed workload
 with no terminal.
 
+## Policy store (prototype)
+
+> **PROTOTYPE, pending API review.** These APIs are proposed and may change
+> before sign-off. They are not part of MXC 1.0.
+
+`mxc_sdk::policy_store` resolves known tools (for example `git`, `node`,
+`npm`) to a candidate floor `SandboxPolicy` from a reviewed catalog bundled in
+the crate (via `mxc_policy_store`). Nothing is downloaded. A floor is a
+best-effort starting point, not a guarantee, and it never grants access by
+itself: review it and compose it with your own policy before building a
+request. It complements Learning Mode rather than replacing it.
+
+```rust,no_run
+use mxc_sdk::policy_store::{
+    resolve_sandbox_policy, resolve_sandbox_policy_with_diagnostics, ResolveContext,
+    ToolCandidate, ToolInput,
+};
+
+let ctx = ResolveContext::new()
+    .project_root("/work/repo")
+    .symbol("node_prefix", "/opt/node")
+    .symbol("npm_prefix", "/opt/npm")
+    .symbol("npm_cache", "/home/me/.npm");
+
+// `Some(SandboxPolicy)`, or `None` when nothing resolves.
+let floor = resolve_sandbox_policy(
+    ToolCandidate::new("npm").with_package_url("pkg:npm/npm"),
+    &ctx,
+)?;
+
+// One floor for a git fetch and push. The detected version selects a version
+// overlay; the intent narrows the floor to what that intent needs.
+let git = ToolCandidate::new("git")
+    .with_package_url("pkg:generic/git")
+    .with_detected_version("2.45.1");
+let resolution = resolve_sandbox_policy_with_diagnostics(
+    vec![
+        ToolInput::from(git.clone().with_intent("fetch")),
+        ToolInput::from(git.with_intent("push")),
+    ],
+    &ctx.clone().symbol("git_prefix", "/usr"),
+)?;
+// Each resolution.diagnostics.tools[i].status is a ToolResolutionStatus.
+# let _ = (floor, resolution);
+# Ok::<(), mxc_sdk::policy_store::PolicyCatalogError>(())
+```
+
+Name-only inputs need `.allow_weak(true)`. Each input resolves independently,
+so a result may cover only some of the requested tools; non-default outcomes
+also appear as `Warning::Tool` entries in `diagnostics.warnings`.
+`get_catalog_info` and `list_catalog_entries` inspect the bundled catalog.
+Errors carry an MXC `ErrorCode` and a stable `reason()`. See
+[`docs/policy-store/`](../../../docs/policy-store/README.md).
+
 ## Relationship to `mxc_engine` and the executor binaries
 
 Backend dispatch, host probing, and config building live in the internal

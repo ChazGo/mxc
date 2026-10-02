@@ -1630,6 +1630,7 @@ dependencies = [
  "bwrap_common",
  "libc",
  "mxc_engine",
+ "mxc_policy_store",
  "serde_json",
  "wxc_common",
 ]
@@ -1711,6 +1712,13 @@ dependencies = [
  "serde_json",
  "tempfile",
  "wxc_common",
+]
+
+[[package]]
+name = "mxc_policy_store"
+version = "0.9.0"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

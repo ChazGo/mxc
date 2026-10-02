@@ -148,12 +148,20 @@
 //! These include security warnings, network rules that cannot carry traffic,
 //! and operational warnings such as unavailable telemetry routing.
 //!
+//! ## Policy store (prototype)
+//!
+//! **PROTOTYPE, pending API review.** [`policy_store`] resolves known tools to
+//! a candidate floor [`SandboxPolicy`] from a catalog bundled in this crate.
+//! The floor is best-effort, not a guarantee, and is not part of MXC 1.0.
+//!
 //! ## Relationship to `mxc_engine`
 //!
 //! This crate is a thin, streaming-focused public facade. Backend dispatch,
 //! host probing, and config building live in the internal `mxc_engine` crate;
 //! `mxc-sdk` re-exports the curated surface and wraps the engine's streaming
 //! handle in [`Sandbox`].
+
+pub mod policy_store;
 
 pub mod sandbox;
 

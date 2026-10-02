@@ -502,6 +502,38 @@ Each helper returns `{ readonlyPaths, readwritePaths }` — merge what you want 
 
 ---
 
+## Policy Store (prototype)
+
+> **PROTOTYPE, pending API review.** These APIs are proposed and may change before sign-off. They are not part of MXC 1.0.
+
+The policy store resolves known tools (for example `git`, `node`, `npm`) to a candidate floor `SandboxPolicy` from a reviewed catalog bundled in the SDK's native library. Nothing is downloaded. A floor is a best-effort starting point, not a guarantee, and it never grants access by itself: review it, compose it with your own policy, then pass the result to the spawn APIs. It complements Learning Mode rather than replacing it.
+
+```typescript
+import { resolveSandboxPolicy, resolveSandboxPolicyWithDiagnostics } from '@microsoft/mxc-sdk';
+
+const context = {
+  projectRoot: '/work/repo',
+  symbols: { node_prefix: '/opt/node', npm_prefix: '/opt/npm', npm_cache: '/home/me/.npm' },
+};
+
+// A SandboxPolicy, or undefined when nothing resolves.
+const floor = resolveSandboxPolicy({ invocationName: 'npm', packageUrl: 'pkg:npm/npm' }, context);
+
+// One floor for a git fetch and push. detectedVersion selects a version overlay;
+// intent narrows the floor to what that intent needs.
+const git = { invocationName: 'git', packageUrl: 'pkg:generic/git', detectedVersion: '2.45.1' };
+const { policy, diagnostics } = resolveSandboxPolicyWithDiagnostics(
+  [{ ...git, intent: 'fetch' }, { ...git, intent: 'push' }],
+  { ...context, symbols: { ...context.symbols, git_prefix: '/usr' } },
+);
+// diagnostics.tools[i].status: 'matched_default' | 'matched_version' | 'version_out_of_range'
+//   | 'version_unparseable' | 'intent_unsupported' | 'tool_unmatched'
+```
+
+Name-only inputs (`'git'`) need `allowWeakIdentityFallback: true`. Each input resolves independently, so a result may cover only some of the requested tools; non-default outcomes also appear in `diagnostics.warnings` as structured `ToolResolutionWarning` objects alongside free-text warnings. `getCatalogInfo()` and `listCatalogEntries()` inspect the bundled catalog without resolving a policy. Failures throw `MxcError` with the stable store reason in `details.reason` (for example `invalid_context`). See [`docs/policy-store/`](../../docs/policy-store/README.md).
+
+---
+
 ## Common Pitfalls
 
 ### UI is blocked by default on 0.5.0+ — some shells need it
@@ -597,6 +629,12 @@ getPlatformSupport() → PlatformSupport
 getAvailableToolsPolicy(env?, options?) → FilesystemPolicyResult
 getUserProfilePolicy()                  → FilesystemPolicyResult
 getTemporaryFilesPolicy(env?)           → FilesystemPolicyResult
+
+// Policy store (PROTOTYPE, pending API review)
+resolveSandboxPolicy(tools, context?)                → SandboxPolicy | undefined
+resolveSandboxPolicyWithDiagnostics(tools, context?) → SandboxConfigResolution
+getCatalogInfo()                                     → CatalogInfo
+listCatalogEntries()                                 → CatalogEntryMetadata[]
 
 // Telemetry consent (Windows-only; see Telemetry Consent section below)
 queryTelemetryConsentAsync()      → Promise<{ state, storedState, effectiveState, needsPrompt, policy, error? }>

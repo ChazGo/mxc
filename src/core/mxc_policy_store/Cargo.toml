@@ -1,0 +1,16 @@
+[package]
+name = "mxc_policy_store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "PROTOTYPE, pending API review: the MXC policy store. Resolves known tools to a best-effort candidate floor SandboxPolicy from a statically bundled policy catalog."
+build = "build.rs"
+
+[lib]
+name = "mxc_policy_store"
+path = "src/lib.rs"
+
+[target.'cfg(unix)'.dependencies]
+# uname(2) for the kernel machine type, Linux/macOS only.
+libc.workspace = true

@@ -1,0 +1,486 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/policy-catalog/catalog.v1.schema.json",
+  "title": "Known-tool policy catalog revision (catalogSchemaVersion 1)",
+  "description": "Shape of one published catalog revision. Semantic rules (exactly one unversioned default per entry, additive-only overlays, non-overlapping version ranges, identity uniqueness, dependency closure, cycle freedom, symbol validity, unsafe paths, materialization of every effective policy, composition limits) are enforced by the catalog validator, not by this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "catalogSchemaVersion",
+    "catalogRevision",
+    "entries"
+  ],
+  "properties": {
+    "catalogSchemaVersion": {
+      "const": "1"
+    },
+    "catalogRevision": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}\\.[1-9][0-9]*$"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entryId",
+        "entryRevision",
+        "displayName",
+        "versionScheme",
+        "identity",
+        "default",
+        "provenance"
+      ],
+      "properties": {
+        "entryId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*:[a-z0-9][a-z0-9._-]*$"
+        },
+        "entryRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionScheme": {
+          "enum": [
+            "npm",
+            "semver",
+            "pypi",
+            "nuget",
+            "intdot"
+          ]
+        },
+        "identity": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/identity"
+          }
+        },
+        "default": {
+          "$ref": "#/$defs/default"
+        },
+        "platformVariants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/platformVariant"
+          }
+        },
+        "versionVariants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/versionVariant"
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "method",
+            "sourceRevision"
+          ],
+          "properties": {
+            "method": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sourceRevision": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "identity": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "const": "purl"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^pkg:",
+              "description": "A package URL without a version; versions select versionVariants."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "names"
+          ],
+          "properties": {
+            "kind": {
+              "const": "invocation-name"
+            },
+            "names": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "default": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sandboxPolicy"
+      ],
+      "properties": {
+        "sandboxPolicy": {
+          "$ref": "#/$defs/sandboxPolicy"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/dependencies"
+        },
+        "intents": {
+          "$ref": "#/$defs/intents"
+        }
+      }
+    },
+    "platformVariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "when"
+      ],
+      "properties": {
+        "when": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "platform"
+          ],
+          "properties": {
+            "platform": {
+              "enum": [
+                "windows",
+                "linux",
+                "macos"
+              ]
+            },
+            "architecture": {
+              "enum": [
+                "x64",
+                "arm64"
+              ]
+            }
+          }
+        },
+        "policyAdditions": {
+          "$ref": "#/$defs/policyAdditions"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/dependencies"
+        },
+        "intentAdditions": {
+          "description": "Additions to intents the default declares.",
+          "$ref": "#/$defs/intents"
+        },
+        "intents": {
+          "description": "New intents.",
+          "$ref": "#/$defs/intents"
+        }
+      }
+    },
+    "versionVariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "versionRange"
+      ],
+      "properties": {
+        "versionRange": {
+          "type": "string",
+          "pattern": "^vers:",
+          "description": "A vers range in the entry's versionScheme; ranges must not overlap."
+        },
+        "policyAdditions": {
+          "$ref": "#/$defs/policyAdditions"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/dependencies"
+        },
+        "intentAdditions": {
+          "description": "Additions to intents the default declares.",
+          "$ref": "#/$defs/intents"
+        },
+        "intents": {
+          "description": "New intents.",
+          "$ref": "#/$defs/intents"
+        }
+      }
+    },
+    "intents": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/intent"
+      }
+    },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exampleSubcommands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "policyAdditions": {
+          "$ref": "#/$defs/policyAdditions"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/dependencies"
+        }
+      }
+    },
+    "policyAdditions": {
+      "description": "Additive policy data. v1 allows only read-only and read-write paths and outbound allow rules.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "filesystem": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "readonlyPaths": {
+              "$ref": "#/$defs/pathList"
+            },
+            "readwritePaths": {
+              "$ref": "#/$defs/pathList"
+            }
+          }
+        },
+        "network": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "egress": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "allow": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/networkRule"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entryId"
+        ],
+        "properties": {
+          "entryId": {
+            "type": "string"
+          },
+          "versionRange": {
+            "type": "string",
+            "pattern": "^vers:",
+            "description": "A vers range in the target entry's versionScheme. Recorded in diagnostics; it does not select a version variant."
+          }
+        }
+      }
+    },
+    "pathList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "networkAction": {
+      "enum": [
+        "allow",
+        "deny"
+      ]
+    },
+    "networkRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "to": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "cidr"
+            ],
+            "properties": {
+              "cidr": {
+                "type": "string"
+              },
+              "except": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "ports": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "protocol": {
+                "enum": [
+                  "tcp",
+                  "udp",
+                  "icmp",
+                  "any"
+                ]
+              },
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              "endPort": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              }
+            }
+          }
+        }
+      }
+    },
+    "sandboxPolicy": {
+      "description": "Catalog-supported subset of the MXC SandboxPolicy contract. Backend-specific keys (processContainer, seatbelt, lxc, containment, ...) are rejected so variants stay backend-neutral.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version"
+      ],
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "filesystem": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "deniedPaths": {
+              "$ref": "#/$defs/pathList"
+            },
+            "readonlyPaths": {
+              "$ref": "#/$defs/pathList"
+            },
+            "readwritePaths": {
+              "$ref": "#/$defs/pathList"
+            }
+          }
+        },
+        "network": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "egress": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "default": {
+                  "$ref": "#/$defs/networkAction"
+                },
+                "allow": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/networkRule"
+                  }
+                },
+                "deny": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/networkRule"
+                  }
+                }
+              }
+            },
+            "ingress": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "default": {
+                  "$ref": "#/$defs/networkAction"
+                },
+                "hostLoopback": {
+                  "$ref": "#/$defs/networkAction"
+                }
+              }
+            }
+          }
+        },
+        "ui": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allowWindows": {
+              "type": "boolean"
+            },
+            "clipboard": {
+              "enum": [
+                "none",
+                "read",
+                "write",
+                "all"
+              ]
+            },
+            "allowInputInjection": {
+              "type": "boolean"
+            }
+          }
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}
