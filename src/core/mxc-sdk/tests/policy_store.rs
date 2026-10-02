@@ -7,8 +7,8 @@
 
 use mxc_sdk::policy_store::{
     binding, get_catalog_info, list_catalog_entries, resolve_sandbox_policy,
-    resolve_sandbox_policy_with_diagnostics, Architecture, ErrorReason, Platform, ResolveContext,
-    ToolCandidate,
+    resolve_sandbox_policy_with_diagnostics, Architecture, ErrorReason, IntentMode, Platform,
+    ResolveContext, ToolCandidate, ToolResolutionStatus, VersionStatus, Warning,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -58,6 +58,52 @@ fn diagnostics_carry_the_same_policy_and_attribution() {
         resolution.diagnostics.tools[0].matches[0].entry_id,
         "tool:git"
     );
+}
+
+#[test]
+fn version_and_intent_select_the_effective_policy() {
+    let ctx = linux_context().symbol("ssh_prefix", "/usr/lib/ssh");
+    let git = |version: &str, intent: &str| {
+        ToolCandidate::new("git")
+            .with_package_url("pkg:generic/git")
+            .with_detected_version(version)
+            .with_intent(intent)
+    };
+    let push = resolve_sandbox_policy_with_diagnostics(git("2.45.1", "push"), &ctx).unwrap();
+    let tool = &push.diagnostics.tools[0];
+    assert_eq!(
+        tool.status,
+        ToolResolutionStatus::Version(VersionStatus::MatchedVersion)
+    );
+    assert_eq!(
+        tool.matches[0].intent_selection.as_ref().unwrap().mode,
+        IntentMode::Named
+    );
+    assert_eq!(
+        push.diagnostics.resolved_dependencies[0].entry_id,
+        "tool:ssh"
+    );
+    let policy = push.policy.unwrap();
+    assert_eq!(
+        policy.filesystem.unwrap().readonly_paths,
+        ["/usr/bin", "/usr/lib/ssh"]
+    );
+    assert_eq!(
+        policy.network.unwrap().egress.unwrap().allow.unwrap().len(),
+        1
+    );
+
+    let unsupported =
+        resolve_sandbox_policy_with_diagnostics(git("2.45.1", "bundle-fetch"), &ctx).unwrap();
+    assert!(unsupported.policy.is_none());
+    assert_eq!(
+        unsupported.diagnostics.tools[0].status,
+        ToolResolutionStatus::IntentUnsupported
+    );
+    assert!(matches!(
+        &unsupported.diagnostics.warnings[0],
+        Warning::Tool(w) if w.code.as_str() == "intent_unsupported"
+    ));
 }
 
 #[test]

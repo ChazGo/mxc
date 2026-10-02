@@ -75,6 +75,27 @@ fn diagnostics_include_attribution() {
 }
 
 #[test]
+fn intent_and_version_cross_the_boundary() {
+    let (status, json, _, message) = call(
+        mxc_resolve_sandbox_policy_with_diagnostics_json,
+        r#"{"tools":{"invocationName":"git","packageUrl":"pkg:generic/git","detectedVersion":"2.30.0","intent":"fetch"},"context":{"platform":"linux","architecture":"x64","projectRoot":"/w","symbols":{"git_prefix":"/usr/bin"}}}"#,
+    );
+    assert_eq!(status, MXC_STATUS_SUCCESS, "{message:?}");
+    let json: serde_json::Value = serde_json::from_str(&json.unwrap()).unwrap();
+    let tool = &json["diagnostics"]["tools"][0];
+    assert_eq!(tool["status"], "version_out_of_range");
+    assert_eq!(tool["matches"][0]["intentSelection"]["requested"], "fetch");
+    assert_eq!(
+        json["diagnostics"]["warnings"][0]["code"],
+        "version_out_of_range"
+    );
+    assert_eq!(
+        json["policy"]["network"]["egress"]["allow"][0]["ports"][0]["port"],
+        443
+    );
+}
+
+#[test]
 fn store_failures_carry_status_and_reason() {
     let (status, json, reason, message) = call(
         mxc_resolve_sandbox_policy_json,

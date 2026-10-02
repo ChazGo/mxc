@@ -11,17 +11,25 @@
 //! access, launches a sandbox, contacts a network service, or writes state;
 //! the V1 catalog is compiled in and nothing is downloaded.
 //!
+//! Each catalog entry has one unversioned default plus additive platform,
+//! version (`vers` range), and intent overlays. A [`ToolCandidate`] names the
+//! tool by package URL (strong) or invocation name (weak fallback), and may
+//! carry a `detected_version` and an `intent` such as `fetch` or `push`.
+//!
 //! The names and shapes here are proposed and may change before sign-off (for
-//! example, the names may drop "Sandbox", and lookup may gain an intent such
-//! as `git pull` versus `git push`). This API is not part of MXC 1.0.
+//! example, the names may drop "Sandbox"). This API is not part of MXC 1.0.
 //!
 //! ```no_run
-//! use mxc_sdk::policy_store::{resolve_sandbox_policy, ResolveContext};
+//! use mxc_sdk::policy_store::{resolve_sandbox_policy, ResolveContext, ToolCandidate};
 //!
 //! let ctx = ResolveContext::new()
 //!     .project_root("/work/repo")
 //!     .symbol("git_prefix", "/usr/bin");
-//! if let Some(policy) = resolve_sandbox_policy("git", &ctx)? {
+//! let git = ToolCandidate::new("git")
+//!     .with_package_url("pkg:generic/git")
+//!     .with_detected_version("2.45.1")
+//!     .with_intent("fetch");
+//! if let Some(policy) = resolve_sandbox_policy(git, &ctx)? {
 //!     // Compose `policy` with the caller's own policy, then build a request.
 //!     let _ = policy;
 //! }
@@ -32,10 +40,13 @@ use crate::SandboxPolicy;
 use mxc_policy_store::tooling::Json;
 
 pub use mxc_policy_store::{
-    Architecture, CatalogEntryMetadata, CatalogIdentityMetadata, CatalogInfo, DependencyRecord,
-    Diagnostics, EntryMatchRecord, ErrorCode, ErrorReason, IdentityStrength, MatchedIdentity,
-    Platform, PlatformVariantMetadata, PolicyCatalogError, Provenance, ResolveContext, SymbolMap,
-    ToolCandidate, ToolInput, ToolInputs, ToolRecord,
+    Architecture, CatalogAdditionsMetadata, CatalogEntryMetadata, CatalogIdentityMetadata,
+    CatalogInfo, CatalogIntentMetadata, DefaultMetadata, DependencyRecord, Diagnostics,
+    EntryMatchRecord, ErrorCode, ErrorReason, IdentityStrength, IntentMode, IntentSelection,
+    MatchedIdentity, Platform, PlatformVariantMetadata, PolicyCatalogError, Provenance,
+    ResolveContext, SymbolMap, ToolCandidate, ToolInput, ToolInputs, ToolRecord,
+    ToolResolutionStatus, ToolResolutionWarning, ToolWarningCode, VersionScheme, VersionSelection,
+    VersionStatus, VersionVariantMetadata, Warning,
 };
 
 /// Result of [`resolve_sandbox_policy_with_diagnostics`]: the same policy
