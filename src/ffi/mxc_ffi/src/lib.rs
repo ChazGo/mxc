@@ -15,6 +15,12 @@
 //!   drives the envelope phases (provision / start / stop / deprovision), and
 //!   [`mxc_state_aware_exec`] runs the exec phase as a live streaming handle
 //!   (reusing the streaming externs).
+//! - **Policy store** (`policy_store` module, PROTOTYPE pending API review) —
+//!   [`mxc_resolve_sandbox_policy_json`],
+//!   [`mxc_resolve_sandbox_policy_with_diagnostics_json`],
+//!   [`mxc_policy_catalog_info_json`], and
+//!   [`mxc_list_policy_catalog_entries_json`] resolve known tools against the
+//!   statically bundled policy catalog, for the Node and C# SDKs.
 //!
 //! ## Contract
 //!
@@ -61,10 +67,12 @@ use std::sync::OnceLock;
 use mxc_sdk::{available_backends, platform_support, run, ErrorCode, SandboxRequest, WaitOutcome};
 
 mod error_detail;
+mod policy_store;
 mod request;
 mod state_aware;
 mod streaming;
 pub use error_detail::*;
+pub use policy_store::*;
 pub use state_aware::*;
 pub use streaming::*;
 
