@@ -1,17 +1,16 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Contract and revision validation, variant selection, dependency closure,
-//! and composition limits. Error messages match the original TypeScript
-//! prototype byte for byte, so the frozen conformance vectors still apply.
+//! Catalog contract, entry model (one unversioned default plus additive
+//! platform and version overlays), and contract/revision validation. The
+//! effective-policy materialization lives in [`crate::effective`].
 
 use crate::errors::{invalid_catalog, Result};
-use crate::json::{cmp_utf16, js_number_to_string, js_to_string, Json, JsonObject};
+use crate::json::{js_number_to_string, js_to_string, Json, JsonObject};
 use crate::model::{Architecture, IdentityStrength, Platform};
-use crate::paths::path_key_segments;
 use crate::purl::parse_purl;
 use crate::text::{is_symbol_name, js_to_lower, replace_symbols, symbol_matches};
-use crate::version_range::is_valid_version_range;
+use crate::vers::{VersRange, VersionScheme};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
@@ -65,40 +64,6 @@ impl CatalogContract {
     }
 }
 
-/// One identity predicate of an entry.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum IdentityPredicate {
-    Purl {
-        value: String,
-        version_range: Option<String>,
-    },
-    InvocationName {
-        names: Vec<String>,
-    },
-}
-
-impl IdentityPredicate {
-    pub fn kind(&self) -> &'static str {
-        match self {
-            IdentityPredicate::Purl { .. } => "purl",
-            IdentityPredicate::InvocationName { .. } => "invocation-name",
-        }
-    }
-
-    pub fn strength(&self) -> IdentityStrength {
-        match self {
-            IdentityPredicate::Purl { .. } => IdentityStrength::Strong,
-            IdentityPredicate::InvocationName { .. } => IdentityStrength::Weak,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Dependency {
-    pub entry_id: String,
-    pub version_range: Option<String>,
-}
-
 /// An embedded, validated `SandboxPolicy`. The reviewed JSON object is kept
 /// as written so field order and values are preserved exactly.
 #[derive(Clone, Debug, PartialEq)]
@@ -137,12 +102,98 @@ impl CatalogPolicy {
     }
 }
 
+/// One identity predicate of an entry.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum IdentityPredicate {
+    Purl { value: String },
+    InvocationName { names: Vec<String> },
+}
+
+impl IdentityPredicate {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            IdentityPredicate::Purl { .. } => "purl",
+            IdentityPredicate::InvocationName { .. } => "invocation-name",
+        }
+    }
+
+    pub fn strength(&self) -> IdentityStrength {
+        match self {
+            IdentityPredicate::Purl { .. } => IdentityStrength::Strong,
+            IdentityPredicate::InvocationName { .. } => IdentityStrength::Weak,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Dependency {
+    pub entry_id: String,
+    /// A `vers` range in the target entry's scheme. It is recorded in
+    /// diagnostics; it does not select a version overlay.
+    pub version_range: Option<String>,
+}
+
+/// Additive policy data (`policyAdditions`): v1 allows only read-only and
+/// read-write paths and outbound allow rules.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Additions {
+    pub readonly_paths: Vec<String>,
+    pub readwrite_paths: Vec<String>,
+    pub egress_allow: Vec<Json>,
+}
+
+impl Additions {
+    pub fn is_empty(&self) -> bool {
+        self.readonly_paths.is_empty()
+            && self.readwrite_paths.is_empty()
+            && self.egress_allow.is_empty()
+    }
+}
+
+/// An intent declaration, or an extension of an inherited intent.
+#[derive(Clone, Debug, PartialEq)]
+pub struct IntentDefinition {
+    pub example_subcommands: Option<Vec<String>>,
+    pub additions: Additions,
+    pub dependencies: Vec<Dependency>,
+}
+
+/// The additions a platform or version overlay makes to the default.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Overlay {
+    pub policy_additions: Additions,
+    pub dependencies: Vec<Dependency>,
+    /// Extensions of intents the default declares.
+    pub intent_additions: Vec<(String, IntentDefinition)>,
+    /// New intents.
+    pub intents: Vec<(String, IntentDefinition)>,
+}
+
+/// The unversioned default every entry has exactly once.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EntryDefault {
+    pub sandbox_policy: CatalogPolicy,
+    pub dependencies: Vec<Dependency>,
+    pub intents: Vec<(String, IntentDefinition)>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlatformVariant {
     pub platform: Platform,
     pub architecture: Option<Architecture>,
-    pub dependencies: Option<Vec<Dependency>>,
-    pub sandbox_policy: CatalogPolicy,
+    pub overlay: Overlay,
+}
+
+#[derive(Clone, Debug)]
+pub struct VersionVariant {
+    pub version_range: VersRange,
+    pub overlay: Overlay,
+}
+
+impl PartialEq for VersionVariant {
+    fn eq(&self, other: &Self) -> bool {
+        self.version_range.as_str() == other.version_range.as_str() && self.overlay == other.overlay
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -150,8 +201,11 @@ pub struct CatalogEntry {
     pub entry_id: String,
     pub entry_revision: f64,
     pub display_name: String,
+    pub version_scheme: VersionScheme,
     pub identity: Vec<IdentityPredicate>,
+    pub default: EntryDefault,
     pub platform_variants: Vec<PlatformVariant>,
+    pub version_variants: Vec<VersionVariant>,
     pub provenance_method: String,
     pub provenance_source_revision: String,
     /// The validated entry as JSON (history comparisons use its canonical form).
@@ -165,7 +219,7 @@ pub struct CatalogRevision {
     pub entries: Vec<CatalogEntry>,
 }
 
-fn fail<T>(message: impl AsRef<str>) -> Result<T> {
+pub(crate) fn fail<T>(message: impl AsRef<str>) -> Result<T> {
     Err(invalid_catalog(message))
 }
 
@@ -325,7 +379,11 @@ pub fn validate_contract(raw: &Json) -> Result<CatalogContract> {
 // Paths and symbols
 // ---------------------------------------------------------------------------
 
-fn validate_template_path(value: &str, at: &str, contract: &CatalogContract) -> Result<()> {
+pub(crate) fn validate_template_path(
+    value: &str,
+    at: &str,
+    contract: &CatalogContract,
+) -> Result<()> {
     if value.contains(['*', '?']) {
         return fail(format!("'{at}' contains a wildcard"));
     }
@@ -350,60 +408,6 @@ fn validate_template_path(value: &str, at: &str, contract: &CatalogContract) -> 
         return fail(format!("'{at}' must not contain '..' segments"));
     }
     Ok(())
-}
-
-/// The symbols a policy references, in first-seen order.
-pub fn policy_symbols(policy: &CatalogPolicy) -> Vec<String> {
-    let mut seen: Vec<String> = Vec::new();
-    for field in COMPOSABLE_FILESYSTEM_FIELDS {
-        for value in policy.filesystem_field(field) {
-            for (_, _, name) in symbol_matches(value) {
-                if !seen.iter().any(|s| s == name) {
-                    seen.push(name.to_string());
-                }
-            }
-        }
-    }
-    seen
-}
-
-fn is_same_or_nested(left: &[String], right: &[String]) -> bool {
-    let (shorter, longer) = if left.len() <= right.len() {
-        (left, right)
-    } else {
-        (right, left)
-    };
-    shorter.iter().zip(longer).all(|(a, b)| a == b)
-}
-
-/// Finds the first equal or ancestor/descendant pair of paths in different
-/// access classes. `classes` is in [`COMPOSABLE_FILESYSTEM_FIELDS`] order.
-pub fn find_cross_class_overlap(
-    classes: &[(&str, Vec<String>)],
-    platform: Platform,
-) -> Option<String> {
-    let fields: Vec<&(&str, Vec<String>)> = classes
-        .iter()
-        .filter(|(_, values)| !values.is_empty())
-        .collect();
-    for i in 0..fields.len() {
-        for j in i + 1..fields.len() {
-            for left in &fields[i].1 {
-                for right in &fields[j].1 {
-                    if is_same_or_nested(
-                        &path_key_segments(left, platform),
-                        &path_key_segments(right, platform),
-                    ) {
-                        return Some(format!(
-                            "'{left}' ({}) overlaps '{right}' ({})",
-                            fields[i].0, fields[j].0
-                        ));
-                    }
-                }
-            }
-        }
-    }
-    None
 }
 
 // ---------------------------------------------------------------------------
@@ -490,7 +494,7 @@ fn validate_network_rules(value: &Json, at: &str, deny_list: bool) -> Result<()>
     Ok(())
 }
 
-fn validate_sandbox_policy(
+pub(crate) fn validate_sandbox_policy(
     raw: Option<&Json>,
     at: &str,
     contract: &CatalogContract,
@@ -624,7 +628,7 @@ fn validate_sandbox_policy(
 /// Stable comparison keys for one predicate; invocation names always fold.
 fn identity_keys(predicate: &IdentityPredicate) -> Vec<String> {
     match predicate {
-        IdentityPredicate::Purl { value, .. } => {
+        IdentityPredicate::Purl { value } => {
             vec![format!(
                 "purl:{}",
                 parse_purl(value).map(|p| p.key).unwrap_or_default()
@@ -650,30 +654,17 @@ fn validate_identity(raw: Option<&Json>, at: &str) -> Result<Vec<IdentityPredica
         };
         match item.get("kind").and_then(Json::as_str) {
             Some("purl") => {
-                only_fields(item, &["kind", "value", "versionRange"], &item_at)?;
+                only_fields(item, &["kind", "value"], &item_at)?;
                 let value = non_empty_string(item.get("value"), &format!("{item_at}.value"))?;
                 let Some(parsed) = parse_purl(&value) else {
                     return fail(format!("'{item_at}.value' is not a valid package URL"));
                 };
                 if parsed.version.is_some() {
                     return fail(format!(
-                        "'{item_at}.value' must not pin a version; use 'versionRange'"
+                        "'{item_at}.value' must not pin a version; versions select 'versionVariants'"
                     ));
                 }
-                let mut version_range = None;
-                if let Some(range) = item.get("versionRange") {
-                    let range = non_empty_string(Some(range), &format!("{item_at}.versionRange"))?;
-                    if !is_valid_version_range(&range) {
-                        return fail(format!(
-                            "'{item_at}.versionRange' is not a valid version range"
-                        ));
-                    }
-                    version_range = Some(range);
-                }
-                predicates.push(IdentityPredicate::Purl {
-                    value,
-                    version_range,
-                });
+                predicates.push(IdentityPredicate::Purl { value });
             }
             Some("invocation-name") => {
                 only_fields(item, &["kind", "names"], &item_at)?;
@@ -699,14 +690,258 @@ fn validate_identity(raw: Option<&Json>, at: &str) -> Result<Vec<IdentityPredica
     Ok(predicates)
 }
 
-fn validate_variants(
+fn validate_dependencies(raw: Option<&Json>, at: &str) -> Result<Vec<Dependency>> {
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    let Some(items) = raw.as_array() else {
+        return fail(format!("'{at}' must be an array"));
+    };
+    let mut seen = HashSet::new();
+    let mut list = Vec::new();
+    for (index, dependency) in items.iter().enumerate() {
+        let dep_at = format!("{at}[{index}]");
+        let Some(dependency) = dependency.as_object() else {
+            return fail(format!("'{dep_at}' must be an object"));
+        };
+        only_fields(dependency, &["entryId", "versionRange"], &dep_at)?;
+        let entry_id = non_empty_string(dependency.get("entryId"), &format!("{dep_at}.entryId"))?;
+        if !seen.insert(entry_id.clone()) {
+            return fail(format!("'{dep_at}.entryId' '{entry_id}' is listed twice"));
+        }
+        let mut version_range = None;
+        if let Some(range) = dependency.get("versionRange") {
+            let range = non_empty_string(Some(range), &format!("{dep_at}.versionRange"))?;
+            if let Err(reason) = VersRange::parse(&range) {
+                return fail(format!(
+                    "'{dep_at}.versionRange' is not a valid vers range: {reason}"
+                ));
+            }
+            version_range = Some(range);
+        }
+        list.push(Dependency {
+            entry_id,
+            version_range,
+        });
+    }
+    Ok(list)
+}
+
+const ADDITIONS_RULE: &str =
+    "additions may only use filesystem.readonlyPaths, filesystem.readwritePaths, and network.egress.allow";
+
+fn validate_additions(
     raw: Option<&Json>,
     at: &str,
     contract: &CatalogContract,
+) -> Result<Additions> {
+    let Some(raw) = raw else {
+        return Ok(Additions::default());
+    };
+    let Some(object) = raw.as_object() else {
+        return fail(format!("'{at}' must be an object"));
+    };
+    let mut additions = Additions::default();
+    for (key, value) in object.iter() {
+        match key {
+            "filesystem" => {
+                let Some(filesystem) = value.as_object() else {
+                    return fail(format!("'{at}.filesystem' must be an object"));
+                };
+                for (field, values) in filesystem.iter() {
+                    let field_at = format!("{at}.filesystem.{field}");
+                    let target = match field {
+                        "readonlyPaths" => &mut additions.readonly_paths,
+                        "readwritePaths" => &mut additions.readwrite_paths,
+                        _ => {
+                            return fail(format!("'{field_at}' is not additive; {ADDITIONS_RULE}"))
+                        }
+                    };
+                    for (index, path) in string_array(Some(values), &field_at, 0)?
+                        .into_iter()
+                        .enumerate()
+                    {
+                        validate_template_path(&path, &format!("{field_at}[{index}]"), contract)?;
+                        target.push(path);
+                    }
+                }
+            }
+            "network" => {
+                let Some(network) = value.as_object() else {
+                    return fail(format!("'{at}.network' must be an object"));
+                };
+                for (field, value) in network.iter() {
+                    if field != "egress" {
+                        return fail(format!(
+                            "'{at}.network.{field}' is not additive; {ADDITIONS_RULE}"
+                        ));
+                    }
+                    let Some(egress) = value.as_object() else {
+                        return fail(format!("'{at}.network.egress' must be an object"));
+                    };
+                    for (field, rules) in egress.iter() {
+                        let rules_at = format!("{at}.network.egress.{field}");
+                        if field != "allow" {
+                            return fail(format!("'{rules_at}' is not additive; {ADDITIONS_RULE}"));
+                        }
+                        validate_network_rules(rules, &rules_at, false)?;
+                        additions
+                            .egress_allow
+                            .extend(rules.as_array().into_iter().flatten().cloned());
+                    }
+                }
+            }
+            _ => return fail(format!("'{at}.{key}' is not additive; {ADDITIONS_RULE}")),
+        }
+    }
+    Ok(additions)
+}
+
+/// `/^[a-z][a-z0-9_-]*$/`
+fn is_intent_name(value: &str) -> bool {
+    let mut chars = value.chars();
+    chars.next().is_some_and(|c| c.is_ascii_lowercase())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+}
+
+fn validate_intents(
+    raw: Option<&Json>,
+    at: &str,
+    contract: &CatalogContract,
+) -> Result<Vec<(String, IntentDefinition)>> {
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    let Some(object) = raw.as_object() else {
+        return fail(format!("'{at}' must be an object"));
+    };
+    let mut intents = Vec::new();
+    for (name, definition) in object.iter() {
+        let intent_at = format!("{at}.{name}");
+        if !is_intent_name(name) {
+            return fail(format!(
+                "'{intent_at}' is not a valid intent name (lower-case letters, digits, '-', '_')"
+            ));
+        }
+        let Some(definition) = definition.as_object() else {
+            return fail(format!("'{intent_at}' must be an object"));
+        };
+        only_fields(
+            definition,
+            &["exampleSubcommands", "policyAdditions", "dependencies"],
+            &intent_at,
+        )?;
+        let example_subcommands = match definition.get("exampleSubcommands") {
+            None => None,
+            Some(value) => Some(string_array(
+                Some(value),
+                &format!("{intent_at}.exampleSubcommands"),
+                1,
+            )?),
+        };
+        intents.push((
+            name.to_string(),
+            IntentDefinition {
+                example_subcommands,
+                additions: validate_additions(
+                    definition.get("policyAdditions"),
+                    &format!("{intent_at}.policyAdditions"),
+                    contract,
+                )?,
+                dependencies: validate_dependencies(
+                    definition.get("dependencies"),
+                    &format!("{intent_at}.dependencies"),
+                )?,
+            },
+        ));
+    }
+    Ok(intents)
+}
+
+fn validate_overlay(
+    item: &JsonObject,
+    at: &str,
+    default_intents: &[(String, IntentDefinition)],
+    contract: &CatalogContract,
+) -> Result<Overlay> {
+    let intent_additions = validate_intents(
+        item.get("intentAdditions"),
+        &format!("{at}.intentAdditions"),
+        contract,
+    )?;
+    for (name, _) in &intent_additions {
+        if !default_intents.iter().any(|(n, _)| n == name) {
+            return fail(format!(
+                "'{at}.intentAdditions.{name}' extends an intent the default does not declare; use 'intents' to declare a new one"
+            ));
+        }
+    }
+    let intents = validate_intents(item.get("intents"), &format!("{at}.intents"), contract)?;
+    for (name, _) in &intents {
+        if default_intents.iter().any(|(n, _)| n == name) {
+            return fail(format!(
+                "'{at}.intents.{name}' redeclares an inherited intent; use 'intentAdditions' to extend it"
+            ));
+        }
+    }
+    Ok(Overlay {
+        policy_additions: validate_additions(
+            item.get("policyAdditions"),
+            &format!("{at}.policyAdditions"),
+            contract,
+        )?,
+        dependencies: validate_dependencies(
+            item.get("dependencies"),
+            &format!("{at}.dependencies"),
+        )?,
+        intent_additions,
+        intents,
+    })
+}
+
+const OVERLAY_FIELDS: [&str; 4] = [
+    "policyAdditions",
+    "dependencies",
+    "intentAdditions",
+    "intents",
+];
+
+fn validate_default(
+    raw: Option<&Json>,
+    at: &str,
+    contract: &CatalogContract,
+) -> Result<EntryDefault> {
+    let Some(item) = record(raw) else {
+        return fail(format!(
+            "'{at}' must be an object; every entry has exactly one unversioned default"
+        ));
+    };
+    only_fields(item, &["sandboxPolicy", "dependencies", "intents"], at)?;
+    Ok(EntryDefault {
+        sandbox_policy: validate_sandbox_policy(
+            item.get("sandboxPolicy"),
+            &format!("{at}.sandboxPolicy"),
+            contract,
+        )?,
+        dependencies: validate_dependencies(
+            item.get("dependencies"),
+            &format!("{at}.dependencies"),
+        )?,
+        intents: validate_intents(item.get("intents"), &format!("{at}.intents"), contract)?,
+    })
+}
+
+fn validate_platform_variants(
+    raw: Option<&Json>,
+    at: &str,
+    default: &EntryDefault,
+    contract: &CatalogContract,
 ) -> Result<Vec<PlatformVariant>> {
-    let items = match raw.and_then(Json::as_array) {
-        Some(items) if !items.is_empty() => items,
-        _ => return fail(format!("'{at}' must be a non-empty array")),
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    let Some(items) = raw.as_array() else {
+        return fail(format!("'{at}' must be an array"));
     };
     let mut selectors = HashSet::new();
     let mut variants = Vec::new();
@@ -715,7 +950,9 @@ fn validate_variants(
         let Some(item) = item.as_object() else {
             return fail(format!("'{item_at}' must be an object"));
         };
-        only_fields(item, &["when", "dependencies", "sandboxPolicy"], &item_at)?;
+        let mut allowed = vec!["when"];
+        allowed.extend(OVERLAY_FIELDS);
+        only_fields(item, &allowed, &item_at)?;
         let Some(when) = record(item.get("when")) else {
             return fail(format!("'{item_at}.when' must be an object"));
         };
@@ -755,51 +992,63 @@ fn validate_variants(
                 format!("'{item_at}' duplicates selector '{selector}'")
             });
         }
-        let mut dependencies = None;
-        if let Some(raw_dependencies) = item.get("dependencies") {
-            let Some(raw_dependencies) = raw_dependencies.as_array() else {
-                return fail(format!("'{item_at}.dependencies' must be an array"));
-            };
-            let mut seen = HashSet::new();
-            let mut list = Vec::new();
-            for (dep_index, dependency) in raw_dependencies.iter().enumerate() {
-                let dep_at = format!("{item_at}.dependencies[{dep_index}]");
-                let Some(dependency) = dependency.as_object() else {
-                    return fail(format!("'{dep_at}' must be an object"));
-                };
-                only_fields(dependency, &["entryId", "versionRange"], &dep_at)?;
-                let entry_id =
-                    non_empty_string(dependency.get("entryId"), &format!("{dep_at}.entryId"))?;
-                if !seen.insert(entry_id.clone()) {
-                    return fail(format!("'{dep_at}.entryId' '{entry_id}' is listed twice"));
-                }
-                let mut version_range = None;
-                if let Some(range) = dependency.get("versionRange") {
-                    let range = non_empty_string(Some(range), &format!("{dep_at}.versionRange"))?;
-                    if !is_valid_version_range(&range) {
-                        return fail(format!(
-                            "'{dep_at}.versionRange' is not a valid version range"
-                        ));
-                    }
-                    version_range = Some(range);
-                }
-                list.push(Dependency {
-                    entry_id,
-                    version_range,
-                });
-            }
-            dependencies = Some(list);
-        }
-        let sandbox_policy = validate_sandbox_policy(
-            item.get("sandboxPolicy"),
-            &format!("{item_at}.sandboxPolicy"),
-            contract,
-        )?;
         variants.push(PlatformVariant {
             platform,
             architecture,
-            dependencies,
-            sandbox_policy,
+            overlay: validate_overlay(item, &item_at, &default.intents, contract)?,
+        });
+    }
+    Ok(variants)
+}
+
+fn validate_version_variants(
+    raw: Option<&Json>,
+    at: &str,
+    scheme: VersionScheme,
+    default: &EntryDefault,
+    contract: &CatalogContract,
+) -> Result<Vec<VersionVariant>> {
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    let Some(items) = raw.as_array() else {
+        return fail(format!("'{at}' must be an array"));
+    };
+    let mut variants: Vec<VersionVariant> = Vec::new();
+    for (index, item) in items.iter().enumerate() {
+        let item_at = format!("{at}[{index}]");
+        let Some(item) = item.as_object() else {
+            return fail(format!("'{item_at}' must be an object"));
+        };
+        let mut allowed = vec!["versionRange"];
+        allowed.extend(OVERLAY_FIELDS);
+        only_fields(item, &allowed, &item_at)?;
+        let text = non_empty_string(item.get("versionRange"), &format!("{item_at}.versionRange"))?;
+        let range = match VersRange::parse(&text) {
+            Ok(range) => range,
+            Err(reason) => {
+                return fail(format!(
+                    "'{item_at}.versionRange' is not a valid vers range: {reason}"
+                ))
+            }
+        };
+        if range.scheme() != scheme {
+            return fail(format!(
+                "'{item_at}.versionRange' uses '{}', but the entry's versionScheme is '{scheme}'",
+                range.scheme()
+            ));
+        }
+        for (other_index, other) in variants.iter().enumerate() {
+            if range.overlaps(&other.version_range) {
+                return fail(format!(
+                    "'{item_at}.versionRange' '{text}' overlaps '{at}[{other_index}].versionRange' '{}'; version ranges must not overlap",
+                    other.version_range
+                ));
+            }
+        }
+        variants.push(VersionVariant {
+            version_range: range,
+            overlay: validate_overlay(item, &item_at, &default.intents, contract)?,
         });
     }
     Ok(variants)
@@ -830,8 +1079,11 @@ fn validate_entry(raw: &Json, at: &str, contract: &CatalogContract) -> Result<Ca
             "entryId",
             "entryRevision",
             "displayName",
+            "versionScheme",
             "identity",
+            "default",
             "platformVariants",
+            "versionVariants",
             "provenance",
         ],
         at,
@@ -855,10 +1107,28 @@ fn validate_entry(raw: &Json, at: &str, contract: &CatalogContract) -> Result<Ca
         &format!("{at}.provenance"),
     )?;
     let display_name = non_empty_string(object.get("displayName"), &format!("{at}.displayName"))?;
+    let Some(version_scheme) = object
+        .get("versionScheme")
+        .and_then(Json::as_str)
+        .and_then(VersionScheme::parse)
+    else {
+        return fail(format!(
+            "'{at}.versionScheme' must be one of npm, semver, pypi, nuget, intdot"
+        ));
+    };
     let identity = validate_identity(object.get("identity"), &format!("{at}.identity"))?;
-    let platform_variants = validate_variants(
+    let default = validate_default(object.get("default"), &format!("{at}.default"), contract)?;
+    let platform_variants = validate_platform_variants(
         object.get("platformVariants"),
         &format!("{at}.platformVariants"),
+        &default,
+        contract,
+    )?;
+    let version_variants = validate_version_variants(
+        object.get("versionVariants"),
+        &format!("{at}.versionVariants"),
+        version_scheme,
+        &default,
         contract,
     )?;
     let provenance_method =
@@ -871,64 +1141,38 @@ fn validate_entry(raw: &Json, at: &str, contract: &CatalogContract) -> Result<Ca
         entry_id,
         entry_revision,
         display_name,
+        version_scheme,
         identity,
+        default,
         platform_variants,
+        version_variants,
         provenance_method,
         provenance_source_revision,
         raw: raw.clone(),
     })
 }
 
-// ---------------------------------------------------------------------------
-// Variant selection and dependency closure
-// ---------------------------------------------------------------------------
-
-/// A selected variant; `exact` is false for the architecture-neutral fallback.
-#[derive(Clone, Copy, Debug)]
-pub struct VariantSelection<'a> {
-    pub variant: &'a PlatformVariant,
-    pub exact: bool,
-}
-
-/// Selects the exact architecture first, then the platform's neutral variant.
-/// Another architecture's variant is never a fallback.
-pub fn select_variant(
-    entry: &CatalogEntry,
-    platform: Platform,
-    architecture: Architecture,
-) -> Option<VariantSelection<'_>> {
-    let for_platform = || {
-        entry
+impl CatalogEntry {
+    /// Every dependency edge the entry declares anywhere, with where it is.
+    pub(crate) fn all_dependencies(&self) -> Vec<&Dependency> {
+        fn intents(list: &[(String, IntentDefinition)]) -> impl Iterator<Item = &Dependency> {
+            list.iter().flat_map(|(_, d)| &d.dependencies)
+        }
+        let mut out: Vec<&Dependency> = Vec::new();
+        out.extend(&self.default.dependencies);
+        out.extend(intents(&self.default.intents));
+        let overlays = self
             .platform_variants
             .iter()
-            .filter(move |v| v.platform == platform)
-    };
-    if let Some(variant) = for_platform().find(|v| v.architecture == Some(architecture)) {
-        return Some(VariantSelection {
-            variant,
-            exact: true,
-        });
+            .map(|v| &v.overlay)
+            .chain(self.version_variants.iter().map(|v| &v.overlay));
+        for overlay in overlays {
+            out.extend(&overlay.dependencies);
+            out.extend(intents(&overlay.intent_additions));
+            out.extend(intents(&overlay.intents));
+        }
+        out
     }
-    for_platform()
-        .find(|v| v.architecture.is_none())
-        .map(|variant| VariantSelection {
-            variant,
-            exact: false,
-        })
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct ClosureNode<'a> {
-    pub entry: &'a CatalogEntry,
-    pub variant: &'a PlatformVariant,
-    pub exact: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ClosureFailure {
-    /// `cycle`, `missing-entry`, or `unsupported-dependency`.
-    pub reason: &'static str,
-    pub detail: String,
 }
 
 pub type EntryIndex<'a> = HashMap<&'a str, &'a CatalogEntry>;
@@ -937,120 +1181,12 @@ pub fn entry_index(entries: &[CatalogEntry]) -> EntryIndex<'_> {
     entries.iter().map(|e| (e.entry_id.as_str(), e)).collect()
 }
 
-struct Closure<'a, 'm> {
-    by_id: &'m EntryIndex<'a>,
-    platform: Platform,
-    architecture: Architecture,
-    nodes: Vec<ClosureNode<'a>>,
-    done: HashSet<&'a str>,
-    stack: Vec<&'a str>,
-}
-
-impl<'a> Closure<'a, '_> {
-    fn visit(
-        &mut self,
-        entry: &'a CatalogEntry,
-        selection: VariantSelection<'a>,
-    ) -> std::result::Result<(), ClosureFailure> {
-        if self.stack.contains(&entry.entry_id.as_str()) {
-            let mut path: Vec<&str> = self.stack.clone();
-            path.push(&entry.entry_id);
-            return Err(ClosureFailure {
-                reason: "cycle",
-                detail: path.join(" -> "),
-            });
-        }
-        if self.done.contains(entry.entry_id.as_str()) {
-            return Ok(());
-        }
-        self.stack.push(&entry.entry_id);
-        self.nodes.push(ClosureNode {
-            entry,
-            variant: selection.variant,
-            exact: selection.exact,
-        });
-        for dependency in selection.variant.dependencies.iter().flatten() {
-            let Some(target) = self.by_id.get(dependency.entry_id.as_str()).copied() else {
-                return Err(ClosureFailure {
-                    reason: "missing-entry",
-                    detail: format!("{} -> {}", entry.entry_id, dependency.entry_id),
-                });
-            };
-            let Some(selected) = select_variant(target, self.platform, self.architecture) else {
-                return Err(ClosureFailure {
-                    reason: "unsupported-dependency",
-                    detail: format!(
-                        "{} -> {} has no {}/{} variant",
-                        entry.entry_id, dependency.entry_id, self.platform, self.architecture
-                    ),
-                });
-            };
-            self.visit(target, selected)?;
-        }
-        self.stack.pop();
-        self.done.insert(&entry.entry_id);
-        Ok(())
-    }
-}
-
-/// Deterministic depth-first dependency closure; the root first, each
-/// dependency in declaration order and once. Cycles are reported.
-pub fn dependency_closure<'a>(
-    root: &'a CatalogEntry,
-    root_selection: VariantSelection<'a>,
-    by_id: &EntryIndex<'a>,
-    platform: Platform,
-    architecture: Architecture,
-) -> std::result::Result<Vec<ClosureNode<'a>>, ClosureFailure> {
-    let mut closure = Closure {
-        by_id,
-        platform,
-        architecture,
-        nodes: Vec::new(),
-        done: HashSet::new(),
-        stack: Vec::new(),
-    };
-    closure.visit(root, root_selection)?;
-    Ok(closure.nodes)
-}
-
-/// Composition limits for the v1 vocabulary (design §4.5).
-pub fn composition_violation(nodes: &[ClosureNode<'_>]) -> Option<String> {
-    let mut versions: Vec<&str> = Vec::new();
-    for node in nodes {
-        let version = node.variant.sandbox_policy.version();
-        if !versions.contains(&version) {
-            versions.push(version);
-        }
-    }
-    if versions.len() > 1 {
-        versions.sort_by(|a, b| cmp_utf16(a, b));
-        return Some(format!(
-            "mixed sandboxPolicy.version values ({})",
-            versions.join(", ")
-        ));
-    }
-    if nodes.len() < 2 {
-        return None;
-    }
-    for node in nodes {
-        for key in node.variant.sandbox_policy.raw().keys() {
-            if key != "version" && key != "filesystem" {
-                return Some(format!(
-                    "'{}' uses '{key}', which has no v1 cross-entry composition rule",
-                    node.entry.entry_id
-                ));
-            }
-        }
-    }
-    None
-}
-
 // ---------------------------------------------------------------------------
 // Revision-level validation
 // ---------------------------------------------------------------------------
 
-/// Validates one catalog revision against the v1 contract (design §7).
+/// Validates one catalog revision against the v1 contract (design §7),
+/// including every effective policy each entry can produce.
 pub fn validate_catalog_revision(
     raw: &Json,
     contract: &CatalogContract,
@@ -1095,60 +1231,29 @@ pub fn validate_catalog_revision(
     }
 
     for entry in &entries {
-        for variant in &entry.platform_variants {
-            for dependency in variant.dependencies.iter().flatten() {
-                if !by_id.contains_key(dependency.entry_id.as_str()) {
-                    return fail(format!(
-                        "'{}' depends on unknown entry '{}' in this revision",
-                        entry.entry_id, dependency.entry_id
-                    ));
-                }
-                if dependency.entry_id == entry.entry_id {
-                    return fail(format!("'{}' depends on itself", entry.entry_id));
-                }
+        for dependency in entry.all_dependencies() {
+            let Some(target) = by_id.get(dependency.entry_id.as_str()) else {
+                return fail(format!(
+                    "'{}' depends on unknown entry '{}' in this revision",
+                    entry.entry_id, dependency.entry_id
+                ));
+            };
+            if dependency.entry_id == entry.entry_id {
+                return fail(format!("'{}' depends on itself", entry.entry_id));
             }
-        }
-        for platform in Platform::ALL {
-            for architecture in Architecture::ALL {
-                let Some(selected) = select_variant(entry, platform, architecture) else {
-                    continue;
-                };
-                let nodes =
-                    match dependency_closure(entry, selected, &by_id, platform, architecture) {
-                        Ok(nodes) => nodes,
-                        Err(failure) => {
-                            return fail(format!(
-                                "'{}' on {platform}/{architecture}: {} ({})",
-                                entry.entry_id, failure.reason, failure.detail
-                            ))
-                        }
-                    };
-                if let Some(violation) = composition_violation(&nodes) {
+            if let Some(range) = &dependency.version_range {
+                let scheme = VersRange::parse(range).map(|r| r.scheme()).ok();
+                if scheme != Some(target.version_scheme) {
                     return fail(format!(
-                        "'{}' on {platform}/{architecture}: {violation}",
-                        entry.entry_id
-                    ));
-                }
-                let classes: Vec<(&str, Vec<String>)> = COMPOSABLE_FILESYSTEM_FIELDS
-                    .iter()
-                    .map(|field| {
-                        let values = nodes
-                            .iter()
-                            .flat_map(|node| node.variant.sandbox_policy.filesystem_field(field))
-                            .map(str::to_string)
-                            .collect();
-                        (*field, values)
-                    })
-                    .collect();
-                if let Some(overlap) = find_cross_class_overlap(&classes, platform) {
-                    return fail(format!(
-                        "'{}' on {platform}/{architecture}: {overlap}",
-                        entry.entry_id
+                        "'{}' requires '{}' with range '{range}', which does not use that entry's versionScheme '{}'",
+                        entry.entry_id, dependency.entry_id, target.version_scheme
                     ));
                 }
             }
         }
     }
+
+    crate::effective::validate_materializations(&entries, &by_id, contract)?;
 
     Ok(CatalogRevision {
         catalog_schema_version: contract.catalog_schema_version.clone(),

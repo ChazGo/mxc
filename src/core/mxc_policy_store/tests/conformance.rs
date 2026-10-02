@@ -4,6 +4,11 @@
 //! Runs every language-neutral conformance fixture in
 //! `../conformance/fixtures/*.json`. The mxc-sdk and mxc_ffi suites replay
 //! the same fixtures through their binding entry points.
+//!
+//! `MXC_POLICY_STORE_UPDATE_FIXTURES=<dir>` records each case's actual
+//! outcome as `<dir>/<fixture>` (one compact JSON array) instead of
+//! asserting, so a catalog or resolver change can be reviewed and merged into
+//! the fixtures by hand.
 
 mod common;
 
@@ -30,9 +35,13 @@ fn all_conformance_fixtures() {
         .collect();
     names.sort();
     assert!(names.len() >= 2, "fixtures present");
+    let update_dir = std::env::var("MXC_POLICY_STORE_UPDATE_FIXTURES")
+        .ok()
+        .filter(|d| !d.is_empty());
     let mut cases = 0;
     for name in names {
         let fixture = read_json(dir.join(&name));
+        let mut recorded = Vec::new();
         for case in fixture.get("cases").and_then(Json::as_array).unwrap() {
             let case_name = format!(
                 "{name}: {}",
@@ -57,6 +66,21 @@ fn all_conformance_fixtures() {
             let raw_tools = case.get("tools").unwrap();
             let tools = tools_from(raw_tools);
             let ctx = context_from(case.get("context"));
+            if update_dir.is_some() {
+                let mut outcome = JsonObject::new();
+                outcome.insert("name", case.get("name").unwrap().clone());
+                match catalog.resolve_sandbox_policy_with_diagnostics(tools, &ctx) {
+                    Ok(result) => outcome.insert("expect", result.to_json()),
+                    Err(error) => {
+                        let mut e = JsonObject::new();
+                        e.insert("code", error.code().as_str().into());
+                        e.insert("reason", error.reason().as_str().into());
+                        outcome.insert("expectError", Json::Object(e));
+                    }
+                }
+                recorded.push(Json::Object(outcome));
+                continue;
+            }
             if let Some(expect_error) = case.get("expectError") {
                 let expected = Some((
                     expect_error
@@ -115,6 +139,17 @@ fn all_conformance_fixtures() {
             }
             cases += 1;
         }
+        if let Some(update_dir) = &update_dir {
+            std::fs::create_dir_all(update_dir).unwrap();
+            std::fs::write(
+                std::path::Path::new(update_dir).join(&name),
+                Json::Array(recorded).to_compact_string(),
+            )
+            .unwrap();
+        }
+    }
+    if update_dir.is_some() {
+        return;
     }
     assert!(cases >= 20, "ran {cases} conformance cases");
 }

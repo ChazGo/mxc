@@ -5,7 +5,7 @@
 //! `mxc_ffi`: `{"tools": <input | input[]>, "context"?: {...}}`.
 //!
 //! A tool input is a bare invocation name or
-//! `{"invocationName", "packageUrl"?, "detectedVersion"?}`. The context keys
+//! `{"invocationName", "packageUrl"?, "detectedVersion"?, "intent"?}`. The context keys
 //! are the camelCase `ResolveContext` fields. An explicit `null` is the same
 //! as an omitted optional field. Unknown keys and wrongly typed values are
 //! `malformed_request` (`invalid_context`) failures.
@@ -38,7 +38,7 @@ fn tool_input(value: &Json, index: usize) -> Result<ToolInput> {
         Json::Object(object) => {
             only_keys(
                 object,
-                &["invocationName", "packageUrl", "detectedVersion"],
+                &["invocationName", "packageUrl", "detectedVersion", "intent"],
                 &at,
             )?;
             let Some(invocation_name) = optional_string(object, "invocationName", &at)? else {
@@ -48,6 +48,7 @@ fn tool_input(value: &Json, index: usize) -> Result<ToolInput> {
                 invocation_name,
                 package_url: optional_string(object, "packageUrl", &at)?,
                 detected_version: optional_string(object, "detectedVersion", &at)?,
+                intent: optional_string(object, "intent", &at)?,
             }))
         }
         _ => Err(invalid_context(format!(
@@ -149,7 +150,7 @@ mod tests {
     #[test]
     fn parses_a_full_request() {
         let (tools, ctx) = parse_resolve_request(
-            r#"{"tools":["git",{"invocationName":"npm","packageUrl":"pkg:npm/npm","detectedVersion":null}],
+            r#"{"tools":["git",{"invocationName":"npm","packageUrl":"pkg:npm/npm","detectedVersion":null,"intent":"install"}],
                 "context":{"platform":"linux","allowWeakIdentityFallback":true,"symbols":{"a":"/x"},"projectRoot":null}}"#,
         )
         .unwrap();
@@ -157,7 +158,11 @@ mod tests {
         assert_eq!(tools.0[0], ToolInput::Name("git".into()));
         assert_eq!(
             tools.0[1],
-            ToolInput::Candidate(ToolCandidate::new("npm").with_package_url("pkg:npm/npm"))
+            ToolInput::Candidate(
+                ToolCandidate::new("npm")
+                    .with_package_url("pkg:npm/npm")
+                    .with_intent("install")
+            )
         );
         assert_eq!(ctx.platform.as_deref(), Some("linux"));
         assert!(ctx.allow_weak_identity_fallback);
@@ -182,6 +187,7 @@ mod tests {
             r#"{"tools":1}"#,
             r#"{"tools":[{"packageUrl":"pkg:npm/x"}]}"#,
             r#"{"tools":[{"invocationName":"x","other":1}]}"#,
+            r#"{"tools":[{"invocationName":"x","intent":1}]}"#,
             r#"{"tools":"git","context":[]}"#,
             r#"{"tools":"git","context":{"platform":1}}"#,
             r#"{"tools":"git","context":{"symbols":{"a":1}}}"#,

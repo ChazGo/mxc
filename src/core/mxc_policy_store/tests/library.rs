@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Ports of the original TypeScript prototype's resolver, validation, and
-//! store unit suites.
+//! Resolver, validation, and store suites for the entry model in the Policy
+//! Store design: one unversioned default per entry, additive platform and
+//! version overlays, and intent selection.
 
 mod common;
 
@@ -14,8 +15,9 @@ use mxc_policy_store::tooling::{
 use mxc_policy_store::{
     get_catalog_info, list_catalog_entries, resolve_sandbox_policy,
     resolve_sandbox_policy_with_diagnostics, Architecture, ErrorReason, FixedHost, HostEnvironment,
-    Platform, PolicyCatalog, PolicyCatalogError, ResolveContext, ToolCandidate, ToolInput,
-    ToolInputs,
+    IntentMode, Platform, PolicyCatalog, PolicyCatalogError, ResolveContext,
+    SandboxConfigResolution, ToolCandidate, ToolInput, ToolInputs, ToolResolutionStatus,
+    VersionStatus, Warning,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -41,101 +43,135 @@ fn validate_err(entries: Vec<Json>, needle: &str) {
     );
 }
 
-fn linux(policy: &str, extra: &str) -> String {
-    let extra = if extra.is_empty() {
-        String::new()
-    } else {
-        format!(",{extra}")
-    };
-    format!(r#"{{"when":{{"platform":"linux"}}{extra},"sandboxPolicy":{policy}}}"#)
+/// `{"default":{"sandboxPolicy":<policy>}<extra>}` as entry overrides.
+fn with_default(policy: &str, extra: &str) -> String {
+    format!(r#"{{"default":{{"sandboxPolicy":{policy}}}{extra}}}"#)
 }
 
-fn variants(list: &[String]) -> String {
-    format!(r#"{{"platformVariants":[{}]}}"#, list.join(","))
-}
-
-fn fs_paths(policy: &Option<mxc_policy_store::SandboxPolicy>) -> Json {
+fn fs_json(policy: &Option<mxc_policy_store::SandboxPolicy>) -> Json {
     policy
         .as_ref()
-        .unwrap()
+        .expect("a policy")
         .filesystem
         .as_ref()
-        .unwrap()
+        .expect("a filesystem section")
         .to_json()
 }
 
+fn messages(warnings: &[Warning]) -> String {
+    warnings
+        .iter()
+        .map(Warning::message)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn egress(result: &SandboxConfigResolution) -> Option<Json> {
+    result
+        .policy
+        .as_ref()
+        .and_then(|p| p.network.clone())
+        .and_then(|n| n.get("egress").and_then(|e| e.get("allow")).cloned())
+}
+
+fn tcp(cidr: &str, port: u16) -> String {
+    format!(r#"{{"to":[{{"cidr":"{cidr}"}}],"ports":[{{"protocol":"tcp","port":{port}}}]}}"#)
+}
+
 // ---------------------------------------------------------------------------
-// Runtime lookup: defaults
+// Platform and architecture selection
 // ---------------------------------------------------------------------------
 
 fn arch_catalog(host: Arc<FixedHost>) -> PolicyCatalog {
     catalog_for(
         revision(vec![entry(
             "tool:a",
-            &format!(
-                r#"{{"identity":[{{"kind":"purl","value":"pkg:npm/a"}},{{"kind":"invocation-name","names":["a"]}}],
+            r#"{"identity":[{"kind":"purl","value":"pkg:npm/a"},{"kind":"invocation-name","names":["a"]}],
                 "platformVariants":[
-                  {{"when":{{"platform":"windows","architecture":"x64"}},"sandboxPolicy":{{"version":"{V}","timeoutMs":1}}}},
-                  {{"when":{{"platform":"windows","architecture":"arm64"}},"sandboxPolicy":{{"version":"{V}","timeoutMs":2}}}}]}}"#
-            ),
+                  {"when":{"platform":"windows","architecture":"x64"},"policyAdditions":{"filesystem":{"readonlyPaths":["${git_prefix}/x64"]}}},
+                  {"when":{"platform":"windows","architecture":"arm64"},"policyAdditions":{"filesystem":{"readonlyPaths":["${git_prefix}/arm64"]}}}]}"#,
         )]),
         host,
     )
 }
 
 #[test]
-fn omitted_context_uses_host_platform_native_arch_default_revision_no_weak() {
+fn omitted_architecture_uses_the_native_system_architecture() {
     let catalog = arch_catalog(fixed_host(Platform::Windows, Architecture::Arm64));
-    assert_eq!(
-        catalog
-            .resolve_sandbox_policy("a", &ResolveContext::new())
-            .unwrap(),
-        None
-    );
+    let ctx = ResolveContext::new()
+        .project_root("C:\\p")
+        .symbol("git_prefix", "C:\\g");
+    assert_eq!(catalog.resolve_sandbox_policy("a", &ctx).unwrap(), None);
     let result = catalog
         .resolve_sandbox_policy_with_diagnostics(
             ToolCandidate::new("a").with_package_url("pkg:npm/a"),
-            &ResolveContext::new(),
+            &ctx,
         )
         .unwrap();
-    assert_eq!(result.policy.unwrap().timeout_ms, Some(2.0));
+    assert_eq!(
+        fs_json(&result.policy),
+        j(r#"{"readonlyPaths":["C:\\g\\arm64"],"readwritePaths":["C:\\p"]}"#)
+    );
     assert_eq!(result.diagnostics.catalog_revision, "2000-01-01.1");
-    assert!(result
-        .diagnostics
-        .warnings
-        .join("\n")
+    assert!(messages(&result.diagnostics.warnings)
         .contains("native system architecture 'arm64'; the tool's architecture was not verified"));
 }
 
 #[test]
-fn explicit_architecture_wins_and_suppresses_host_default_warning() {
+fn explicit_architecture_wins_and_suppresses_the_host_default_warning() {
     let catalog = arch_catalog(fixed_host(Platform::Windows, Architecture::Arm64));
     let result = catalog
         .resolve_sandbox_policy_with_diagnostics(
             ToolCandidate::new("a").with_package_url("pkg:npm/a"),
-            &ResolveContext::new().architecture(Architecture::X64),
+            &ResolveContext::new()
+                .architecture(Architecture::X64)
+                .project_root("C:\\p")
+                .symbol("git_prefix", "C:\\g"),
         )
         .unwrap();
-    assert_eq!(result.policy.unwrap().timeout_ms, Some(1.0));
+    assert_eq!(
+        fs_json(&result.policy),
+        j(r#"{"readonlyPaths":["C:\\g\\x64"],"readwritePaths":["C:\\p"]}"#)
+    );
     assert!(result.diagnostics.warnings.is_empty());
 }
 
 #[test]
-fn another_architecture_is_never_a_fallback() {
+fn another_architecture_is_never_used_and_neutral_additions_are_reported() {
     let catalog = catalog_for(
-        revision(vec![entry(
-            "tool:a",
-            &format!(
-                r#"{{"platformVariants":[{{"when":{{"platform":"linux","architecture":"arm64"}},"sandboxPolicy":{{"version":"{V}"}}}}]}}"#
+        revision(vec![
+            entry(
+                "tool:a",
+                r#"{"platformVariants":[{"when":{"platform":"linux","architecture":"arm64"},"policyAdditions":{"filesystem":{"readonlyPaths":["${git_prefix}"]}}}]}"#,
             ),
-        )]),
+            entry(
+                "tool:b",
+                r#"{"platformVariants":[
+                    {"when":{"platform":"linux"},"policyAdditions":{"filesystem":{"readonlyPaths":["${node_prefix}"]}}},
+                    {"when":{"platform":"linux","architecture":"arm64"},"policyAdditions":{"filesystem":{"readonlyPaths":["${git_prefix}"]}}}]}"#,
+            ),
+        ]),
         linux_x64(),
     );
-    let result = catalog
-        .resolve_sandbox_policy_with_diagnostics("a", &weak().architecture(Architecture::X64))
+    let ctx = weak()
+        .architecture(Architecture::X64)
+        .project_root("/p")
+        .symbol("node_prefix", "/n");
+    let a = catalog
+        .resolve_sandbox_policy_with_diagnostics("a", &ctx)
         .unwrap();
-    assert_eq!(result.policy, None);
-    assert!(result.diagnostics.warnings[0].contains("tool:a has no variant for linux/x64"));
+    assert_eq!(fs_json(&a.policy), j(r#"{"readwritePaths":["/p"]}"#));
+    assert!(!messages(&a.diagnostics.warnings).contains("architecture"));
+    let b = catalog
+        .resolve_sandbox_policy_with_diagnostics("b", &ctx)
+        .unwrap();
+    assert_eq!(
+        fs_json(&b.policy),
+        j(r#"{"readonlyPaths":["/n"],"readwritePaths":["/p"]}"#)
+    );
+    assert!(messages(&b.diagnostics.warnings).contains(
+        "tool:b uses its architecture-neutral linux additions; no x64-specific overlay exists"
+    ));
 }
 
 struct FailingHost;
@@ -155,26 +191,44 @@ impl HostEnvironment for FailingHost {
 }
 
 #[test]
-fn host_detection_failure_is_an_error_and_only_attempted_when_needed() {
-    let store = Arc::new(store_for(&[revision(vec![entry("tool:t", "")])]).unwrap());
+fn host_architecture_is_detected_only_when_an_overlay_needs_it() {
+    let store = Arc::new(
+        store_for(&[revision(vec![
+            entry("tool:t", ""),
+            entry(
+                "tool:u",
+                r#"{"platformVariants":[{"when":{"platform":"linux","architecture":"x64"}}]}"#,
+            ),
+        ])])
+        .unwrap(),
+    );
     let catalog = PolicyCatalog::with_host(store, Arc::new(FailingHost));
     let error = catalog
-        .resolve_sandbox_policy("t", &weak().project_root("/p"))
+        .resolve_sandbox_policy("u", &weak().project_root("/p"))
         .unwrap_err();
     assert!(error.message().contains("unknown machine"));
     assert_eq!(error.reason(), ErrorReason::UnsupportedHost);
+    let result = catalog
+        .resolve_sandbox_policy_with_diagnostics("t", &weak().project_root("/p"))
+        .unwrap();
+    assert_eq!(fs_json(&result.policy), j(r#"{"readwritePaths":["/p"]}"#));
+    assert!(!messages(&result.diagnostics.warnings).contains("architecture"));
     assert_eq!(
         catalog.resolve_sandbox_policy("nothing", &weak()).unwrap(),
         None
     );
-    let policy = catalog
+    assert!(catalog
         .resolve_sandbox_policy(
-            "t",
-            &weak().architecture(Architecture::X64).project_root("/p"),
+            "u",
+            &weak().architecture(Architecture::X64).project_root("/p")
         )
-        .unwrap();
-    assert_eq!(fs_paths(&policy), j(r#"{"readwritePaths":["/p"]}"#));
+        .unwrap()
+        .is_some());
 }
+
+// ---------------------------------------------------------------------------
+// Symbols
+// ---------------------------------------------------------------------------
 
 #[test]
 fn never_fabricates_project_root_or_caller_symbols() {
@@ -182,30 +236,36 @@ fn never_fabricates_project_root_or_caller_symbols() {
         .resolve_sandbox_policy_with_diagnostics("git", &weak().architecture(Architecture::X64))
         .unwrap();
     assert_eq!(result.policy, None);
-    let warnings = result.diagnostics.warnings.join("\n");
+    let warnings = messages(&result.diagnostics.warnings);
     let a = warnings.find("required symbol 'git_prefix'").unwrap();
     let b = warnings.find("required symbol 'project_root'").unwrap();
     assert!(a < b);
 }
 
 #[test]
-fn host_symbols_only_for_current_host_platform_and_caller_overrides() {
+fn host_symbols_only_for_the_current_host_platform_and_caller_overrides_win() {
     let rev = revision(vec![entry(
         "tool:t",
-        &format!(
-            r#"{{"platformVariants":[
-            {{"when":{{"platform":"linux"}},"sandboxPolicy":{{"version":"{V}","filesystem":{{"readonlyPaths":["${{user_home}}/.cfg"]}}}}}},
-            {{"when":{{"platform":"macos"}},"sandboxPolicy":{{"version":"{V}","filesystem":{{"readonlyPaths":["${{user_home}}/.cfg"]}}}}}}]}}"#
+        &with_default(
+            &format!(
+                r#"{{"version":"{V}","filesystem":{{"readonlyPaths":["${{user_home}}/.cfg"]}}}}"#
+            ),
+            "",
         ),
     )]);
     let host = Arc::new(
         FixedHost::new(Platform::Linux, Architecture::X64).with_symbol("user_home", "/home/me"),
     );
     let catalog = catalog_for(rev, host);
+    let derived = catalog
+        .resolve_sandbox_policy_with_diagnostics("t", &weak())
+        .unwrap();
     assert_eq!(
-        fs_paths(&catalog.resolve_sandbox_policy("t", &weak()).unwrap()),
+        fs_json(&derived.policy),
         j(r#"{"readonlyPaths":["/home/me/.cfg"]}"#)
     );
+    assert!(messages(&derived.diagnostics.warnings)
+        .contains("symbol 'user_home' resolved from the host environment to '/home/me'"));
     assert_eq!(
         catalog
             .resolve_sandbox_policy(
@@ -217,13 +277,37 @@ fn host_symbols_only_for_current_host_platform_and_caller_overrides() {
             .unwrap(),
         None
     );
+    let overridden = catalog
+        .resolve_sandbox_policy_with_diagnostics("t", &weak().symbol("user_home", "/srv/u"))
+        .unwrap();
     assert_eq!(
-        fs_paths(
-            &catalog
-                .resolve_sandbox_policy("t", &weak().symbol("user_home", "/srv/u"))
-                .unwrap()
-        ),
+        fs_json(&overridden.policy),
         j(r#"{"readonlyPaths":["/srv/u/.cfg"]}"#)
+    );
+    assert!(!messages(&overridden.diagnostics.warnings).contains("host environment"));
+}
+
+#[test]
+fn windows_overlay_adds_program_data_git() {
+    let ctx = ResolveContext::new()
+        .platform(Platform::Windows)
+        .architecture(Architecture::X64)
+        .project_root("C:\\p")
+        .symbol("git_prefix", "C:\\Program Files\\Git")
+        .symbol("programData", "C:\\ProgramData");
+    let policy = bundled_catalog(linux_x64())
+        .resolve_sandbox_policy(
+            ToolCandidate::new("git")
+                .with_package_url("pkg:generic/git")
+                .with_intent("local"),
+            &ctx,
+        )
+        .unwrap();
+    assert_eq!(
+        fs_json(&policy),
+        j(
+            r#"{"readonlyPaths":["C:\\Program Files\\Git","C:\\ProgramData\\Git"],"readwritePaths":["C:\\p"]}"#
+        )
     );
 }
 
@@ -231,13 +315,17 @@ fn host_symbols_only_for_current_host_platform_and_caller_overrides() {
 // Inputs and failures
 // ---------------------------------------------------------------------------
 
+fn git_ctx() -> ResolveContext {
+    weak()
+        .architecture(Architecture::X64)
+        .project_root("/p")
+        .symbol("git_prefix", "/g")
+}
+
 #[test]
 fn string_object_and_one_element_array_are_equivalent() {
     let catalog = bundled_catalog(linux_x64());
-    let ctx = weak()
-        .architecture(Architecture::X64)
-        .project_root("/p")
-        .symbol("git_prefix", "/g");
+    let ctx = git_ctx();
     let a = catalog
         .resolve_sandbox_policy_with_diagnostics("git", &ctx)
         .unwrap();
@@ -254,17 +342,17 @@ fn string_object_and_one_element_array_are_equivalent() {
         a
     );
     assert_eq!(a.diagnostics.tools[0].input_index, 0);
-    let strict = ResolveContext::new()
-        .architecture(Architecture::X64)
-        .project_root("/p")
-        .symbol("git_prefix", "/g");
+    let strict = ResolveContext {
+        allow_weak_identity_fallback: false,
+        ..ctx
+    };
     assert_eq!(
         catalog.resolve_sandbox_policy("git", &strict).unwrap(),
         None
     );
     assert_eq!(
         catalog
-            .resolve_sandbox_policy(ToolCandidate::new("git"), &strict)
+            .resolve_sandbox_policy(ToolCandidate::new("git").with_intent("fetch"), &strict)
             .unwrap(),
         None
     );
@@ -286,6 +374,10 @@ fn invalid_context_and_inputs_are_failures_not_absence() {
         ),
         (
             ToolCandidate::new("npm").with_package_url("").into(),
+            ResolveContext::new(),
+        ),
+        (
+            ToolCandidate::new("git").with_intent("").into(),
             ResolveContext::new(),
         ),
         (
@@ -320,7 +412,6 @@ fn invalid_context_and_inputs_are_failures_not_absence() {
             "{tools:?} {ctx:?}"
         );
     }
-    // A relative or `${`-containing symbol value is rejected once it is needed.
     for value in ["bin", "/x/${node_prefix}"] {
         let ctx = weak()
             .architecture(Architecture::X64)
@@ -341,7 +432,7 @@ fn results_are_caller_owned_and_deterministic() {
         .project_root("/p")
         .symbol("npm_prefix", "/n")
         .symbol("npm_cache", "/c")
-        .symbol("node_prefix", "/n");
+        .symbol("node_prefix", "/node");
     let tool = ToolCandidate::new("npm").with_package_url("pkg:npm/npm");
     let mut first = catalog
         .resolve_sandbox_policy_with_diagnostics(tool.clone(), &ctx)
@@ -357,154 +448,451 @@ fn results_are_caller_owned_and_deterministic() {
         .as_mut()
         .unwrap()
         .push("/mutated".into());
-    first.diagnostics.warnings.push("mutated".into());
+    first
+        .diagnostics
+        .warnings
+        .push("mutated".to_string().into());
     let second = catalog
         .resolve_sandbox_policy_with_diagnostics(tool, &ctx)
         .unwrap();
     assert_eq!(
-        fs_paths(&second.policy),
-        j(r#"{"readonlyPaths":["/n"],"readwritePaths":["/p","/c"]}"#)
+        fs_json(&second.policy),
+        j(r#"{"readonlyPaths":["/n","/node"],"readwritePaths":["/p","/c"]}"#)
     );
-    assert!(!second.diagnostics.warnings.contains(&"mutated".to_string()));
+    assert!(!messages(&second.diagnostics.warnings).contains("mutated"));
 }
 
 #[test]
-fn dedupes_normalized_paths_with_platform_casing() {
-    let windows = catalog_for(
-        revision(vec![entry(
-            "tool:w",
-            &format!(
-                r#"{{"platformVariants":[{{"when":{{"platform":"windows"}},"sandboxPolicy":{{"version":"{V}","filesystem":{{"readonlyPaths":["${{git_prefix}}","${{node_prefix}}\\"]}}}}}}]}}"#
+fn invocation_name_casing_per_platform() {
+    let catalog = catalog_for(revision(vec![entry("tool:gh", "")]), linux_x64());
+    let on = |platform: Platform, name: &str| -> ToolResolutionStatus {
+        catalog
+            .resolve_sandbox_policy_with_diagnostics(
+                name,
+                &weak()
+                    .platform(platform)
+                    .architecture(Architecture::X64)
+                    .project_root(if platform == Platform::Windows {
+                        "C:\\p"
+                    } else {
+                        "/p"
+                    }),
+            )
+            .unwrap()
+            .diagnostics
+            .tools[0]
+            .status
+    };
+    let matched = ToolResolutionStatus::Version(VersionStatus::MatchedDefault);
+    assert_eq!(on(Platform::Linux, "gh"), matched);
+    assert_eq!(
+        on(Platform::Linux, "GH"),
+        ToolResolutionStatus::ToolUnmatched
+    );
+    assert_eq!(on(Platform::Macos, "GH"), matched);
+    assert_eq!(on(Platform::Windows, "Gh"), matched);
+}
+
+// ---------------------------------------------------------------------------
+// Matching
+// ---------------------------------------------------------------------------
+
+#[test]
+fn package_identity_then_intent_then_architecture_and_ties_are_ambiguous() {
+    let named = |id: &str, extra: &str| {
+        entry(
+            id,
+            &format!(r#"{{"identity":[{{"kind":"invocation-name","names":["x"]}}]{extra}}}"#),
+        )
+    };
+    let entries = vec![
+        named("tool:a", ""),
+        named(
+            "tool:b",
+            r#","default":{"sandboxPolicy":{"version":"0.9.0-alpha"},"intents":{"build":{}}}"#,
+        ),
+        entry(
+            "tool:c",
+            r#"{"identity":[{"kind":"purl","value":"pkg:npm/x"},{"kind":"invocation-name","names":["x"]}],"default":{"sandboxPolicy":{"version":"0.9.0-alpha"}}}"#,
+        ),
+    ];
+    let mut reversed = entries.clone();
+    reversed.reverse();
+    for list in [entries, reversed] {
+        let catalog = catalog_for(revision(list), linux_x64());
+        let ctx = weak().project_root("/p");
+        let chosen = |tool: ToolCandidate| {
+            catalog
+                .resolve_sandbox_policy_with_diagnostics(tool, &ctx)
+                .unwrap()
+                .diagnostics
+                .tools[0]
+                .matches[0]
+                .entry_id
+                .clone()
+        };
+        assert_eq!(
+            chosen(ToolCandidate::new("x").with_package_url("pkg:npm/x")),
+            "tool:c"
+        );
+        assert_eq!(
+            chosen(ToolCandidate::new("x").with_intent("build")),
+            "tool:b"
+        );
+        let error = catalog.resolve_sandbox_policy("x", &ctx).unwrap_err();
+        assert_eq!(error.reason(), ErrorReason::AmbiguousMatch);
+        assert_eq!(
+            error.message(),
+            "[policy_validation] input 0 ('x') matches 3 entries with equal rank (tool:a, tool:b, tool:c); no entry was selected"
+        );
+    }
+}
+
+#[test]
+fn exact_architecture_outranks_neutral_and_default() {
+    let catalog = catalog_for(
+        revision(vec![
+            entry(
+                "tool:a",
+                r#"{"identity":[{"kind":"invocation-name","names":["x"]}],"platformVariants":[{"when":{"platform":"linux"}}]}"#,
             ),
+            entry(
+                "tool:b",
+                r#"{"identity":[{"kind":"invocation-name","names":["x"]}],"platformVariants":[{"when":{"platform":"linux","architecture":"x64"}}]}"#,
+            ),
+        ]),
+        linux_x64(),
+    );
+    let result = catalog
+        .resolve_sandbox_policy_with_diagnostics("x", &weak().project_root("/p"))
+        .unwrap();
+    assert_eq!(result.diagnostics.tools[0].matches[0].entry_id, "tool:b");
+}
+
+#[test]
+fn package_url_versions_are_ignored_with_a_warning() {
+    let result = bundled_catalog(linux_x64())
+        .resolve_sandbox_policy_with_diagnostics(
+            ToolCandidate::new("git").with_package_url("pkg:generic/git@2.45.0"),
+            &git_ctx(),
+        )
+        .unwrap();
+    let tool = &result.diagnostics.tools[0];
+    assert_eq!(
+        tool.status,
+        ToolResolutionStatus::Version(VersionStatus::MatchedDefault)
+    );
+    assert!(messages(&result.diagnostics.warnings).contains(
+        "input 0 ('git'): the version '2.45.0' embedded in packageUrl is not version evidence and was ignored; supply detectedVersion"
+    ));
+}
+
+// ---------------------------------------------------------------------------
+// Version and intent selection
+// ---------------------------------------------------------------------------
+
+fn git(version: Option<&str>, intent: Option<&str>) -> ToolCandidate {
+    let mut tool = ToolCandidate::new("git").with_package_url("pkg:generic/git");
+    tool.detected_version = version.map(str::to_string);
+    tool.intent = intent.map(str::to_string);
+    tool
+}
+
+fn resolve_git(tools: impl Into<ToolInputs>) -> SandboxConfigResolution {
+    bundled_catalog(linux_x64())
+        .resolve_sandbox_policy_with_diagnostics(
+            tools,
+            &git_ctx()
+                .symbol("ssh_prefix", "/ssh")
+                .symbol("temp_dir", "/tmp"),
+        )
+        .unwrap()
+}
+
+#[test]
+fn version_selection_statuses() {
+    let none = resolve_git(git(None, Some("push")));
+    let record = &none.diagnostics.tools[0].matches[0];
+    assert_eq!(
+        none.diagnostics.tools[0].status,
+        ToolResolutionStatus::Version(VersionStatus::MatchedDefault)
+    );
+    assert_eq!(record.version_selection.detected_version, None);
+    assert!(none.diagnostics.resolved_dependencies.is_empty());
+
+    let inside = resolve_git(git(Some("2.45.1"), Some("push")));
+    let record = &inside.diagnostics.tools[0].matches[0];
+    assert_eq!(
+        record.version_selection.status,
+        VersionStatus::MatchedVersion
+    );
+    assert_eq!(
+        record.version_selection.selected_version_range.as_deref(),
+        Some("vers:intdot/>=2.40|<2.50")
+    );
+    assert_eq!(
+        inside.diagnostics.resolved_dependencies[0].entry_id,
+        "tool:ssh"
+    );
+    assert_eq!(
+        fs_json(&inside.policy),
+        j(r#"{"readonlyPaths":["/g","/ssh"],"readwritePaths":["/p"]}"#)
+    );
+    assert_eq!(
+        egress(&inside),
+        Some(j(&format!("[{}]", tcp("192.0.2.10/32", 22))))
+    );
+
+    let outside = resolve_git(git(Some("2.30.0"), Some("push")));
+    assert_eq!(
+        outside.diagnostics.tools[0].status,
+        ToolResolutionStatus::Version(VersionStatus::VersionOutOfRange)
+    );
+    assert_eq!(outside.policy, none.policy);
+    let Warning::Tool(warning) = &outside.diagnostics.warnings[0] else {
+        panic!("structured warning expected");
+    };
+    assert_eq!(warning.code.as_str(), "version_out_of_range");
+    assert_eq!(warning.entry_id.as_deref(), Some("tool:git"));
+    assert_eq!(warning.detected_version.as_deref(), Some("2.30.0"));
+    assert_eq!(warning.intent.as_deref(), Some("push"));
+
+    let bad = resolve_git(git(Some("banana"), Some("push")));
+    assert_eq!(bad.policy, None);
+    assert_eq!(
+        bad.diagnostics.tools[0].status,
+        ToolResolutionStatus::Version(VersionStatus::VersionUnparseable)
+    );
+    assert_eq!(bad.diagnostics.tools[0].matches[0].intent_selection, None);
+}
+
+#[test]
+fn intent_selection_and_unsupported_intents() {
+    let all = resolve_git(git(Some("2.55"), None));
+    let selection = all.diagnostics.tools[0].matches[0]
+        .intent_selection
+        .clone()
+        .unwrap();
+    assert_eq!(selection.mode, IntentMode::All);
+    assert_eq!(
+        selection.selected,
+        ["bundle-fetch", "fetch", "local", "push"]
+    );
+    assert_eq!(
+        fs_json(&all.policy),
+        j(r#"{"readonlyPaths":["/g"],"readwritePaths":["/p","/tmp/git-bundles"]}"#)
+    );
+    assert_eq!(
+        egress(&all),
+        Some(j(&format!(
+            "[{},{},{}]",
+            tcp("198.51.100.20/32", 443),
+            tcp("192.0.2.10/32", 443),
+            tcp("192.0.2.10/32", 22)
+        )))
+    );
+
+    let local = resolve_git(git(None, Some("local")));
+    assert_eq!(local.policy.as_ref().unwrap().network, None);
+
+    let unsupported = resolve_git(git(Some("2.45"), Some("bundle-fetch")));
+    let tool = &unsupported.diagnostics.tools[0];
+    assert_eq!(tool.status, ToolResolutionStatus::IntentUnsupported);
+    assert_eq!(
+        tool.matches[0].version_selection.status,
+        VersionStatus::MatchedVersion
+    );
+    assert_eq!(
+        tool.matches[0].intent_selection.as_ref().unwrap().mode,
+        IntentMode::Unsupported
+    );
+    assert_eq!(unsupported.policy, None);
+
+    let both = resolve_git(git(Some("2.30"), Some("bundle-fetch")));
+    let tool = &both.diagnostics.tools[0];
+    assert_eq!(tool.status, ToolResolutionStatus::IntentUnsupported);
+    assert_eq!(
+        tool.matches[0].version_selection.status,
+        VersionStatus::VersionOutOfRange
+    );
+    let codes: Vec<&str> = both
+        .diagnostics
+        .warnings
+        .iter()
+        .filter_map(|w| match w {
+            Warning::Tool(t) => Some(t.code.as_str()),
+            Warning::Text(_) => None,
+        })
+        .collect();
+    assert_eq!(codes, ["version_out_of_range", "intent_unsupported"]);
+}
+
+#[test]
+fn pairs_compose_and_a_tool_without_network_does_not_veto_another() {
+    let result = resolve_git(vec![
+        ToolInput::from(git(None, Some("local"))),
+        ToolInput::from(git(None, Some("fetch"))),
+        ToolInput::from(git(None, Some("push"))),
+        ToolInput::from(git(None, Some("fetch"))),
+        ToolInput::from("definitely-unknown"),
+    ]);
+    assert_eq!(
+        egress(&result),
+        Some(j(&format!(
+            "[{},{}]",
+            tcp("192.0.2.10/32", 443),
+            tcp("192.0.2.10/32", 22)
+        )))
+    );
+    assert_eq!(
+        result.diagnostics.tools[4].status,
+        ToolResolutionStatus::ToolUnmatched
+    );
+    assert_eq!(
+        fs_json(&result.policy),
+        j(r#"{"readonlyPaths":["/g"],"readwritePaths":["/p"]}"#)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Composition
+// ---------------------------------------------------------------------------
+
+fn paths_entry(id: &str, policy_fs: &str) -> Json {
+    entry(
+        id,
+        &with_default(
+            &format!(r#"{{"version":"{V}","filesystem":{policy_fs}}}"#),
+            "",
+        ),
+    )
+}
+
+fn compose(entries: Vec<Json>, names: Vec<&str>) -> SandboxConfigResolution {
+    catalog_for(revision(entries), linux_x64())
+        .resolve_sandbox_policy_with_diagnostics(
+            names,
+            &weak()
+                .project_root("/work")
+                .symbol("git_prefix", "/data")
+                .symbol("node_prefix", "/secrets"),
+        )
+        .unwrap()
+}
+
+#[test]
+fn filesystem_floor_composition_rules() {
+    let ro_rw = compose(
+        vec![
+            paths_entry("tool:a", r#"{"readonlyPaths":["${project_root}"]}"#),
+            paths_entry("tool:b", r#"{"readwritePaths":["${project_root}"]}"#),
+        ],
+        vec!["a", "b"],
+    );
+    assert_eq!(fs_json(&ro_rw.policy), j(r#"{"readwritePaths":["/work"]}"#));
+    assert!(messages(&ro_rw.diagnostics.warnings).contains(
+        "read-only '/work' (tool:a) is covered by read-write '/work' (tool:b); the read-only entry was omitted"
+    ));
+
+    let nested_ro = compose(
+        vec![paths_entry(
+            "tool:a",
+            r#"{"readwritePaths":["${project_root}"],"readonlyPaths":["${project_root}/tools"]}"#,
+        )],
+        vec!["a"],
+    );
+    assert_eq!(
+        fs_json(&nested_ro.policy),
+        j(r#"{"readwritePaths":["/work"]}"#)
+    );
+
+    let nested_rw = compose(
+        vec![paths_entry(
+            "tool:a",
+            r#"{"readonlyPaths":["${project_root}"],"readwritePaths":["${project_root}/cache"]}"#,
+        )],
+        vec!["a"],
+    );
+    assert_eq!(
+        fs_json(&nested_rw.policy),
+        j(r#"{"readonlyPaths":["/work"],"readwritePaths":["/work/cache"]}"#)
+    );
+
+    let denies = compose(
+        vec![
+            paths_entry(
+                "tool:a",
+                r#"{"deniedPaths":["${git_prefix}","${node_prefix}"]}"#,
+            ),
+            paths_entry(
+                "tool:b",
+                r#"{"readwritePaths":["${project_root}","${git_prefix}/cache"]}"#,
+            ),
+        ],
+        vec!["a", "b"],
+    );
+    assert_eq!(
+        fs_json(&denies.policy),
+        j(r#"{"deniedPaths":["/secrets"],"readwritePaths":["/work","/data/cache"]}"#)
+    );
+    assert!(messages(&denies.diagnostics.warnings).contains(
+        "removed catalog deny '/data' (tool:a) because it overlaps required read-write '/data/cache' (tool:b); the entire deny scope '/data' was removed, so other grants may now apply throughout it"
+    ));
+}
+
+#[test]
+fn unknown_case_sensitivity_keeps_case_variants_with_a_diagnostic() {
+    let catalog = catalog_for(
+        revision(vec![paths_entry(
+            "tool:w",
+            r#"{"readonlyPaths":["${git_prefix}","${node_prefix}\\"]}"#,
         )]),
         linux_x64(),
     );
     let ctx = weak()
         .platform(Platform::Windows)
         .architecture(Architecture::X64)
+        .project_root("C:\\p")
         .symbol("git_prefix", "C:\\Tools")
         .symbol("node_prefix", "c:\\tools");
+    let result = catalog
+        .resolve_sandbox_policy_with_diagnostics("w", &ctx)
+        .unwrap();
     assert_eq!(
-        fs_paths(&windows.resolve_sandbox_policy("w", &ctx).unwrap()),
-        j(r#"{"readonlyPaths":["C:\\Tools"]}"#)
+        fs_json(&result.policy),
+        j(r#"{"readonlyPaths":["C:\\Tools","c:\\tools"]}"#)
     );
-    let tmpl = |platform: &str, id: &str| {
-        entry(
-            id,
-            &format!(
-                r#"{{"platformVariants":[{{"when":{{"platform":"{platform}"}},"sandboxPolicy":{{"version":"{V}","filesystem":{{"readonlyPaths":["${{git_prefix}}","${{node_prefix}}/"]}}}}}}]}}"#
-            ),
+    assert!(messages(&result.diagnostics.warnings).contains(
+        "read-only 'C:\\Tools' (tool:w) and read-only 'c:\\tools' (tool:w) differ only by case; filesystem case sensitivity was not determined, so they were compared case-sensitively and kept distinct"
+    ));
+    let same = catalog
+        .resolve_sandbox_policy(
+            "w",
+            &ctx.symbol("git_prefix", "C:\\tools")
+                .symbol("node_prefix", "C:/tools/"),
         )
-    };
-    let linux = catalog_for(revision(vec![tmpl("linux", "tool:l")]), linux_x64());
-    let ctx = weak()
-        .symbol("git_prefix", "/Tools")
-        .symbol("node_prefix", "/tools");
-    assert_eq!(
-        fs_paths(&linux.resolve_sandbox_policy("l", &ctx).unwrap()),
-        j(r#"{"readonlyPaths":["/Tools","/tools"]}"#)
-    );
-    let mac = catalog_for(revision(vec![tmpl("macos", "tool:m")]), linux_x64());
-    let ctx = ctx
-        .platform(Platform::Macos)
-        .architecture(Architecture::Arm64);
-    assert_eq!(
-        fs_paths(&mac.resolve_sandbox_policy("m", &ctx).unwrap()),
-        j(r#"{"readonlyPaths":["/Tools"]}"#)
-    );
-}
-
-#[test]
-fn overlap_detection_follows_platform_casing() {
-    let make = |platform: &str| {
-        catalog_for(
-            revision(vec![entry(
-                "tool:m",
-                &format!(
-                    r#"{{"platformVariants":[{{"when":{{"platform":"{platform}"}},"sandboxPolicy":{{"version":"{V}","filesystem":{{"readonlyPaths":["${{git_prefix}}"],"readwritePaths":["${{project_root}}"]}}}}}}]}}"#
-                ),
-            )]),
-            linux_x64(),
-        )
-    };
-    let ctx = weak()
-        .architecture(Architecture::X64)
-        .project_root("/tools/work")
-        .symbol("git_prefix", "/Tools");
-    assert_eq!(
-        reason_of(
-            make("macos").resolve_sandbox_policy("m", &ctx.clone().platform(Platform::Macos))
-        ),
-        ErrorReason::CompositionConflict
-    );
-    assert_eq!(
-        fs_paths(
-            &make("linux")
-                .resolve_sandbox_policy("m", &ctx.platform(Platform::Linux))
-                .unwrap()
-        ),
-        j(r#"{"readonlyPaths":["/Tools"],"readwritePaths":["/tools/work"]}"#)
-    );
-}
-
-#[test]
-fn invocation_name_casing_per_platform() {
-    let variants_all = ["linux", "macos", "windows"]
-        .iter()
-        .map(|p| format!(r#"{{"when":{{"platform":"{p}"}},"sandboxPolicy":{{"version":"{V}"}}}}"#))
-        .collect::<Vec<_>>()
-        .join(",");
-    let catalog = catalog_for(
-        revision(vec![entry(
-            "tool:gh",
-            &format!(r#"{{"platformVariants":[{variants_all}]}}"#),
-        )]),
-        linux_x64(),
-    );
-    let on = |platform: Platform, name: &str| -> Vec<String> {
-        catalog
-            .resolve_sandbox_policy_with_diagnostics(
-                name,
-                &weak().platform(platform).architecture(Architecture::X64),
-            )
-            .unwrap()
-            .diagnostics
-            .tools[0]
-            .matches
-            .iter()
-            .map(|m| m.entry_id.clone())
-            .collect()
-    };
-    assert_eq!(on(Platform::Linux, "gh"), ["tool:gh"]);
-    assert!(on(Platform::Linux, "GH").is_empty());
-    assert_eq!(on(Platform::Macos, "GH"), ["tool:gh"]);
-    assert_eq!(on(Platform::Windows, "Gh"), ["tool:gh"]);
+        .unwrap();
+    assert_eq!(fs_json(&same), j(r#"{"readonlyPaths":["C:\\tools"]}"#));
 }
 
 #[test]
 fn dependency_chain_composes_each_entry_once_in_order() {
-    let variant = |deps: &[&str], path: &str| {
-        let deps = if deps.is_empty() {
-            String::new()
-        } else {
-            format!(
-                r#","dependencies":[{}]"#,
-                deps.iter()
-                    .map(|d| format!(r#"{{"entryId":"{d}"}}"#))
-                    .collect::<Vec<_>>()
-                    .join(",")
-            )
-        };
+    let node = |deps: &[&str], path: &str| {
+        let deps = deps
+            .iter()
+            .map(|d| format!(r#"{{"entryId":"{d}"}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
         format!(
-            r#"{{"platformVariants":[{{"when":{{"platform":"linux"}}{deps},"sandboxPolicy":{{"version":"{V}","filesystem":{{"readonlyPaths":["${{project_root}}/{path}"]}}}}}}]}}"#
+            r#"{{"default":{{"sandboxPolicy":{{"version":"{V}","filesystem":{{"readonlyPaths":["${{project_root}}/{path}"]}}}},"dependencies":[{deps}]}}}}"#
         )
     };
     let catalog = catalog_for(
         revision(vec![
-            entry("tool:top", &variant(&["tool:left", "tool:right"], "top")),
-            entry("tool:left", &variant(&["tool:leaf"], "left")),
-            entry("tool:right", &variant(&["tool:leaf"], "right")),
-            entry("tool:leaf", &variant(&[], "leaf")),
+            entry("tool:top", &node(&["tool:left", "tool:right"], "top")),
+            entry("tool:left", &node(&["tool:leaf"], "left")),
+            entry("tool:right", &node(&["tool:leaf"], "right")),
+            entry("tool:leaf", &node(&[], "leaf")),
         ]),
         linux_x64(),
     );
@@ -519,32 +907,28 @@ fn dependency_chain_composes_each_entry_once_in_order() {
         .collect();
     assert_eq!(deps, ["tool:leaf", "tool:left", "tool:right"]);
     assert_eq!(
-        fs_paths(&result.policy),
+        fs_json(&result.policy),
         j(r#"{"readonlyPaths":["/r/top","/r/left","/r/leaf","/r/right"]}"#)
     );
 }
 
 #[test]
 fn dependency_diagnostics_keep_distinct_ranges_sorted() {
+    let a = format!(
+        r#"{{"default":{{"sandboxPolicy":{{"version":"{V}"}},"dependencies":[{{"entryId":"tool:c","versionRange":"vers:semver/>=2.0.0"}}]}}}}"#
+    );
+    let b = format!(
+        r#"{{"default":{{"sandboxPolicy":{{"version":"{V}"}},"dependencies":[{{"entryId":"tool:c"}}]}}}}"#
+    );
     let catalog = catalog_for(
         revision(vec![
-            entry(
-                "tool:a",
-                &variants(&[linux(
-                    &format!(r#"{{"version":"{V}"}}"#),
-                    r#""dependencies":[{"entryId":"tool:c","versionRange":">=2"}]"#,
-                )]),
-            ),
-            entry(
-                "tool:b",
-                &variants(&[linux(
-                    &format!(r#"{{"version":"{V}"}}"#),
-                    r#""dependencies":[{"entryId":"tool:c"}]"#,
-                )]),
-            ),
+            entry("tool:a", &a),
+            entry("tool:b", &b),
             entry(
                 "tool:c",
-                &variants(&[linux(&format!(r#"{{"version":"{V}"}}"#), "")]),
+                &format!(
+                    r#"{{"default":{{"sandboxPolicy":{{"version":"{V}"}},"intents":{{"run":{{}}}}}}}}"#
+                ),
             ),
         ]),
         linux_x64(),
@@ -559,9 +943,9 @@ fn dependency_diagnostics_keep_distinct_ranges_sorted() {
             .unwrap()
             .get("resolvedDependencies")
             .unwrap(),
-        &j(
-            r#"[{"entryId":"tool:c","entryRevision":1},{"entryId":"tool:c","entryRevision":1,"requiredVersionRange":">=2"}]"#
-        )
+        &j(r#"[
+            {"entryId":"tool:c","entryRevision":1,"versionSelection":{"status":"matched_default"},"intentSelection":{"mode":"all","selected":["run"]}},
+            {"entryId":"tool:c","entryRevision":1,"requiredVersionRange":"vers:semver/>=2.0.0","versionSelection":{"status":"matched_default"},"intentSelection":{"mode":"all","selected":["run"]}}]"#)
     );
     assert_eq!(
         result.policy.unwrap().to_json(),
@@ -570,46 +954,36 @@ fn dependency_diagnostics_keep_distinct_ranges_sorted() {
 }
 
 #[test]
-fn catalog_file_order_does_not_matter() {
-    let e = |id: &str, p: &str| {
-        entry(
-            id,
-            &format!(
-                r#"{{"identity":[{{"kind":"invocation-name","names":["x"]}}],"platformVariants":[{{"when":{{"platform":"linux"}},"sandboxPolicy":{{"version":"{V}","filesystem":{{"readonlyPaths":["${{project_root}}/{p}"]}}}}}}]}}"#
-            ),
-        )
-    };
-    let ctx = weak().project_root("/r");
-    let forward = catalog_for(
-        revision(vec![e("tool:b", "b"), e("tool:a", "a")]),
-        linux_x64(),
-    )
-    .resolve_sandbox_policy_with_diagnostics("x", &ctx)
-    .unwrap();
-    let backward = catalog_for(
-        revision(vec![e("tool:a", "a"), e("tool:b", "b")]),
-        linux_x64(),
-    )
-    .resolve_sandbox_policy_with_diagnostics("x", &ctx)
-    .unwrap();
-    assert_eq!(forward, backward);
-    assert_eq!(
-        fs_paths(&forward.policy),
-        j(r#"{"readonlyPaths":["/r/a","/r/b"]}"#)
-    );
-}
-
-#[test]
-fn mixed_versions_across_inputs_conflict() {
+fn unsupported_combinations_fail_rather_than_broaden() {
     let catalog = catalog_for(
         revision(vec![
-            entry(
-                "tool:a",
-                &variants(&[linux(r#"{"version":"0.8.0-alpha"}"#, "")]),
-            ),
+            entry("tool:a", &with_default(r#"{"version":"0.8.0-alpha"}"#, "")),
             entry(
                 "tool:b",
-                &variants(&[linux(&format!(r#"{{"version":"{V}"}}"#), "")]),
+                &with_default(&format!(r#"{{"version":"{V}"}}"#), ""),
+            ),
+            entry(
+                "tool:d",
+                &with_default(
+                    &format!(
+                        r#"{{"version":"{V}","network":{{"egress":{{"deny":[{{"ports":[{{"port":22}}]}}]}}}}}}"#
+                    ),
+                    "",
+                ),
+            ),
+            entry(
+                "tool:n",
+                &with_default(
+                    &format!(
+                        r#"{{"version":"{V}","network":{{"egress":{{"default":"deny","allow":[{}]}}}}}}"#,
+                        tcp("192.0.2.1/32", 443)
+                    ),
+                    "",
+                ),
+            ),
+            entry(
+                "tool:u",
+                &with_default(&format!(r#"{{"version":"{V}","timeoutMs":5}}"#), ""),
             ),
         ]),
         linux_x64(),
@@ -622,12 +996,30 @@ fn mixed_versions_across_inputs_conflict() {
         "[policy_validation] selected entries cannot be composed: mixed sandboxPolicy.version values (0.8.0-alpha, 0.9.0-alpha)"
     );
     assert_eq!(
+        reason_of(catalog.resolve_sandbox_policy(vec!["d", "n"], &weak())),
+        ErrorReason::CompositionConflict
+    );
+    assert_eq!(
+        reason_of(catalog.resolve_sandbox_policy(vec!["u", "b"], &weak())),
+        ErrorReason::CompositionConflict
+    );
+    // A single selected policy without additions passes through whole.
+    assert_eq!(
         catalog
-            .resolve_sandbox_policy("a", &weak())
+            .resolve_sandbox_policy("u", &weak())
             .unwrap()
             .unwrap()
             .to_json(),
-        j(r#"{"version":"0.8.0-alpha"}"#)
+        j(&format!(r#"{{"version":"{V}","timeoutMs":5}}"#))
+    );
+    // Only one component needs network: its network passes through.
+    assert_eq!(
+        catalog
+            .resolve_sandbox_policy(vec!["d", "b"], &weak())
+            .unwrap()
+            .unwrap()
+            .network,
+        Some(j(r#"{"egress":{"deny":[{"ports":[{"port":22}]}]}}"#))
     );
 }
 
@@ -640,21 +1032,22 @@ fn inspection_over_the_bundled_catalog() {
     let info = get_catalog_info().unwrap();
     assert_eq!(
         info.to_json(),
-        j(r#"{"catalogSchemaVersion":"1","catalogRevision":"2026-09-29.1"}"#)
+        j(r#"{"catalogSchemaVersion":"1","catalogRevision":"2026-10-02.1"}"#)
     );
     let entries = list_catalog_entries().unwrap();
     let ids: Vec<&str> = entries.iter().map(|e| e.entry_id.as_str()).collect();
-    assert_eq!(ids, ["tool:git", "tool:node", "tool:npm"]);
-    let npm = entries
+    assert_eq!(ids, ["tool:git", "tool:node", "tool:npm", "tool:ssh"]);
+    let git = entries
         .iter()
-        .find(|e| e.entry_id == "tool:npm")
+        .find(|e| e.entry_id == "tool:git")
         .unwrap()
         .to_json();
+    assert_eq!(git.get("versionScheme").unwrap(), &j(r#""intdot""#));
     assert_eq!(
-        npm.get("platformVariants").unwrap().as_array().unwrap()[0],
-        j(&format!(
-            r#"{{"platform":"windows","dependencyEntryIds":["tool:node"],"sandboxPolicyVersion":"{V}"}}"#
-        ))
+        git.get("versionVariants").unwrap(),
+        &j(r#"[
+          {"versionRange":"vers:intdot/>=2.40|<2.50","dependencyEntryIds":[],"intentAdditions":[{"name":"push","dependencyEntryIds":["tool:ssh"]}],"intents":[]},
+          {"versionRange":"vers:intdot/>=2.50|<3","dependencyEntryIds":[],"intentAdditions":[],"intents":[{"name":"bundle-fetch","exampleSubcommands":["fetch --bundle-uri"],"dependencyEntryIds":[]}]}]"#)
     );
     let text = Json::Array(entries.iter().map(|e| e.to_json()).collect()).to_compact_string();
     assert!(!text.contains("Paths") && !text.contains("${") && !text.contains("sandboxPolicy\""));
@@ -677,7 +1070,7 @@ fn module_level_functions_use_the_bundled_catalog() {
     assert_eq!(result.policy, None);
     assert_eq!(
         result.diagnostics.to_json().get("tools").unwrap(),
-        &j(r#"[{"inputIndex":0,"matches":[]}]"#)
+        &j(r#"[{"inputIndex":0,"status":"tool_unmatched","matches":[]}]"#)
     );
     assert_eq!(
         reason_of(resolve_sandbox_policy(
@@ -693,10 +1086,9 @@ fn module_level_functions_use_the_bundled_catalog() {
 // ---------------------------------------------------------------------------
 
 fn dep(id: &str) -> String {
-    variants(&[linux(
-        &format!(r#"{{"version":"{V}"}}"#),
-        &format!(r#""dependencies":[{{"entryId":"{id}"}}]"#),
-    )])
+    format!(
+        r#"{{"default":{{"sandboxPolicy":{{"version":"{V}"}},"dependencies":[{{"entryId":"{id}"}}]}}}}"#
+    )
 }
 
 #[test]
@@ -710,26 +1102,56 @@ fn validation_accepts_minimal_and_rejects_cycles_and_missing_dependencies() {
     .unwrap_err();
     assert_eq!(
         error.message(),
-        "[policy_validation] 'tool:a' on windows/x64: cycle (tool:a -> tool:b -> tool:c -> tool:a)"
-            .replace("windows", "linux")
+        "[policy_validation] 'tool:a' on windows/x64 (default) intent (all): dependency resolution failed: cycle (tool:a -> tool:b -> tool:c -> tool:a)"
     );
     validate_err(vec![entry("tool:a", &dep("tool:a"))], "depends on itself");
     validate_err(
         vec![entry("tool:a", &dep("tool:missing"))],
         "unknown entry 'tool:missing'",
     );
+    let ranged = |range: &str| {
+        format!(
+            r#"{{"default":{{"sandboxPolicy":{{"version":"{V}"}},"dependencies":[{{"entryId":"tool:b","versionRange":"{range}"}}]}}}}"#
+        )
+    };
+    validate_err(
+        vec![entry("tool:a", &ranged("^1.x")), entry("tool:b", "")],
+        "is not a valid vers range",
+    );
     validate_err(
         vec![
-            entry(
-                "tool:a",
-                &variants(&[linux(
-                    &format!(r#"{{"version":"{V}"}}"#),
-                    r#""dependencies":[{"entryId":"tool:b","versionRange":"^1.x"}]"#,
-                )]),
-            ),
+            entry("tool:a", &ranged("vers:npm/>=1.0.0")),
             entry("tool:b", ""),
         ],
-        "versionRange",
+        "does not use that entry's versionScheme 'semver'",
+    );
+    validate(vec![
+        entry("tool:a", &ranged("vers:semver/>=1.0.0")),
+        entry("tool:b", ""),
+    ])
+    .unwrap();
+}
+
+#[test]
+fn validation_requires_exactly_one_default_and_a_scheme() {
+    let mut no_default = entry("tool:a", "");
+    if let Json::Object(o) = &mut no_default {
+        o.remove("default");
+    }
+    validate_err(
+        vec![no_default],
+        "every entry has exactly one unversioned default",
+    );
+    validate_err(
+        vec![entry("tool:a", r#"{"versionScheme":"maven"}"#)],
+        "'entries[0].versionScheme' must be one of npm, semver, pypi, nuget, intdot",
+    );
+    validate_err(
+        vec![entry(
+            "tool:a",
+            r#"{"default":{"sandboxPolicy":{"version":"0.9.0-alpha"},"versionRange":"vers:semver/>=1"}}"#,
+        )],
+        "unsupported field 'entries[0].default.versionRange'",
     );
 }
 
@@ -741,8 +1163,9 @@ fn validation_selectors() {
         } else {
             format!(r#","architecture":"{arch}""#)
         };
-        format!(r#"{{"when":{{"platform":"linux"{a}}},"sandboxPolicy":{{"version":"{V}"}}}}"#)
+        format!(r#"{{"when":{{"platform":"linux"{a}}}}}"#)
     };
+    let variants = |list: &[String]| format!(r#"{{"platformVariants":[{}]}}"#, list.join(","));
     validate_err(
         vec![entry("tool:a", &variants(&[v("x64"), v("x64")]))],
         "duplicates selector",
@@ -760,11 +1183,20 @@ fn validation_selectors() {
         vec![entry("tool:a", &variants(&[v("riscv")]))],
         "'entries[0].platformVariants[0].when.architecture' must be one of x64, arm64",
     );
+    validate_err(
+        vec![entry(
+            "tool:a",
+            &format!(
+                r#"{{"platformVariants":[{{"when":{{"platform":"linux"}},"sandboxPolicy":{{"version":"{V}"}}}}]}}"#
+            ),
+        )],
+        "unsupported field 'entries[0].platformVariants[0].sandboxPolicy'",
+    );
 }
 
 #[test]
 fn validation_policy_rules() {
-    let p = |policy: &str| vec![entry("tool:a", &variants(&[linux(policy, "")]))];
+    let p = |policy: &str| vec![entry("tool:a", &with_default(policy, ""))];
     validate_err(
         p(&format!(r#"{{"version":"{V}","processContainer":{{}}}}"#)),
         "containment backend",
@@ -778,10 +1210,6 @@ fn validation_policy_rules() {
         "not a SandboxPolicy version registered",
     );
     validate_err(
-        p(r#"{"version":"0.10.0-alpha"}"#),
-        "not a SandboxPolicy version registered",
-    );
-    validate_err(
         vec![entry("tool:a", r#"{"extra":1}"#)],
         "unsupported field 'entries[0].extra'",
     );
@@ -789,16 +1217,6 @@ fn validation_policy_rules() {
         p(&format!(
             r#"{{"version":"{V}","filesystem":{{"clearPolicyOnExit":true}}}}"#
         )),
-        "unsupported field",
-    );
-    validate_err(
-        p(&format!(
-            r#"{{"version":"{V}","network":{{"allowOutbound":true}}}}"#
-        )),
-        "unsupported field",
-    );
-    validate_err(
-        p(&format!(r#"{{"version":"{V}","telemetry":{{}}}}"#)),
         "unsupported field",
     );
     let path = |value: &str| {
@@ -815,7 +1233,7 @@ fn validation_policy_rules() {
     validate_err(path("${project_root"), "malformed symbol");
     validate_err(path("${project_root}x"), "literal paths are not allowed");
     validate(path("${project_root}/node_modules")).unwrap();
-    validate(path("${project_root}\\x")).unwrap();
+    validate(path("${programData}\\Git")).unwrap();
     let net = |n: &str| p(&format!(r#"{{"version":"{V}","network":{n}}}"#));
     validate_err(net(r#"{"egress":{"default":"allow"}}"#), "default-allow");
     validate_err(net(r#"{"ingress":{"default":"allow"}}"#), "default-allow");
@@ -828,17 +1246,12 @@ fn validation_policy_rules() {
         "wildcard network grant",
     );
     validate_err(
-        net(r#"{"egress":{"allow":[{"to":[{"cidr":"10.0.0.0/8"}],"ports":[{"port":0}]}]}}"#),
-        "must be an integer in 1..65535",
-    );
-    validate_err(
         net(
             r#"{"egress":{"allow":[{"to":[{"cidr":"10.0.0.0/8"}],"ports":[{"port":10,"endPort":5}]}]}}"#,
         ),
         "requires a lower or equal 'port'",
     );
     validate(net(r#"{"egress":{"deny":[{"ports":[{"port":22}]}]}}"#)).unwrap();
-    validate(net(r#"{"egress":{"default":"deny","allow":[{"to":[{"cidr":"192.0.2.0/24"}],"ports":[{"protocol":"tcp","port":443}]}]}}"#)).unwrap();
     validate_err(
         p(&format!(r#"{{"version":"{V}","timeoutMs":1.5}}"#)),
         "timeoutMs' must be a positive integer",
@@ -859,30 +1272,12 @@ fn validation_identity_rules() {
         ),
     ])
     .unwrap();
-    validate(vec![
-        entry(
-            "tool:a",
-            r#"{"identity":[{"kind":"purl","value":"pkg:npm/x"}]}"#,
-        ),
-        entry(
-            "tool:b",
-            r#"{"identity":[{"kind":"purl","value":"pkg:NPM/x"}]}"#,
-        ),
-    ])
-    .unwrap();
     validate_err(
         vec![entry(
             "tool:a",
             r#"{"identity":[{"kind":"invocation-name","names":["a","A"]}]}"#,
         )],
         "repeats identity 'invocation-name:a'",
-    );
-    validate_err(
-        vec![entry(
-            "tool:a",
-            r#"{"identity":[{"kind":"invocation-name","names":["\u00c9","\u00e9"]}]}"#,
-        )],
-        "repeats identity",
     );
     validate_err(
         vec![entry(
@@ -901,16 +1296,16 @@ fn validation_identity_rules() {
     validate_err(
         vec![entry(
             "tool:a",
-            r#"{"identity":[{"kind":"invocation-name","names":["bin/a"]}]}"#,
+            r#"{"identity":[{"kind":"purl","value":"pkg:npm/a","versionRange":">=1"}]}"#,
         )],
-        "bare invocation name",
+        "unsupported field 'entries[0].identity[0].versionRange'",
     );
     validate_err(
         vec![entry(
             "tool:a",
-            r#"{"identity":[{"kind":"sha256","value":"x"}]}"#,
+            r#"{"identity":[{"kind":"invocation-name","names":["bin/a"]}]}"#,
         )],
-        "not a supported identity kind",
+        "bare invocation name",
     );
     validate_err(
         vec![
@@ -929,56 +1324,119 @@ fn validation_identity_rules() {
 }
 
 #[test]
-fn validation_composition_vocabulary() {
-    let with_dep = |policy: &str, dep_policy: &str| {
-        validate(vec![
-            entry(
-                "tool:a",
-                &variants(&[linux(policy, r#""dependencies":[{"entryId":"tool:b"}]"#)]),
+fn validation_overlays_are_additive_only() {
+    let overlay = |body: &str| {
+        vec![entry(
+            "tool:a",
+            &format!(
+                r#"{{"default":{{"sandboxPolicy":{{"version":"{V}"}},"intents":{{"run":{{}}}}}},"platformVariants":[{{"when":{{"platform":"linux"}},{body}}}]}}"#
             ),
-            entry("tool:b", &variants(&[linux(dep_policy, "")])),
-        ])
+        )]
     };
-    with_dep(
-        &format!(r#"{{"version":"{V}","filesystem":{{"readwritePaths":["${{project_root}}"],"readonlyPaths":["${{node_prefix}}"]}}}}"#),
-        &format!(r#"{{"version":"{V}","filesystem":{{"readonlyPaths":["${{node_prefix}}","${{git_prefix}}"],"deniedPaths":["${{user_home}}/.ssh"]}}}}"#),
-    )
+    validate(overlay(
+        r#""policyAdditions":{"filesystem":{"readonlyPaths":["${git_prefix}"]}}"#,
+    ))
     .unwrap();
-    let err = |r: Result<(), PolicyCatalogError>, needle: &str| {
-        let m = r.unwrap_err().message().to_string();
+    validate_err(
+        overlay(r#""policyAdditions":{"filesystem":{"deniedPaths":["${git_prefix}"]}}"#),
+        "'entries[0].platformVariants[0].policyAdditions.filesystem.deniedPaths' is not additive",
+    );
+    validate_err(
+        overlay(r#""policyAdditions":{"network":{"egress":{"deny":[]}}}"#),
+        "'entries[0].platformVariants[0].policyAdditions.network.egress.deny' is not additive",
+    );
+    validate_err(
+        overlay(r#""policyAdditions":{"timeoutMs":5}"#),
+        "is not additive",
+    );
+    validate_err(
+        overlay(r#""intentAdditions":{"other":{}}"#),
+        "extends an intent the default does not declare",
+    );
+    validate_err(
+        overlay(r#""intents":{"run":{}}"#),
+        "redeclares an inherited intent",
+    );
+    validate_err(
+        overlay(r#""intents":{"Run":{}}"#),
+        "is not a valid intent name",
+    );
+    validate_err(
+        overlay(r#""intents":{"x":{"exampleSubcommands":[]}}"#),
+        "exampleSubcommands",
+    );
+}
+
+#[test]
+fn validation_version_variants() {
+    let ranges = |list: &[&str]| {
+        let variants = list
+            .iter()
+            .map(|r| format!(r#"{{"versionRange":"{r}"}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        vec![entry(
+            "tool:a",
+            &format!(r#"{{"versionVariants":[{variants}]}}"#),
+        )]
+    };
+    validate(ranges(&[
+        "vers:semver/>=1.0.0|<2.0.0",
+        "vers:semver/>=2.0.0",
+    ]))
+    .unwrap();
+    validate_err(
+        ranges(&["vers:semver/>=1.0.0|<2.0.0", "vers:semver/>=1.5.0"]),
+        "overlaps 'entries[0].versionVariants[0].versionRange'",
+    );
+    validate_err(
+        ranges(&["vers:npm/>=1.0.0"]),
+        "uses 'npm', but the entry's versionScheme is 'semver'",
+    );
+    validate_err(ranges(&[">=1.0.0"]), "is not a valid vers range");
+    validate_err(
+        vec![entry(
+            "tool:a",
+            r#"{"platformVariants":[{"when":{"platform":"linux"},"intents":{"x":{}}}],
+                "versionVariants":[{"versionRange":"vers:semver/>=1.0.0","intents":{"x":{}}}]}"#,
+        )],
+        "'tool:a' on linux/x64 (vers:semver/>=1.0.0): intent 'x' from version range 'vers:semver/>=1.0.0' is already declared by another overlay",
+    );
+}
+
+#[test]
+fn validation_materializes_composition_limits() {
+    let err = |entries: Vec<Json>, needle: &str| {
+        let m = validate(entries).unwrap_err().message().to_string();
         assert!(m.contains(needle), "{m}");
     };
     err(
-        with_dep(
-            &format!(
-                r#"{{"version":"{V}","filesystem":{{"readwritePaths":["${{project_root}}"]}}}}"#
-            ),
-            &format!(
-                r#"{{"version":"{V}","filesystem":{{"deniedPaths":["${{project_root}}/secrets"]}}}}"#
-            ),
-        ),
-        "'${project_root}/secrets' (deniedPaths) overlaps '${project_root}' (readwritePaths)",
-    );
-    err(
-        with_dep(
-            &format!(r#"{{"version":"{V}"}}"#),
-            r#"{"version":"0.8.0-alpha"}"#,
-        ),
+        vec![
+            entry("tool:a", &dep("tool:b")),
+            entry("tool:b", &with_default(r#"{"version":"0.8.0-alpha"}"#, "")),
+        ],
         "mixed sandboxPolicy.version",
     );
     err(
-        with_dep(
-            &format!(r#"{{"version":"{V}","network":{{"egress":{{"default":"deny"}}}}}}"#),
-            &format!(r#"{{"version":"{V}"}}"#),
-        ),
-        "'tool:a' uses 'network', which has no v1 cross-entry composition rule",
+        vec![
+            entry("tool:a", &dep("tool:b")),
+            entry(
+                "tool:b",
+                &with_default(&format!(r#"{{"version":"{V}","timeoutMs":5}}"#), ""),
+            ),
+        ],
+        "'tool:b' uses 'timeoutMs', which has no v1 cross-policy composition rule",
     );
     err(
-        with_dep(
-            &format!(r#"{{"version":"{V}"}}"#),
-            &format!(r#"{{"version":"{V}","timeoutMs":5}}"#),
-        ),
-        "'timeoutMs'",
+        vec![entry(
+            "tool:a",
+            &format!(
+                r#"{{"default":{{"sandboxPolicy":{{"version":"{V}","network":{{"egress":{{"deny":[{{"ports":[{{"port":22}}]}}]}}}}}},
+                     "intents":{{"net":{{"policyAdditions":{{"network":{{"egress":{{"allow":[{}]}}}}}}}}}}}}}}"#,
+                tcp("192.0.2.1/32", 443)
+            ),
+        )],
+        "'tool:a' uses 'network.egress.deny', which cannot be combined with other network requirements",
     );
 }
 

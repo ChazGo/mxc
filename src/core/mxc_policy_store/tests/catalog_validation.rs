@@ -9,8 +9,11 @@
 //!   `MXC_POLICY_STORE_BASE_REF` names one (for example `origin/main`);
 //! - every revision file is listed in the manifest;
 //! - every entry resolves deterministically, through its own identity, for
-//!   every platform and architecture it supports;
-//! - every entry has a bundled-catalog conformance case.
+//!   every platform and architecture (every effective policy is also
+//!   materialized and validated by `validate_catalog_revision`);
+//! - the rendered reviewer view in `catalog/views/` is current;
+//! - every entry has a bundled-catalog conformance case, as a match or a
+//!   resolved dependency.
 //!
 //! The JSON Schemas in `schema/` document the same shape for editors. The
 //! semantic validation exercised here is a superset of them.
@@ -19,7 +22,7 @@ mod common;
 
 use common::{crate_dir, read_json};
 use mxc_policy_store::tooling::{
-    select_variant, validate_bundled_catalog, IdentityPredicate, Json,
+    render_reviewer_view, validate_bundled_catalog, IdentityPredicate, Json,
 };
 use mxc_policy_store::{
     bundled_catalog_store, Architecture, FixedHost, Platform, PolicyCatalog, ResolveContext,
@@ -96,16 +99,13 @@ fn every_entry_resolves_deterministically_through_its_own_identity() {
                     IdentityPredicate::InvocationName { names } => {
                         candidate.invocation_name = names[0].clone()
                     }
-                    IdentityPredicate::Purl { value, .. } => {
+                    IdentityPredicate::Purl { value } => {
                         candidate.package_url = Some(value.clone())
                     }
                 }
             }
             for platform in Platform::ALL {
                 for architecture in Architecture::ALL {
-                    if select_variant(entry, platform, architecture).is_none() {
-                        continue;
-                    }
                     let catalog = PolicyCatalog::with_host(
                         store.clone(),
                         Arc::new(FixedHost::new(platform, architecture)),
@@ -162,9 +162,18 @@ fn every_entry_has_a_bundled_conformance_case() {
             .into_iter()
             .flatten()
         {
-            let tools = case
-                .get("expect")
-                .and_then(|e| e.get("diagnostics"))
+            let diagnostics = case.get("expect").and_then(|e| e.get("diagnostics"));
+            for dependency in diagnostics
+                .and_then(|d| d.get("resolvedDependencies"))
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+            {
+                if let Some(id) = dependency.get("entryId").and_then(Json::as_str) {
+                    covered.insert(id.to_string());
+                }
+            }
+            let tools = diagnostics
                 .and_then(|d| d.get("tools"))
                 .and_then(Json::as_array);
             for tool in tools.into_iter().flatten() {
@@ -194,4 +203,33 @@ fn every_entry_has_a_bundled_conformance_case() {
         missing.is_empty(),
         "entries without a bundled conformance case: {missing:?}"
     );
+}
+
+/// The reviewer view is generated; set `MXC_POLICY_STORE_UPDATE_VIEWS=1` to
+/// rewrite it after a catalog change.
+#[test]
+fn reviewer_views_are_current() {
+    let store = bundled_catalog_store().unwrap();
+    let dir = crate_dir().join("catalog").join("views");
+    let update = std::env::var("MXC_POLICY_STORE_UPDATE_VIEWS").is_ok_and(|v| v == "1");
+    for revision_id in store.available_revisions() {
+        let revision = store.revision(Some(&revision_id)).unwrap();
+        let rendered = render_reviewer_view(&revision, store.contract())
+            .unwrap()
+            .replace('\n', "\r\n");
+        let path = dir.join(format!("{revision_id}.md"));
+        if update {
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(&path, &rendered).unwrap();
+            continue;
+        }
+        let committed = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        assert_eq!(
+            committed.replace("\r\n", "\n"),
+            rendered.replace("\r\n", "\n"),
+            "{} is stale; regenerate with MXC_POLICY_STORE_UPDATE_VIEWS=1",
+            path.display()
+        );
+    }
 }

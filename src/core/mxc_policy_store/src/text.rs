@@ -24,17 +24,12 @@ pub fn js_trim(value: &str) -> &str {
     value.trim_matches(js_is_space)
 }
 
-/// ECMAScript line terminators (what `.` in a regular expression does not match).
-pub fn js_is_line_terminator(c: char) -> bool {
-    matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}')
-}
-
 /// `String.prototype.toLowerCase` (locale-independent Unicode lowercasing).
 pub fn js_to_lower(value: &str) -> String {
     value.to_lowercase()
 }
 
-/// Every match of `/\$\{([a-z][a-z0-9_]*)\}/g`: `(start, end, name)` byte ranges.
+/// Every match of `/\$\{([a-z][A-Za-z0-9_]*)\}/g`: `(start, end, name)` byte ranges.
 pub fn symbol_matches(value: &str) -> Vec<(usize, usize, &str)> {
     let bytes = value.as_bytes();
     let mut matches = Vec::new();
@@ -47,7 +42,7 @@ pub fn symbol_matches(value: &str) -> Vec<(usize, usize, &str)> {
             let mut j = i + 3;
             while bytes
                 .get(j)
-                .is_some_and(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'_')
+                .is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_')
             {
                 j += 1;
             }
@@ -62,7 +57,7 @@ pub fn symbol_matches(value: &str) -> Vec<(usize, usize, &str)> {
     matches
 }
 
-/// `value.replace(/\$\{([a-z][a-z0-9_]*)\}/g, name => replacement(name))`.
+/// `value.replace(/\$\{([a-z][A-Za-z0-9_]*)\}/g, name => replacement(name))`.
 pub fn replace_symbols(value: &str, mut replacement: impl FnMut(&str) -> String) -> String {
     let mut out = String::new();
     let mut last = 0;
@@ -75,11 +70,11 @@ pub fn replace_symbols(value: &str, mut replacement: impl FnMut(&str) -> String)
     out
 }
 
-/// `/^[a-z][a-z0-9_]*$/`
+/// `/^[a-z][A-Za-z0-9_]*$/`
 pub fn is_symbol_name(value: &str) -> bool {
     let mut chars = value.chars();
     chars.next().is_some_and(|c| c.is_ascii_lowercase())
-        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 #[cfg(test)]
@@ -94,13 +89,14 @@ mod tests {
 
     #[test]
     fn symbols() {
-        let found: Vec<&str> = symbol_matches("${a}/${b_1}${C}${x")
+        let found: Vec<&str> = symbol_matches("${a}/${b_1}${C}${x${programData}")
             .iter()
             .map(|m| m.2)
             .collect();
-        assert_eq!(found, ["a", "b_1"]);
+        assert_eq!(found, ["a", "b_1", "programData"]);
         assert_eq!(replace_symbols("${a}/x/${a}", |_| "$&".into()), "$&/x/$&");
         assert!(is_symbol_name("git_prefix"));
+        assert!(is_symbol_name("programData"));
         assert!(!is_symbol_name("Git"));
         assert!(!is_symbol_name(""));
     }

@@ -465,6 +465,16 @@ pub fn is_absolute_path(value: &str, platform: Platform) -> bool {
 
 /// Splits a path into comparable segments with the platform's separator and casing rules.
 pub fn path_key_segments(value: &str, platform: Platform) -> Vec<String> {
+    split_segments(value, platform, true)
+}
+
+/// Splits a path into segments with the platform's separators, preserving
+/// case. Used where filesystem case sensitivity is unknown (design §4.5).
+pub fn path_exact_segments(value: &str, platform: Platform) -> Vec<String> {
+    split_segments(value, platform, false)
+}
+
+fn split_segments(value: &str, platform: Platform, fold: bool) -> Vec<String> {
     let is_separator: fn(char) -> bool = if platform == Platform::Windows {
         |c| c == '/' || c == '\\'
     } else {
@@ -499,7 +509,13 @@ pub fn path_key_segments(value: &str, platform: Platform) -> Vec<String> {
     };
     segments
         .iter()
-        .map(|segment| case_key(segment, platform))
+        .map(|segment| {
+            if fold {
+                case_key(segment, platform)
+            } else {
+                segment.to_string()
+            }
+        })
         .collect()
 }
 

@@ -253,6 +253,9 @@ impl HostEnvironment for SystemHost {
         match name {
             "user_home" => home_dir(),
             "temp_dir" => temp_dir(),
+            "programData" if cfg!(windows) => {
+                std::env::var("ProgramData").ok().filter(|v| !v.is_empty())
+            }
             _ => None,
         }
     }

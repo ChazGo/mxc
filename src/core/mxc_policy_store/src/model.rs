@@ -7,6 +7,7 @@
 //! omitted rather than written as `null`.
 
 use crate::json::{Json, JsonObject};
+use crate::vers::VersionScheme;
 use std::fmt;
 
 /// Catalog platform selector (design §4.4).
@@ -69,12 +70,17 @@ impl fmt::Display for Architecture {
     }
 }
 
-/// Runtime lookup input (design §5.1).
+/// Runtime lookup input (design §5.1). `package_url` is the strong
+/// identity and `invocation_name` the opt-in weak fallback. Version evidence
+/// comes only from `detected_version`; a version embedded in `package_url`
+/// is ignored. `intent` names a tool-defined intent such as Git's `push`;
+/// without one, the base and every effective intent contribute.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct ToolCandidate {
     pub invocation_name: String,
     pub package_url: Option<String>,
     pub detected_version: Option<String>,
+    pub intent: Option<String>,
 }
 
 impl ToolCandidate {
@@ -92,6 +98,11 @@ impl ToolCandidate {
 
     pub fn with_detected_version(mut self, value: impl Into<String>) -> Self {
         self.detected_version = Some(value.into());
+        self
+    }
+
+    pub fn with_intent(mut self, value: impl Into<String>) -> Self {
+        self.intent = Some(value.into());
         self
     }
 }
@@ -279,10 +290,10 @@ impl ResolveContext {
 }
 
 /// Strength of a matched identity predicate.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum IdentityStrength {
-    Strong,
     Weak,
+    Strong,
 }
 
 impl IdentityStrength {
@@ -302,7 +313,7 @@ pub struct FilesystemPolicy {
     pub readwrite_paths: Option<Vec<String>>,
 }
 
-fn strings(values: &[String]) -> Json {
+pub(crate) fn strings(values: &[String]) -> Json {
     Json::Array(values.iter().map(|v| Json::String(v.clone())).collect())
 }
 
@@ -323,8 +334,7 @@ impl FilesystemPolicy {
 }
 
 /// The catalog-supported subset of MXC's `SandboxPolicy`, structurally
-/// compatible with the MXC SDK type. `network` and `ui` are carried as the
-/// reviewed JSON from the catalog.
+/// compatible with the MXC SDK type. `network` and `ui` are carried as JSON.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SandboxPolicy {
     pub version: String,
@@ -354,6 +364,117 @@ impl SandboxPolicy {
     }
 }
 
+/// How a detected version selected the entry's version data (design §4.3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VersionStatus {
+    /// No version was supplied; the unversioned default applies.
+    MatchedDefault,
+    /// The version is inside exactly one version variant's range.
+    MatchedVersion,
+    /// The version is valid but inside no range; the default applies.
+    VersionOutOfRange,
+    /// The version does not parse under the entry's scheme; the pair
+    /// contributes nothing.
+    VersionUnparseable,
+}
+
+impl VersionStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            VersionStatus::MatchedDefault => "matched_default",
+            VersionStatus::MatchedVersion => "matched_version",
+            VersionStatus::VersionOutOfRange => "version_out_of_range",
+            VersionStatus::VersionUnparseable => "version_unparseable",
+        }
+    }
+}
+
+/// Per-input resolution status: the version status of a contributing pair,
+/// or why the pair contributes nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToolResolutionStatus {
+    Version(VersionStatus),
+    IntentUnsupported,
+    ToolUnmatched,
+}
+
+impl ToolResolutionStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ToolResolutionStatus::Version(status) => status.as_str(),
+            ToolResolutionStatus::IntentUnsupported => "intent_unsupported",
+            ToolResolutionStatus::ToolUnmatched => "tool_unmatched",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VersionSelection {
+    pub status: VersionStatus,
+    pub detected_version: Option<String>,
+    /// Present only for [`VersionStatus::MatchedVersion`].
+    pub selected_version_range: Option<String>,
+}
+
+impl VersionSelection {
+    pub fn default_match() -> Self {
+        Self {
+            status: VersionStatus::MatchedDefault,
+            detected_version: None,
+            selected_version_range: None,
+        }
+    }
+
+    pub fn to_json(&self) -> Json {
+        let mut o = JsonObject::new();
+        o.insert("status", self.status.as_str().into());
+        if let Some(v) = &self.detected_version {
+            o.insert("detectedVersion", v.as_str().into());
+        }
+        if let Some(r) = &self.selected_version_range {
+            o.insert("selectedVersionRange", r.as_str().into());
+        }
+        Json::Object(o)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IntentMode {
+    Named,
+    All,
+    Unsupported,
+}
+
+impl IntentMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            IntentMode::Named => "named",
+            IntentMode::All => "all",
+            IntentMode::Unsupported => "unsupported",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IntentSelection {
+    pub requested: Option<String>,
+    pub mode: IntentMode,
+    /// Selected intent names, sorted; empty when unsupported.
+    pub selected: Vec<String>,
+}
+
+impl IntentSelection {
+    pub fn to_json(&self) -> Json {
+        let mut o = JsonObject::new();
+        if let Some(r) = &self.requested {
+            o.insert("requested", r.as_str().into());
+        }
+        o.insert("mode", self.mode.as_str().into());
+        o.insert("selected", strings(&self.selected));
+        Json::Object(o)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct MatchedIdentity {
     pub kind: String,
@@ -365,11 +486,16 @@ pub struct EntryMatchRecord {
     pub entry_id: String,
     pub entry_revision: f64,
     pub matched_identities: Vec<MatchedIdentity>,
+    pub version_selection: VersionSelection,
+    /// Absent when the version could not be parsed.
+    pub intent_selection: Option<IntentSelection>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ToolRecord {
     pub input_index: usize,
+    pub status: ToolResolutionStatus,
+    /// At most one entry; empty for `tool_unmatched`.
     pub matches: Vec<EntryMatchRecord>,
 }
 
@@ -378,6 +504,84 @@ pub struct DependencyRecord {
     pub entry_id: String,
     pub entry_revision: f64,
     pub required_version_range: Option<String>,
+    pub version_selection: VersionSelection,
+    pub intent_selection: IntentSelection,
+}
+
+/// Code of a structured per-input warning.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToolWarningCode {
+    VersionOutOfRange,
+    VersionUnparseable,
+    IntentUnsupported,
+    ToolUnmatched,
+}
+
+impl ToolWarningCode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ToolWarningCode::VersionOutOfRange => "version_out_of_range",
+            ToolWarningCode::VersionUnparseable => "version_unparseable",
+            ToolWarningCode::IntentUnsupported => "intent_unsupported",
+            ToolWarningCode::ToolUnmatched => "tool_unmatched",
+        }
+    }
+}
+
+/// A structured per-input warning (design §5.1 `ToolResolutionWarning`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ToolResolutionWarning {
+    pub code: ToolWarningCode,
+    pub input_index: usize,
+    pub entry_id: Option<String>,
+    pub detected_version: Option<String>,
+    pub intent: Option<String>,
+    pub message: String,
+}
+
+/// A diagnostics warning: a structured per-input warning or free text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Warning {
+    Text(String),
+    Tool(ToolResolutionWarning),
+}
+
+impl Warning {
+    /// The human-readable message.
+    pub fn message(&self) -> &str {
+        match self {
+            Warning::Text(text) => text,
+            Warning::Tool(w) => &w.message,
+        }
+    }
+
+    pub fn to_json(&self) -> Json {
+        match self {
+            Warning::Text(text) => Json::String(text.clone()),
+            Warning::Tool(w) => {
+                let mut o = JsonObject::new();
+                o.insert("code", w.code.as_str().into());
+                o.insert("inputIndex", Json::Number(w.input_index as f64));
+                if let Some(v) = &w.entry_id {
+                    o.insert("entryId", v.as_str().into());
+                }
+                if let Some(v) = &w.detected_version {
+                    o.insert("detectedVersion", v.as_str().into());
+                }
+                if let Some(v) = &w.intent {
+                    o.insert("intent", v.as_str().into());
+                }
+                o.insert("message", w.message.as_str().into());
+                Json::Object(o)
+            }
+        }
+    }
+}
+
+impl From<String> for Warning {
+    fn from(value: String) -> Self {
+        Warning::Text(value)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -385,7 +589,7 @@ pub struct Diagnostics {
     pub catalog_revision: String,
     pub tools: Vec<ToolRecord>,
     pub resolved_dependencies: Vec<DependencyRecord>,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<Warning>,
 }
 
 impl Diagnostics {
@@ -401,6 +605,7 @@ impl Diagnostics {
             .map(|tool| {
                 let mut record = JsonObject::new();
                 record.insert("inputIndex", Json::Number(tool.input_index as f64));
+                record.insert("status", tool.status.as_str().into());
                 let matches = tool
                     .matches
                     .iter()
@@ -419,6 +624,10 @@ impl Diagnostics {
                             })
                             .collect();
                         o.insert("matchedIdentities", Json::Array(identities));
+                        o.insert("versionSelection", m.version_selection.to_json());
+                        if let Some(intent) = &m.intent_selection {
+                            o.insert("intentSelection", intent.to_json());
+                        }
                         Json::Object(o)
                     })
                     .collect();
@@ -437,11 +646,16 @@ impl Diagnostics {
                 if let Some(range) = &d.required_version_range {
                     o.insert("requiredVersionRange", Json::String(range.clone()));
                 }
+                o.insert("versionSelection", d.version_selection.to_json());
+                o.insert("intentSelection", d.intent_selection.to_json());
                 Json::Object(o)
             })
             .collect();
         object.insert("resolvedDependencies", Json::Array(dependencies));
-        object.insert("warnings", strings(&self.warnings));
+        object.insert(
+            "warnings",
+            Json::Array(self.warnings.iter().map(Warning::to_json).collect()),
+        );
         Json::Object(object)
     }
 }
@@ -468,28 +682,17 @@ impl SandboxConfigResolution {
 /// Inspection metadata for one identity predicate (design §5.2).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CatalogIdentityMetadata {
-    Purl {
-        value: String,
-        version_range: Option<String>,
-    },
-    InvocationName {
-        names: Vec<String>,
-    },
+    Purl { value: String },
+    InvocationName { names: Vec<String> },
 }
 
 impl CatalogIdentityMetadata {
     pub fn to_json(&self) -> Json {
         let mut o = JsonObject::new();
         match self {
-            CatalogIdentityMetadata::Purl {
-                value,
-                version_range,
-            } => {
+            CatalogIdentityMetadata::Purl { value } => {
                 o.insert("kind", "purl".into());
                 o.insert("value", value.as_str().into());
-                if let Some(range) = version_range {
-                    o.insert("versionRange", range.as_str().into());
-                }
             }
             CatalogIdentityMetadata::InvocationName { names } => {
                 o.insert("kind", "invocation-name".into());
@@ -500,12 +703,64 @@ impl CatalogIdentityMetadata {
     }
 }
 
+/// Inspection metadata for one intent definition or extension.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CatalogIntentMetadata {
+    pub name: String,
+    pub example_subcommands: Option<Vec<String>>,
+    pub dependency_entry_ids: Vec<String>,
+}
+
+impl CatalogIntentMetadata {
+    pub fn to_json(&self) -> Json {
+        let mut o = JsonObject::new();
+        o.insert("name", self.name.as_str().into());
+        if let Some(examples) = &self.example_subcommands {
+            o.insert("exampleSubcommands", strings(examples));
+        }
+        o.insert("dependencyEntryIds", strings(&self.dependency_entry_ids));
+        Json::Object(o)
+    }
+}
+
+fn intents_json(intents: &[CatalogIntentMetadata]) -> Json {
+    Json::Array(intents.iter().map(CatalogIntentMetadata::to_json).collect())
+}
+
+/// Inspection metadata for the additions an overlay makes.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct CatalogAdditionsMetadata {
+    pub dependency_entry_ids: Vec<String>,
+    pub intent_additions: Vec<CatalogIntentMetadata>,
+    pub intents: Vec<CatalogIntentMetadata>,
+}
+
+impl CatalogAdditionsMetadata {
+    fn write(&self, o: &mut JsonObject) {
+        o.insert("dependencyEntryIds", strings(&self.dependency_entry_ids));
+        o.insert("intentAdditions", intents_json(&self.intent_additions));
+        o.insert("intents", intents_json(&self.intents));
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DefaultMetadata {
+    pub dependency_entry_ids: Vec<String>,
+    pub sandbox_policy_version: String,
+    pub intents: Vec<CatalogIntentMetadata>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlatformVariantMetadata {
     pub platform: Platform,
     pub architecture: Option<Architecture>,
-    pub dependency_entry_ids: Vec<String>,
-    pub sandbox_policy_version: String,
+    pub additions: CatalogAdditionsMetadata,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VersionVariantMetadata {
+    pub version_range: String,
+    pub additions: CatalogAdditionsMetadata,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -530,8 +785,11 @@ pub struct CatalogEntryMetadata {
     pub entry_id: String,
     pub entry_revision: f64,
     pub display_name: String,
+    pub version_scheme: VersionScheme,
     pub identity: Vec<CatalogIdentityMetadata>,
+    pub default: DefaultMetadata,
     pub platform_variants: Vec<PlatformVariantMetadata>,
+    pub version_variants: Vec<VersionVariantMetadata>,
     pub provenance: Provenance,
 }
 
@@ -542,11 +800,23 @@ impl CatalogEntryMetadata {
         o.insert("entryId", self.entry_id.as_str().into());
         o.insert("entryRevision", Json::Number(self.entry_revision));
         o.insert("displayName", self.display_name.as_str().into());
+        o.insert("versionScheme", self.version_scheme.as_str().into());
         o.insert(
             "identity",
             Json::Array(self.identity.iter().map(|i| i.to_json()).collect()),
         );
-        let variants = self
+        let mut default = JsonObject::new();
+        default.insert(
+            "dependencyEntryIds",
+            strings(&self.default.dependency_entry_ids),
+        );
+        default.insert(
+            "sandboxPolicyVersion",
+            self.default.sandbox_policy_version.as_str().into(),
+        );
+        default.insert("intents", intents_json(&self.default.intents));
+        o.insert("default", Json::Object(default));
+        let platform_variants = self
             .platform_variants
             .iter()
             .map(|v| {
@@ -555,15 +825,22 @@ impl CatalogEntryMetadata {
                 if let Some(arch) = v.architecture {
                     vo.insert("architecture", arch.as_str().into());
                 }
-                vo.insert("dependencyEntryIds", strings(&v.dependency_entry_ids));
-                vo.insert(
-                    "sandboxPolicyVersion",
-                    v.sandbox_policy_version.as_str().into(),
-                );
+                v.additions.write(&mut vo);
                 Json::Object(vo)
             })
             .collect();
-        o.insert("platformVariants", Json::Array(variants));
+        o.insert("platformVariants", Json::Array(platform_variants));
+        let version_variants = self
+            .version_variants
+            .iter()
+            .map(|v| {
+                let mut vo = JsonObject::new();
+                vo.insert("versionRange", v.version_range.as_str().into());
+                v.additions.write(&mut vo);
+                Json::Object(vo)
+            })
+            .collect();
+        o.insert("versionVariants", Json::Array(version_variants));
         o.insert("provenance", self.provenance.to_json());
         Json::Object(o)
     }

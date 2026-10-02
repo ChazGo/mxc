@@ -1,36 +1,36 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Runtime lookup and inspection.
+//! Runtime lookup and inspection (design §4.3–§5.2): per input, match one
+//! entry, select its version and intent, and compose every contributing
+//! (tool, intent) pair and its dependencies into one candidate floor.
 
 use crate::catalog::{
-    composition_violation, dependency_closure, entry_index, find_cross_class_overlap,
-    policy_symbols, select_variant, CatalogEntry, ClosureNode, IdentityPredicate, SymbolSource,
-    VariantSelection, COMPOSABLE_FILESYSTEM_FIELDS,
+    entry_index, CatalogEntry, Dependency, IdentityPredicate, IntentDefinition, Overlay,
+    SymbolSource,
 };
-use crate::errors::{invalid_context, ErrorReason, PolicyCatalogError, Result};
+use crate::compose::{component_symbols, compose_check, compose_policy, Component};
+use crate::effective::{
+    has_arch_specific, materialize, select_platform_variant, Closure, IntentChoice, Node,
+};
+use crate::errors::{invalid_catalog, invalid_context, ErrorReason, PolicyCatalogError, Result};
 use crate::host::{HostEnvironment, SystemHost};
 use crate::json::cmp_utf16;
 use crate::model::{
-    Architecture, CatalogEntryMetadata, CatalogIdentityMetadata, CatalogInfo, DependencyRecord,
-    Diagnostics, EntryMatchRecord, FilesystemPolicy, MatchedIdentity, Platform,
-    PlatformVariantMetadata, Provenance, ResolveContext, SandboxConfigResolution, SandboxPolicy,
-    ToolCandidate, ToolInputs, ToolRecord,
+    Architecture, CatalogAdditionsMetadata, CatalogEntryMetadata, CatalogIdentityMetadata,
+    CatalogInfo, CatalogIntentMetadata, DefaultMetadata, Diagnostics, EntryMatchRecord, IntentMode,
+    IntentSelection, MatchedIdentity, Platform, PlatformVariantMetadata, Provenance,
+    ResolveContext, SandboxConfigResolution, SandboxPolicy, ToolCandidate, ToolInputs, ToolRecord,
+    ToolResolutionStatus, ToolResolutionWarning, ToolWarningCode, VersionSelection, VersionStatus,
+    VersionVariantMetadata, Warning,
 };
-use crate::paths::{case_key, is_absolute_path, normalize_path, path_key_segments};
+use crate::paths::{case_key, is_absolute_path};
 use crate::purl::{parse_purl, ParsedPurl};
 use crate::store::{bundled_catalog_store, CatalogStore};
 use crate::text::replace_symbols;
-use crate::version_range::satisfies_version_range;
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
-
-struct EntryMatch<'a> {
-    entry: &'a CatalogEntry,
-    selection: VariantSelection<'a>,
-    satisfied: Vec<&'a IdentityPredicate>,
-}
 
 fn validate_candidate(candidate: &ToolCandidate, index: usize) -> Result<()> {
     if candidate.invocation_name.is_empty() {
@@ -46,6 +46,7 @@ fn validate_candidate(candidate: &ToolCandidate, index: usize) -> Result<()> {
     for (key, value) in [
         ("packageUrl", &candidate.package_url),
         ("detectedVersion", &candidate.detected_version),
+        ("intent", &candidate.intent),
     ] {
         if value.as_deref() == Some("") {
             return Err(invalid_context(format!(
@@ -58,6 +59,52 @@ fn validate_candidate(candidate: &ToolCandidate, index: usize) -> Result<()> {
 
 fn describe_input(index: usize, tool: &ToolCandidate) -> String {
     format!("input {index} ('{}')", tool.invocation_name)
+}
+
+fn tool_warning(
+    code: ToolWarningCode,
+    input_index: usize,
+    entry_id: Option<&str>,
+    tool: &ToolCandidate,
+    message: String,
+) -> Warning {
+    Warning::Tool(ToolResolutionWarning {
+        code,
+        input_index,
+        entry_id: entry_id.map(str::to_string),
+        detected_version: tool.detected_version.clone(),
+        intent: tool.intent.clone(),
+        message,
+    })
+}
+
+fn intent_metadata(list: &[(String, IntentDefinition)]) -> Vec<CatalogIntentMetadata> {
+    list.iter()
+        .map(|(name, definition)| CatalogIntentMetadata {
+            name: name.clone(),
+            example_subcommands: definition.example_subcommands.clone(),
+            dependency_entry_ids: dependency_ids(&definition.dependencies),
+        })
+        .collect()
+}
+
+fn dependency_ids(list: &[Dependency]) -> Vec<String> {
+    list.iter().map(|d| d.entry_id.clone()).collect()
+}
+
+fn additions_metadata(overlay: &Overlay) -> CatalogAdditionsMetadata {
+    CatalogAdditionsMetadata {
+        dependency_entry_ids: dependency_ids(&overlay.dependencies),
+        intent_additions: intent_metadata(&overlay.intent_additions),
+        intents: intent_metadata(&overlay.intents),
+    }
+}
+
+/// The eligible entry chosen for one input.
+struct Choice<'a> {
+    entry: &'a CatalogEntry,
+    satisfied: Vec<&'a IdentityPredicate>,
+    strong: bool,
 }
 
 /// Lazily determined architecture: detected only when first needed.
@@ -129,16 +176,13 @@ impl PolicyCatalog {
                 entry_id: entry.entry_id.clone(),
                 entry_revision: entry.entry_revision,
                 display_name: entry.display_name.clone(),
+                version_scheme: entry.version_scheme,
                 identity: entry
                     .identity
                     .iter()
                     .map(|predicate| match predicate {
-                        IdentityPredicate::Purl {
-                            value,
-                            version_range,
-                        } => CatalogIdentityMetadata::Purl {
+                        IdentityPredicate::Purl { value } => CatalogIdentityMetadata::Purl {
                             value: value.clone(),
-                            version_range: version_range.clone(),
                         },
                         IdentityPredicate::InvocationName { names } => {
                             CatalogIdentityMetadata::InvocationName {
@@ -147,19 +191,26 @@ impl PolicyCatalog {
                         }
                     })
                     .collect(),
+                default: DefaultMetadata {
+                    dependency_entry_ids: dependency_ids(&entry.default.dependencies),
+                    sandbox_policy_version: entry.default.sandbox_policy.version().to_string(),
+                    intents: intent_metadata(&entry.default.intents),
+                },
                 platform_variants: entry
                     .platform_variants
                     .iter()
                     .map(|variant| PlatformVariantMetadata {
                         platform: variant.platform,
                         architecture: variant.architecture,
-                        dependency_entry_ids: variant
-                            .dependencies
-                            .iter()
-                            .flatten()
-                            .map(|d| d.entry_id.clone())
-                            .collect(),
-                        sandbox_policy_version: variant.sandbox_policy.version().to_string(),
+                        additions: additions_metadata(&variant.overlay),
+                    })
+                    .collect(),
+                version_variants: entry
+                    .version_variants
+                    .iter()
+                    .map(|variant| VersionVariantMetadata {
+                        version_range: variant.version_range.as_str().to_string(),
+                        additions: additions_metadata(&variant.overlay),
                     })
                     .collect(),
                 provenance: Provenance {
@@ -185,7 +236,7 @@ impl PolicyCatalog {
 
     /// Resolves one tool or a list of tools in one pass: the composed
     /// candidate policy with attribution and warnings. Library failures are
-    /// errors, never absence. The result is a candidate lower bound, not
+    /// errors, never absence. The result is a best-effort floor, not
     /// authorization.
     pub fn resolve_sandbox_policy_with_diagnostics(
         &self,
@@ -207,83 +258,232 @@ impl PolicyCatalog {
             None => self.host.platform()?,
         };
         let allow_weak = ctx.allow_weak_identity_fallback;
-        let architecture = LazyArchitecture {
+        let lazy = LazyArchitecture {
             host: self.host.as_ref(),
             value: Cell::new(ctx_architecture),
         };
+        let architecture = || lazy.get();
 
-        let mut warnings: Vec<String> = Vec::new();
+        let mut warnings: Vec<Warning> = Vec::new();
         let mut tool_records = Vec::new();
-        let mut selected: Vec<ClosureNode<'_>> = Vec::new();
-        let mut selected_ids: HashSet<&str> = HashSet::new();
         let by_id = entry_index(&revision.entries);
         let mut ordered: Vec<&CatalogEntry> = revision.entries.iter().collect();
         ordered.sort_by(|a, b| cmp_utf16(&a.entry_id, &b.entry_id));
 
+        let mut roots: Vec<Node<'_>> = Vec::new();
+        let mut contributed: HashSet<(String, String, Option<usize>, String)> = HashSet::new();
+        let mut closure = Closure::new(&by_id, platform, &architecture);
+
         for (input_index, tool) in candidates.iter().enumerate() {
-            let matches = self.match_tool(
+            let purl = self.parse_input_purl(tool, input_index, &mut warnings)?;
+            let choice = match self.match_tool(
                 &ordered,
                 tool,
+                purl.as_ref(),
                 input_index,
                 platform,
                 allow_weak,
                 &architecture,
-                &mut warnings,
-            )?;
-            tool_records.push(ToolRecord {
-                input_index,
-                matches: matches
-                    .iter()
-                    .map(|m| EntryMatchRecord {
-                        entry_id: m.entry.entry_id.clone(),
-                        entry_revision: m.entry.entry_revision,
-                        matched_identities: m
-                            .satisfied
-                            .iter()
-                            .map(|p| MatchedIdentity {
-                                kind: p.kind().to_string(),
-                                strength: p.strength(),
-                            })
-                            .collect(),
-                    })
-                    .collect(),
-            });
-            if matches.len() > 1 {
-                let ids: Vec<&str> = matches.iter().map(|m| m.entry.entry_id.as_str()).collect();
-                warnings.push(format!(
-                    "{} matched {} entries ({}); all contribute",
+            )? {
+                Ok(choice) => choice,
+                Err(skipped) => {
+                    let suffix = if skipped.is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {}", skipped.join("; "))
+                    };
+                    warnings.push(tool_warning(
+                        ToolWarningCode::ToolUnmatched,
+                        input_index,
+                        None,
+                        tool,
+                        format!(
+                            "{} matched no eligible catalog entry{suffix}",
+                            describe_input(input_index, tool)
+                        ),
+                    ));
+                    tool_records.push(ToolRecord {
+                        input_index,
+                        status: ToolResolutionStatus::ToolUnmatched,
+                        matches: Vec::new(),
+                    });
+                    continue;
+                }
+            };
+            let entry = choice.entry;
+            if !choice.strong {
+                warnings.push(Warning::Text(format!(
+                    "{} matched {} only by invocation name (weak identity)",
                     describe_input(input_index, tool),
-                    matches.len(),
-                    ids.join(", ")
-                ));
+                    entry.entry_id
+                )));
             }
-            for m in &matches {
-                let nodes =
-                    dependency_closure(m.entry, m.selection, &by_id, platform, architecture.get()?)
-                        .map_err(|f| {
-                            PolicyCatalogError::new(
-                                ErrorReason::InvalidCatalog,
-                                format!(
-                                    "dependency resolution failed: {} ({})",
-                                    f.reason, f.detail
-                                ),
-                            )
-                        })?;
-                for node in nodes {
-                    if selected_ids.insert(node.entry.entry_id.as_str()) {
-                        selected.push(node);
+            let matched_identities: Vec<MatchedIdentity> = choice
+                .satisfied
+                .iter()
+                .map(|p| MatchedIdentity {
+                    kind: p.kind().to_string(),
+                    strength: p.strength(),
+                })
+                .collect();
+            let mut record = EntryMatchRecord {
+                entry_id: entry.entry_id.clone(),
+                entry_revision: entry.entry_revision,
+                matched_identities,
+                version_selection: VersionSelection {
+                    status: VersionStatus::MatchedDefault,
+                    detected_version: tool.detected_version.clone(),
+                    selected_version_range: None,
+                },
+                intent_selection: None,
+            };
+
+            // Version selection (design §4.3).
+            let mut version_variant = None;
+            if let Some(detected) = &tool.detected_version {
+                match entry.version_scheme.parse_version(detected) {
+                    None => {
+                        record.version_selection.status = VersionStatus::VersionUnparseable;
+                        warnings.push(tool_warning(
+                            ToolWarningCode::VersionUnparseable,
+                            input_index,
+                            Some(&entry.entry_id),
+                            tool,
+                            format!(
+                                "{}: detected version '{detected}' is not a valid {} version for {}; the input contributes nothing",
+                                describe_input(input_index, tool),
+                                entry.version_scheme,
+                                entry.entry_id
+                            ),
+                        ));
+                        tool_records.push(ToolRecord {
+                            input_index,
+                            status: ToolResolutionStatus::Version(
+                                VersionStatus::VersionUnparseable,
+                            ),
+                            matches: vec![record],
+                        });
+                        continue;
+                    }
+                    Some(version) => {
+                        version_variant = entry
+                            .version_variants
+                            .iter()
+                            .find(|v| v.version_range.contains(&version));
+                        match version_variant {
+                            Some(variant) => {
+                                record.version_selection.status = VersionStatus::MatchedVersion;
+                                record.version_selection.selected_version_range =
+                                    Some(variant.version_range.as_str().to_string());
+                            }
+                            None => {
+                                record.version_selection.status = VersionStatus::VersionOutOfRange;
+                                warnings.push(tool_warning(
+                                    ToolWarningCode::VersionOutOfRange,
+                                    input_index,
+                                    Some(&entry.entry_id),
+                                    tool,
+                                    format!(
+                                        "{}: detected version '{detected}' is outside every reviewed version range for {}; its unversioned default applies",
+                                        describe_input(input_index, tool),
+                                        entry.entry_id
+                                    ),
+                                ));
+                            }
+                        }
                     }
                 }
             }
+
+            let selection = select_platform_variant(entry, platform, &architecture)?;
+            let effective = materialize(entry, selection.map(|s| s.variant), version_variant)
+                .map_err(|e| invalid_catalog(format!("'{}': {e}", entry.entry_id)))?;
+
+            // Intent selection (design §4.4).
+            let intent_choice = match &tool.intent {
+                Some(name) => IntentChoice::Named(name),
+                None => IntentChoice::All,
+            };
+            let Some(selected) = effective.select(intent_choice) else {
+                let requested = tool.intent.clone().unwrap_or_default();
+                record.intent_selection = Some(IntentSelection {
+                    requested: Some(requested.clone()),
+                    mode: IntentMode::Unsupported,
+                    selected: Vec::new(),
+                });
+                let available = effective.intent_names();
+                warnings.push(tool_warning(
+                    ToolWarningCode::IntentUnsupported,
+                    input_index,
+                    Some(&entry.entry_id),
+                    tool,
+                    format!(
+                        "{}: intent '{requested}' is not defined for the selected policy of {} (available: {}); the input contributes nothing",
+                        describe_input(input_index, tool),
+                        entry.entry_id,
+                        if available.is_empty() {
+                            "none".to_string()
+                        } else {
+                            available.join(", ")
+                        }
+                    ),
+                ));
+                tool_records.push(ToolRecord {
+                    input_index,
+                    status: ToolResolutionStatus::IntentUnsupported,
+                    matches: vec![record],
+                });
+                continue;
+            };
+            record.intent_selection = Some(IntentSelection {
+                requested: tool.intent.clone(),
+                mode: if tool.intent.is_some() {
+                    IntentMode::Named
+                } else {
+                    IntentMode::All
+                },
+                selected: selected.intent_names.clone(),
+            });
+            let status = ToolResolutionStatus::Version(record.version_selection.status);
+            tool_records.push(ToolRecord {
+                input_index,
+                status,
+                matches: vec![record],
+            });
+
+            let key = (
+                entry.entry_id.clone(),
+                version_variant
+                    .map(|v| v.version_range.as_str().to_string())
+                    .unwrap_or_default(),
+                selection.map(|s| s.index),
+                tool.intent.clone().unwrap_or_else(|| "*".to_string()),
+            );
+            if contributed.insert(key) {
+                roots.push(Node {
+                    component: Component {
+                        entry_id: &entry.entry_id,
+                        base: &entry.default.sandbox_policy,
+                        additions: selected.additions.clone(),
+                    },
+                    neutral_fallback: selection
+                        .filter(|s| !s.exact && has_arch_specific(entry, platform))
+                        .map(|_| platform),
+                });
+                closure.add_dependencies(entry, &selected.dependencies)?;
+            }
         }
 
+        let resolved_dependencies = closure.sorted_records();
+        let mut nodes = roots;
+        nodes.extend(closure.nodes);
         let mut diagnostics = Diagnostics {
             catalog_revision: revision.catalog_revision.clone(),
             tools: tool_records,
-            resolved_dependencies: dependency_records(&selected, &by_id),
+            resolved_dependencies,
             warnings: Vec::new(),
         };
-        if selected.is_empty() {
+        if nodes.is_empty() {
             diagnostics.warnings = warnings;
             return Ok(SandboxConfigResolution {
                 policy: None,
@@ -292,32 +492,45 @@ impl PolicyCatalog {
         }
 
         if ctx_architecture.is_none() {
-            warnings.push(format!(
-                "architecture was not specified; variants were selected for the native system architecture '{}'; the tool's architecture was not verified",
-                architecture.get()?
-            ));
+            if let Some(native) = lazy.value.get() {
+                warnings.push(Warning::Text(format!(
+                    "architecture was not specified; overlays were selected for the native system architecture '{native}'; the tool's architecture was not verified"
+                )));
+            }
         }
-        for node in &selected {
-            if !node.exact {
-                warnings.push(format!(
-                    "{} uses its architecture-neutral {platform} variant; no {}-specific variant exists",
-                    node.entry.entry_id,
-                    architecture.get()?
-                ));
+        let mut reported: HashSet<&str> = HashSet::new();
+        for node in &nodes {
+            if let Some(platform) = node.neutral_fallback {
+                if reported.insert(node.component.entry_id) {
+                    warnings.push(Warning::Text(format!(
+                        "{} uses its architecture-neutral {platform} additions; no {}-specific overlay exists",
+                        node.component.entry_id,
+                        architecture()?
+                    )));
+                }
             }
         }
 
-        if let Some(violation) = composition_violation(&selected) {
+        let components: Vec<Component<'_>> = nodes.into_iter().map(|n| n.component).collect();
+        if let Err(violation) = compose_check(&components) {
             return Err(PolicyCatalogError::new(
                 ErrorReason::CompositionConflict,
                 format!("selected entries cannot be composed: {violation}"),
             ));
         }
 
-        let symbols = self.resolve_symbols(&selected, ctx, platform, &mut warnings)?;
+        let symbols = self.resolve_symbols(&components, ctx, platform, &mut warnings)?;
         let policy = match symbols {
             None => None,
-            Some(symbols) => Some(compose_policy(&selected, &symbols, platform)?),
+            Some(symbols) => {
+                let composed = compose_policy(
+                    &components,
+                    &|template: &str| replace_symbols(template, |name| symbols[name].clone()),
+                    platform,
+                );
+                warnings.extend(composed.warnings.into_iter().map(Warning::Text));
+                Some(composed.policy)
+            }
         };
         diagnostics.warnings = warnings;
         Ok(SandboxConfigResolution {
@@ -326,37 +539,52 @@ impl PolicyCatalog {
         })
     }
 
+    fn parse_input_purl(
+        &self,
+        tool: &ToolCandidate,
+        input_index: usize,
+        warnings: &mut Vec<Warning>,
+    ) -> Result<Option<ParsedPurl>> {
+        let Some(package_url) = &tool.package_url else {
+            return Ok(None);
+        };
+        let Some(purl) = parse_purl(package_url) else {
+            return Err(invalid_context(format!(
+                "{}: '{package_url}' is not a valid package URL",
+                describe_input(input_index, tool)
+            )));
+        };
+        if let Some(version) = &purl.version {
+            warnings.push(Warning::Text(format!(
+                "{}: the version '{version}' embedded in packageUrl is not version evidence and was ignored; supply detectedVersion",
+                describe_input(input_index, tool)
+            )));
+        }
+        Ok(Some(purl))
+    }
+
+    /// The single most specific eligible entry (design §4.3), or the reasons
+    /// candidate entries were skipped. Ties at the highest rank are errors.
     #[allow(clippy::too_many_arguments)]
     fn match_tool<'a>(
         &self,
         ordered: &[&'a CatalogEntry],
         tool: &ToolCandidate,
+        purl: Option<&ParsedPurl>,
         input_index: usize,
         platform: Platform,
         allow_weak: bool,
-        architecture: &LazyArchitecture<'_>,
-        warnings: &mut Vec<String>,
-    ) -> Result<Vec<EntryMatch<'a>>> {
-        let mut purl: Option<ParsedPurl> = None;
-        if let Some(package_url) = &tool.package_url {
-            purl = parse_purl(package_url);
-            if purl.is_none() {
-                return Err(invalid_context(format!(
-                    "{}: '{package_url}' is not a valid package URL",
-                    describe_input(input_index, tool)
-                )));
-            }
-        }
+        architecture: &dyn Fn() -> Result<Architecture>,
+    ) -> Result<std::result::Result<Choice<'a>, Vec<String>>> {
         let invocation = case_key(&tool.invocation_name, platform);
-
-        let mut matches = Vec::new();
+        let mut ranked: Vec<((bool, bool, u8), Choice<'a>)> = Vec::new();
         let mut skipped: Vec<String> = Vec::new();
         for entry in ordered {
             let satisfied: Vec<&IdentityPredicate> = entry
                 .identity
                 .iter()
                 .filter(|predicate| match predicate {
-                    IdentityPredicate::Purl { value, .. } => match &purl {
+                    IdentityPredicate::Purl { value } => match purl {
                         Some(purl) => parse_purl(value).is_some_and(|p| p.key == purl.key),
                         None => false,
                     },
@@ -378,68 +606,58 @@ impl PolicyCatalog {
                 ));
                 continue;
             }
-            let Some(selection) = select_variant(entry, platform, architecture.get()?) else {
-                skipped.push(format!(
-                    "{} has no variant for {platform}/{}",
-                    entry.entry_id,
-                    architecture.get()?
-                ));
-                continue;
-            };
-            for predicate in &satisfied {
-                let IdentityPredicate::Purl {
-                    version_range: Some(range),
-                    ..
-                } = predicate
-                else {
-                    continue;
-                };
-                let evidence = tool
-                    .detected_version
-                    .clone()
-                    .or_else(|| purl.as_ref().and_then(|p| p.version.clone()));
-                let Some(evidence) = evidence else {
-                    continue;
-                };
-                let in_range = satisfies_version_range(&evidence, range);
-                if in_range != Some(true) {
-                    warnings.push(format!(
-                        "{}: detected version '{evidence}' {} the reviewed range '{range}' for {}",
-                        describe_input(input_index, tool),
-                        if in_range == Some(false) {
-                            "is outside"
-                        } else {
-                            "could not be compared with"
-                        },
-                        entry.entry_id
-                    ));
-                }
-            }
-            if !strong {
-                warnings.push(format!(
-                    "{} matched {} only by invocation name (weak identity)",
-                    describe_input(input_index, tool),
-                    entry.entry_id
-                ));
-            }
-            matches.push(EntryMatch {
-                entry,
-                selection,
-                satisfied,
+            let selection = select_platform_variant(entry, platform, architecture)?;
+            // Intent specificity uses the overlays that apply to this input:
+            // its platform selection and the version variant containing its
+            // detected version, if any.
+            let version_variant = tool.detected_version.as_deref().and_then(|detected| {
+                let version = entry.version_scheme.parse_version(detected)?;
+                entry
+                    .version_variants
+                    .iter()
+                    .find(|v| v.version_range.contains(&version))
             });
-        }
-        if matches.is_empty() {
-            let suffix = if skipped.is_empty() {
-                String::new()
-            } else {
-                format!(": {}", skipped.join("; "))
+            let intent_declared = match &tool.intent {
+                None => false,
+                Some(intent) => materialize(entry, selection.map(|s| s.variant), version_variant)
+                    .map_err(|e| invalid_catalog(format!("'{}': {e}", entry.entry_id)))?
+                    .has_intent(intent),
             };
-            warnings.push(format!(
-                "{} matched no eligible catalog entry{suffix}",
-                describe_input(input_index, tool)
+            let arch_rank = match selection {
+                Some(s) if s.exact => 2,
+                Some(_) => 1,
+                None => 0,
+            };
+            ranked.push((
+                (strong, intent_declared, arch_rank),
+                Choice {
+                    entry,
+                    satisfied,
+                    strong,
+                },
             ));
         }
-        Ok(matches)
+        let Some(best) = ranked.iter().map(|(rank, _)| *rank).max() else {
+            return Ok(Err(skipped));
+        };
+        let mut top: Vec<Choice<'a>> = ranked
+            .into_iter()
+            .filter(|(rank, _)| *rank == best)
+            .map(|(_, choice)| choice)
+            .collect();
+        if top.len() > 1 {
+            let ids: Vec<&str> = top.iter().map(|c| c.entry.entry_id.as_str()).collect();
+            return Err(PolicyCatalogError::new(
+                ErrorReason::AmbiguousMatch,
+                format!(
+                    "{} matches {} entries with equal rank ({}); no entry was selected",
+                    describe_input(input_index, tool),
+                    ids.len(),
+                    ids.join(", ")
+                ),
+            ));
+        }
+        Ok(Ok(top.remove(0)))
     }
 
     fn validate_context(
@@ -481,56 +699,55 @@ impl PolicyCatalog {
         Ok((platform, architecture))
     }
 
-    /// Resolves every symbol the selected entries need; `None` (with
+    /// Resolves every symbol the selected components need; `None` (with
     /// warnings) when any is unresolved. Never a partial policy.
     fn resolve_symbols(
         &self,
-        nodes: &[ClosureNode<'_>],
+        components: &[Component<'_>],
         ctx: &ResolveContext,
         platform: Platform,
-        warnings: &mut Vec<String>,
+        warnings: &mut Vec<Warning>,
     ) -> Result<Option<HashMap<String, String>>> {
         let contract = self.store.contract();
         let mut values: HashMap<String, String> = HashMap::new();
         let mut missing: Vec<(String, Vec<String>)> = Vec::new();
-        for node in nodes {
-            for name in policy_symbols(&node.variant.sandbox_policy) {
-                if values.contains_key(&name) {
-                    continue;
-                }
-                let definition = contract
-                    .symbol(&name)
-                    .expect("validated revisions reference declared symbols");
-                let value = if definition.source == SymbolSource::Context {
-                    ctx.project_root.clone()
+        for (name, entry_ids) in component_symbols(components) {
+            let definition = contract
+                .symbol(&name)
+                .expect("validated revisions reference declared symbols");
+            let value = if definition.source == SymbolSource::Context {
+                ctx.project_root.clone()
+            } else {
+                let supplied = ctx
+                    .symbols
+                    .as_ref()
+                    .and_then(|s| s.get(&name))
+                    .map(str::to_string);
+                if supplied.is_none()
+                    && definition.source == SymbolSource::Host
+                    && self.host.platform().ok() == Some(platform)
+                {
+                    let discovered = self.host.symbol(&name);
+                    if let Some(value) = &discovered {
+                        warnings.push(Warning::Text(format!(
+                            "symbol '{name}' resolved from the host environment to '{value}'"
+                        )));
+                    }
+                    discovered
                 } else {
-                    let mut value = ctx
-                        .symbols
-                        .as_ref()
-                        .and_then(|s| s.get(&name))
-                        .map(str::to_string);
-                    if value.is_none()
-                        && definition.source == SymbolSource::Host
-                        && self.host.platform().ok() == Some(platform)
-                    {
-                        value = self.host.symbol(&name);
-                    }
-                    value
-                };
-                let Some(value) = value else {
-                    match missing.iter_mut().find(|(n, _)| *n == name) {
-                        Some((_, ids)) => ids.push(node.entry.entry_id.clone()),
-                        None => missing.push((name, vec![node.entry.entry_id.clone()])),
-                    }
-                    continue;
-                };
-                if value.contains("${") || !is_absolute_path(&value, platform) {
-                    return Err(invalid_context(format!(
-                        "symbol '{name}' must resolve to an absolute {platform} path"
-                    )));
+                    supplied
                 }
-                values.insert(name, value);
+            };
+            let Some(value) = value else {
+                missing.push((name, entry_ids));
+                continue;
+            };
+            if value.contains("${") || !is_absolute_path(&value, platform) {
+                return Err(invalid_context(format!(
+                    "symbol '{name}' must resolve to an absolute {platform} path"
+                )));
             }
+            values.insert(name, value);
         }
         if !missing.is_empty() {
             missing.sort_by(|a, b| cmp_utf16(&a.0, &b.0));
@@ -541,103 +758,15 @@ impl PolicyCatalog {
                     } else {
                         format!("ResolveContext.symbols.{name}")
                     };
-                warnings.push(format!(
+                warnings.push(Warning::Text(format!(
                     "required symbol '{name}' (needed by {}) is unresolved; supply {hint}; no policy was returned",
                     entry_ids.join(", ")
-                ));
+                )));
             }
             return Ok(None);
         }
         Ok(Some(values))
     }
-}
-
-/// Distinct dependency edges among the selected entries, ordered by
-/// entryId, entryRevision, then requiredVersionRange (absent first).
-fn dependency_records(
-    nodes: &[ClosureNode<'_>],
-    by_id: &HashMap<&str, &CatalogEntry>,
-) -> Vec<DependencyRecord> {
-    let mut records: Vec<DependencyRecord> = Vec::new();
-    for node in nodes {
-        for dependency in node.variant.dependencies.iter().flatten() {
-            let target = by_id[dependency.entry_id.as_str()];
-            let record = DependencyRecord {
-                entry_id: target.entry_id.clone(),
-                entry_revision: target.entry_revision,
-                required_version_range: dependency.version_range.clone(),
-            };
-            if !records.contains(&record) {
-                records.push(record);
-            }
-        }
-    }
-    records.sort_by(|a, b| {
-        cmp_utf16(&a.entry_id, &b.entry_id)
-            .then(
-                a.entry_revision
-                    .partial_cmp(&b.entry_revision)
-                    .unwrap_or(std::cmp::Ordering::Equal),
-            )
-            .then_with(
-                || match (&a.required_version_range, &b.required_version_range) {
-                    (None, None) => std::cmp::Ordering::Equal,
-                    (None, Some(_)) => std::cmp::Ordering::Less,
-                    (Some(_), None) => std::cmp::Ordering::Greater,
-                    (Some(x), Some(y)) => cmp_utf16(x, y),
-                },
-            )
-    });
-    records
-}
-
-/// Composes the v1 vocabulary (design §4.5).
-fn compose_policy(
-    nodes: &[ClosureNode<'_>],
-    symbols: &HashMap<String, String>,
-    platform: Platform,
-) -> Result<SandboxPolicy> {
-    let mut classes: Vec<(&str, Vec<String>)> = Vec::new();
-    for field in COMPOSABLE_FILESYSTEM_FIELDS {
-        let mut seen: HashSet<Vec<String>> = HashSet::new();
-        let mut out = Vec::new();
-        for node in nodes {
-            for template in node.variant.sandbox_policy.filesystem_field(field) {
-                let substituted = replace_symbols(template, |name| symbols[name].clone());
-                let resolved = normalize_path(&substituted, platform);
-                if seen.insert(path_key_segments(&resolved, platform)) {
-                    out.push(resolved);
-                }
-            }
-        }
-        classes.push((field, out));
-    }
-    if let Some(overlap) = find_cross_class_overlap(&classes, platform) {
-        return Err(PolicyCatalogError::new(
-            ErrorReason::CompositionConflict,
-            format!("resolved paths overlap across access classes: {overlap}"),
-        ));
-    }
-
-    let root = &nodes[0].variant.sandbox_policy;
-    let filesystem = nodes
-        .iter()
-        .any(|n| n.variant.sandbox_policy.has_filesystem())
-        .then(|| {
-            let pick = |index: usize| Some(classes[index].1.clone()).filter(|v| !v.is_empty());
-            FilesystemPolicy {
-                denied_paths: pick(0),
-                readonly_paths: pick(1),
-                readwrite_paths: pick(2),
-            }
-        });
-    Ok(SandboxPolicy {
-        version: root.version().to_string(),
-        filesystem,
-        network: root.field("network").cloned(),
-        ui: root.field("ui").cloned(),
-        timeout_ms: root.field("timeoutMs").and_then(|v| v.as_f64()),
-    })
 }
 
 fn bundled() -> Result<&'static PolicyCatalog> {

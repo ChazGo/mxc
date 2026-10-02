@@ -41,6 +41,7 @@ impl fmt::Display for ErrorCode {
 pub enum ErrorReason {
     InvalidCatalog,
     CompositionConflict,
+    AmbiguousMatch,
     InvalidContext,
     UnsupportedHost,
     Integrity,
@@ -48,9 +49,10 @@ pub enum ErrorReason {
 }
 
 impl ErrorReason {
-    pub const ALL: [ErrorReason; 6] = [
+    pub const ALL: [ErrorReason; 7] = [
         ErrorReason::InvalidCatalog,
         ErrorReason::CompositionConflict,
+        ErrorReason::AmbiguousMatch,
         ErrorReason::InvalidContext,
         ErrorReason::UnsupportedHost,
         ErrorReason::Integrity,
@@ -61,6 +63,7 @@ impl ErrorReason {
         match self {
             ErrorReason::InvalidCatalog => "invalid_catalog",
             ErrorReason::CompositionConflict => "composition_conflict",
+            ErrorReason::AmbiguousMatch => "ambiguous_match",
             ErrorReason::InvalidContext => "invalid_context",
             ErrorReason::UnsupportedHost => "unsupported_host",
             ErrorReason::Integrity => "integrity",
@@ -71,9 +74,9 @@ impl ErrorReason {
     /// The one code each reason maps to (`ERROR_CODE_FOR_REASON`).
     pub fn code(self) -> ErrorCode {
         match self {
-            ErrorReason::InvalidCatalog | ErrorReason::CompositionConflict => {
-                ErrorCode::PolicyValidation
-            }
+            ErrorReason::InvalidCatalog
+            | ErrorReason::CompositionConflict
+            | ErrorReason::AmbiguousMatch => ErrorCode::PolicyValidation,
             ErrorReason::InvalidContext => ErrorCode::MalformedRequest,
             ErrorReason::UnsupportedHost => ErrorCode::UnsupportedContainment,
             ErrorReason::Integrity | ErrorReason::RevisionUnavailable => ErrorCode::BackendError,
@@ -114,6 +117,13 @@ impl PolicyCatalogError {
     pub fn message(&self) -> &str {
         &self.message
     }
+
+    /// The message without the `[code] ` prefix.
+    pub fn detail(&self) -> &str {
+        self.message
+            .split_once("] ")
+            .map_or(self.message.as_str(), |(_, rest)| rest)
+    }
 }
 
 impl fmt::Display for PolicyCatalogError {
@@ -147,6 +157,7 @@ mod tests {
         assert_eq!(
             codes,
             [
+                "policy_validation",
                 "policy_validation",
                 "policy_validation",
                 "malformed_request",

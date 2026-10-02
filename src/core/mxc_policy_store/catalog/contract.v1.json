@@ -30,6 +30,14 @@
     "temp_dir": {
       "source": "host",
       "description": "The current user's temporary directory."
+    },
+    "ssh_prefix": {
+      "source": "caller",
+      "description": "Directory containing the ssh executable."
+    },
+    "programData": {
+      "source": "host",
+      "description": "The Windows common application-data directory (%ProgramData%). Derived only on a Windows host."
     }
   }
 }

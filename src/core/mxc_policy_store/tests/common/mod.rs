@@ -82,13 +82,14 @@ pub fn revision(entries: Vec<Json>) -> Json {
     revision_with(entries, "2000-01-01.1")
 }
 
-/// Minimal valid entry (linux, readwrite `${project_root}`) with overrides.
+/// Minimal valid entry (semver scheme, default read-write `${project_root}`)
+/// with top-level overrides.
 pub fn entry(entry_id: &str, overrides: &str) -> Json {
     let name = entry_id.split(':').nth(1).unwrap();
     let mut base = j(&format!(
-        r#"{{"entryId":"{entry_id}","entryRevision":1,"displayName":"{name}",
+        r#"{{"entryId":"{entry_id}","entryRevision":1,"displayName":"{name}","versionScheme":"semver",
             "identity":[{{"kind":"invocation-name","names":["{name}"]}}],
-            "platformVariants":[{{"when":{{"platform":"linux"}},"sandboxPolicy":{{"version":"0.9.0-alpha","filesystem":{{"readwritePaths":["${{project_root}}"]}}}}}}],
+            "default":{{"sandboxPolicy":{{"version":"0.9.0-alpha","filesystem":{{"readwritePaths":["${{project_root}}"]}}}}}},
             "provenance":{{"method":"test","sourceRevision":"test"}}}}"#
     ));
     if !overrides.is_empty() {
