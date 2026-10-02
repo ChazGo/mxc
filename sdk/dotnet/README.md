@@ -584,9 +584,9 @@ var resolution = MxcPolicyStore.ResolveSandboxPolicyWithDiagnostics(
 ```
 
 `GetCatalogInfo()` and `ListCatalogEntries()` inspect the bundled catalog.
-Failures throw `PolicyStoreException`, which carries the `ErrorCode`, the
-stable store `Reason` (for example `invalid_context`), and the underlying
-`MxcException`. See [`docs/policy-store/`](../../docs/policy-store/README.md).
+Failures throw `MxcException`: `Code` carries the `ErrorCode` and `Reason`
+carries the stable store reason (for example `invalid_context`). `Reason` is
+`null` for failures outside the policy store. See [`docs/policy-store/`](../../docs/policy-store/README.md).
 
 ### Denial capture (Windows)
 

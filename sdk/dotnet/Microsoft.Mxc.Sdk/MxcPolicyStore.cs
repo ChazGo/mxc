@@ -27,9 +27,10 @@ namespace Microsoft.Mxc.Sdk;
 /// <c>git pull</c> versus <c>git push</c>). This API is not part of MXC 1.0.
 /// </para>
 /// <para>
-/// Failures throw <see cref="PolicyStoreException"/>, which carries the typed
-/// <see cref="ErrorCode"/>, the store's stable failure reason (for example
-/// <c>invalid_context</c>), and the underlying <see cref="MxcException"/>.
+/// Failures throw <see cref="MxcException"/>: <see cref="MxcException.Code"/>
+/// carries the typed <see cref="ErrorCode"/> and
+/// <see cref="MxcException.Reason"/> carries the store's stable failure reason
+/// (for example <c>invalid_context</c>).
 /// </para>
 /// </remarks>
 public static class MxcPolicyStore
@@ -58,7 +59,7 @@ public static class MxcPolicyStore
     /// <b>PROTOTYPE, pending API review.</b> Resolve one tool to a floor policy.
     /// </summary>
     /// <returns>The policy, or <see langword="null"/> when none can be resolved.</returns>
-    /// <exception cref="PolicyStoreException">The input, context, or catalog is invalid.</exception>
+    /// <exception cref="MxcException">The input, context, or catalog is invalid.</exception>
     public static SandboxPolicy? ResolveSandboxPolicy(ToolInput tool, ResolveContext? context = null)
     {
         ArgumentNullException.ThrowIfNull(tool);
@@ -70,7 +71,7 @@ public static class MxcPolicyStore
     /// composed floor policy.
     /// </summary>
     /// <returns>The policy, or <see langword="null"/> when none can be resolved.</returns>
-    /// <exception cref="PolicyStoreException">The input, context, or catalog is invalid.</exception>
+    /// <exception cref="MxcException">The input, context, or catalog is invalid.</exception>
     public static SandboxPolicy? ResolveSandboxPolicy(
         IReadOnlyList<ToolInput> tools,
         ResolveContext? context = null)
@@ -85,7 +86,7 @@ public static class MxcPolicyStore
     /// reports which catalog entries matched, the dependencies they pulled in,
     /// and warnings.
     /// </summary>
-    /// <exception cref="PolicyStoreException">The input, context, or catalog is invalid.</exception>
+    /// <exception cref="MxcException">The input, context, or catalog is invalid.</exception>
     public static SandboxConfigResolution ResolveSandboxPolicyWithDiagnostics(
         ToolInput tool,
         ResolveContext? context = null)
@@ -100,7 +101,7 @@ public static class MxcPolicyStore
     /// and also reports which catalog entries matched each input, the
     /// dependencies they pulled in, and warnings.
     /// </summary>
-    /// <exception cref="PolicyStoreException">The input, context, or catalog is invalid.</exception>
+    /// <exception cref="MxcException">The input, context, or catalog is invalid.</exception>
     public static SandboxConfigResolution ResolveSandboxPolicyWithDiagnostics(
         IReadOnlyList<ToolInput> tools,
         ResolveContext? context = null)
@@ -178,9 +179,8 @@ public static class MxcPolicyStore
             if (status != (int)ErrorCode.Success)
             {
                 var error = NativeError.ToException(status, result->error, "unknown error");
-                throw new PolicyStoreException(
-                    error,
-                    NativeError.ToStringOrNull(result->reason_utf8));
+                error.Reason = NativeError.ToStringOrNull(result->reason_utf8);
+                throw error;
             }
 
             return NativeError.ToStringOrNull(result->json_utf8)
@@ -214,12 +214,13 @@ public static class MxcPolicyStore
         }
         catch (JsonException error)
         {
-            throw new PolicyStoreException(
-                new MxcException(
-                    ErrorCode.PolicyValidation,
-                    $"The resolved policy is not a valid SDK SandboxPolicy: {error.Message}",
-                    error),
-                "invalid_catalog");
+            throw new MxcException(
+                ErrorCode.PolicyValidation,
+                $"The resolved policy is not a valid SDK SandboxPolicy: {error.Message}",
+                error)
+            {
+                Reason = "invalid_catalog",
+            };
         }
     }
 
@@ -233,33 +234,6 @@ public static class MxcPolicyStore
     private sealed record NativeResolution(
         [property: JsonPropertyName("policy")] SandboxPolicy? Policy,
         [property: JsonPropertyName("diagnostics")] ResolutionDiagnostics? Diagnostics);
-}
-
-/// <summary>
-/// <b>PROTOTYPE, pending API review.</b> A policy store failure. It is an
-/// <see cref="MxcException"/> whose <see cref="Reason"/> carries the store's
-/// stable failure reason.
-/// </summary>
-public sealed class PolicyStoreException : Exception
-{
-    internal PolicyStoreException(MxcException inner, string? reason)
-        : base(inner.Message, inner)
-    {
-        Code = inner.Code;
-        Reason = reason;
-    }
-
-    /// <summary>The typed error code.</summary>
-    public ErrorCode Code { get; }
-
-    /// <summary>
-    /// The stable failure reason: <c>invalid_catalog</c>,
-    /// <c>composition_conflict</c>, <c>invalid_context</c>,
-    /// <c>unsupported_host</c>, <c>integrity</c>, or
-    /// <c>revision_unavailable</c>. <see langword="null"/> when the failure did
-    /// not come from the store itself.
-    /// </summary>
-    public string? Reason { get; }
 }
 
 /// <summary>Catalog platform selector values.</summary>

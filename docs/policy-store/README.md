@@ -65,7 +65,7 @@ Verifying that the executable really carries the strong identity passed in
 ## Failures
 
 Failures reuse MXC's error codes, with a stable sub-reason: `details.reason`
-on the Node `MxcError`, `PolicyStoreException.Reason` in C#, and
+on the Node `MxcError`, `MxcException.Reason` in C#, and
 `PolicyCatalogError::reason()` in Rust.
 
 | Code | Reason | Meaning |

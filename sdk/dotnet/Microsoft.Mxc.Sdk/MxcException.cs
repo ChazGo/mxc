@@ -38,6 +38,15 @@ public sealed class MxcException : Exception
     /// </summary>
     public string? Remediation { get; }
 
+    /// <summary>
+    /// <b>PROTOTYPE, pending API review.</b> The policy store's stable failure
+    /// reason: <c>invalid_catalog</c>, <c>composition_conflict</c>,
+    /// <c>invalid_context</c>, <c>unsupported_host</c>, <c>integrity</c>, or
+    /// <c>revision_unavailable</c>. <see langword="null"/> for every failure
+    /// that did not come from <see cref="MxcPolicyStore"/>.
+    /// </summary>
+    public string? Reason { get; internal set; }
+
     /// <summary>Create an exception with the given code and message.</summary>
     public MxcException(ErrorCode code, string message)
         : this(code, message, null, null, null)

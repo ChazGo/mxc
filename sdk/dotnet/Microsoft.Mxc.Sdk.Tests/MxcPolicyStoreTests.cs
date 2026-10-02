@@ -105,12 +105,17 @@ public class MxcPolicyStoreTests
     [Fact]
     public void ResolveSandboxPolicy_InvalidContextThrowsWithStableReason()
     {
-        var error = Assert.Throws<PolicyStoreException>(() =>
+        var error = Assert.Throws<MxcException>(() =>
             MxcPolicyStore.ResolveSandboxPolicy("npm", LinuxContext with { Platform = "plan9" }));
 
         Assert.Equal(ErrorCode.MalformedRequest, error.Code);
         Assert.Equal("invalid_context", error.Reason);
-        Assert.IsType<MxcException>(error.InnerException);
+    }
+
+    [Fact]
+    public void MxcException_ReasonIsNullOutsideThePolicyStore()
+    {
+        Assert.Null(new MxcException(ErrorCode.BackendError, "failed").Reason);
     }
 
     [Fact]
@@ -138,12 +143,12 @@ public class MxcPolicyStoreTests
     [Fact]
     public void ParseResolution_RejectsFieldsTheSdkModelCannotHold()
     {
-        var error = Assert.Throws<PolicyStoreException>(() =>
+        var error = Assert.Throws<MxcException>(() =>
             MxcPolicyStore.ParseResolution("""{"policy":{"version":"0.9.0-alpha","timeoutMs":4294967296}}"""));
         Assert.Equal(ErrorCode.PolicyValidation, error.Code);
         Assert.Equal("invalid_catalog", error.Reason);
 
-        Assert.Throws<PolicyStoreException>(() =>
+        Assert.Throws<MxcException>(() =>
             MxcPolicyStore.ParseResolution("""{"policy":{"version":"0.9.0-alpha","unknownField":true}}"""));
     }
 }
