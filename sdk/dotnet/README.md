@@ -549,6 +549,45 @@ PSReadLine directory required when `pwsh.exe` is present.
 The profile helper discovers per-user tool installations, while the temporary
 files helper grants the configured host temporary directory read-write.
 
+### Policy store (prototype)
+
+> **PROTOTYPE, pending API review.** These APIs are proposed and may change
+> before sign-off. They are not part of MXC 1.0.
+
+`MxcPolicyStore` resolves known tools (for example `git`, `node`, `npm`) to a
+candidate floor `SandboxPolicy` from a reviewed catalog bundled in `mxc_ffi`.
+Nothing is downloaded. A floor is a best-effort starting point, not a
+guarantee, and it never grants access by itself: review it, compose it with
+your own policy, then run. It complements Learning Mode rather than replacing
+it.
+
+```csharp
+var context = new ResolveContext
+{
+    ProjectRoot = "/work/repo",
+    Symbols = new Dictionary<string, string>
+    {
+        ["node_prefix"] = "/opt/node",
+        ["npm_prefix"] = "/opt/npm",
+        ["npm_cache"] = "/home/me/.npm",
+    },
+};
+
+// The SDK's own SandboxPolicy, or null when nothing resolves.
+SandboxPolicy? floor = MxcPolicyStore.ResolveSandboxPolicy(
+    new ToolInput("npm") { PackageUrl = "pkg:npm/npm" }, context);
+
+// Name-only matches need an explicit opt-in; diagnostics report what matched.
+var resolution = MxcPolicyStore.ResolveSandboxPolicyWithDiagnostics(
+    new ToolInput[] { "git", "npm" },
+    context with { AllowWeakIdentityFallback = true });
+```
+
+`GetCatalogInfo()` and `ListCatalogEntries()` inspect the bundled catalog.
+Failures throw `PolicyStoreException`, which carries the `ErrorCode`, the
+stable store `Reason` (for example `invalid_context`), and the underlying
+`MxcException`. See [`docs/policy-store/`](../../docs/policy-store/README.md).
+
 ### Denial capture (Windows)
 
 Select explicit ProcessContainer containment and set
@@ -776,7 +815,8 @@ Exposes **run-to-completion** (`Run` / `RunAsync`), **streaming**
 ProcessContainer, Linux Bubblewrap, macOS Seatbelt, and Windows
 IsolationSession and WSLC for run/stream; the state-aware lifecycle supports
 IsolationSession, Windows Sandbox, and WSLC on Windows. Windows Sandbox
-requires experimental opt-in; IsolationSession and WSLC do not).
+requires experimental opt-in; IsolationSession and WSLC do not). It also
+exposes the prototype policy store (`MxcPolicyStore`, pending API review).
 
 `SchemaVersions` exposes the minimum and maximum accepted schema versions, the
 latest stable schema, and the backend-specific state-aware defaults. These

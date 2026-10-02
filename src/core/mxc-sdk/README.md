@@ -708,6 +708,51 @@ Windows Sandbox and WSLc relay attached output without interactive stdin.
 stdout and stdin are both terminals; use `sandbox::exec` for a typed workload
 with no terminal.
 
+## Policy store (prototype)
+
+> **PROTOTYPE, pending API review.** These APIs are proposed and may change
+> before sign-off. They are not part of MXC 1.0.
+
+`mxc_sdk::policy_store` resolves known tools (for example `git`, `node`,
+`npm`) to a candidate floor `SandboxPolicy` from a reviewed catalog bundled in
+the crate (via `mxc_policy_store`). Nothing is downloaded. A floor is a
+best-effort starting point, not a guarantee, and it never grants access by
+itself: review it and compose it with your own policy before building a
+request. It complements Learning Mode rather than replacing it.
+
+```rust,no_run
+use mxc_sdk::policy_store::{
+    resolve_sandbox_policy, resolve_sandbox_policy_with_diagnostics, ResolveContext,
+    ToolCandidate, ToolInput,
+};
+
+let ctx = ResolveContext::new()
+    .project_root("/work/repo")
+    .symbol("node_prefix", "/opt/node")
+    .symbol("npm_prefix", "/opt/npm")
+    .symbol("npm_cache", "/home/me/.npm");
+
+// `Some(SandboxPolicy)`, or `None` when nothing resolves.
+let floor = resolve_sandbox_policy(
+    ToolCandidate::new("npm").with_package_url("pkg:npm/npm"),
+    &ctx,
+)?;
+
+// Name-only matches need an explicit opt-in; diagnostics report what matched.
+let resolution = resolve_sandbox_policy_with_diagnostics(
+    vec![ToolInput::from("git"), ToolInput::from("npm")],
+    &ctx.clone()
+        .symbol("git_prefix", "/usr")
+        .allow_weak(true),
+)?;
+# let _ = (floor, resolution);
+# Ok::<(), mxc_sdk::policy_store::PolicyCatalogError>(())
+```
+
+`get_catalog_info` and `list_catalog_entries` inspect the bundled catalog.
+Errors carry an MXC `ErrorCode` and a stable `reason()`. See
+[`docs/policy-store/`](../../../docs/policy-store/README.md).
+
 ## Relationship to `mxc_engine` and the executor binaries
 
 Backend dispatch, host probing, and config building live in the internal

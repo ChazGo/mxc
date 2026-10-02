@@ -1,31 +1,30 @@
 <!--
-Verbatim copy of the Known-tool Policy Floors / Policy Store design proposal.
+Adapted from the Known-tool Policy Floors / Policy Store design proposal,
+docs/mxc-policy-store.md in Chaz Gordish's "chazgo-vigilant-enigma" MXC
+worktree (base commit 34537f85384c00f72564f931077d1790c5a86a02,
+microsoft/mxc#1309, plus uncommitted edits as of 2026-09-29).
 
-Source: docs/mxc-policy-store.md in Chaz Gordish's "chazgo-vigilant-enigma"
-MXC worktree: base commit 34537f85384c00f72564f931077d1790c5a86a02
-(microsoft/mxc#1309) plus uncommitted edits as of 2026-09-29.
-Everything below the "BEGIN VERBATIM COPY" marker is byte-identical to that
-file after git's CRLF-to-LF checkout normalization. No text or links were
-changed.
-
-Relative links in the copy point into the MXC repository (docs/), not into
-this directory. Absolute equivalents:
-- authoring-a-new-feature.md -> https://github.com/microsoft/mxc/blob/main/docs/authoring-a-new-feature.md
-- learning-mode/capabilities.md -> https://github.com/microsoft/mxc/blob/main/docs/learning-mode/capabilities.md
-- sandbox-policy/0.8.0/policy.md -> https://github.com/microsoft/mxc/blob/main/docs/sandbox-policy/0.8.0/policy.md
-- versioning.md -> https://github.com/microsoft/mxc/blob/main/docs/versioning.md
+Updated for the 2026-10-01 Policy Store design review outcome: the store ships
+inside MXC as new APIs in the existing MXC SDKs, not as a separate repository,
+standalone library, or CLI; it is not part of MXC 1.0; V1 data is bundled
+statically; a resolved policy is a best-effort floor; Learning Mode is
+complementary; and the API remains pending API review. Changed sections:
+Status, §1 (feature impact), §2, §5 (introduction), §6, §7, §8, §11, §12,
+§13, and §14. The data model and lookup semantics (§4, §5.1–§5.3, §9, §10)
+are unchanged.
 -->
-<!-- BEGIN VERBATIM COPY -->
 # Feature Spec: Known-tool Policy Floors
 
-**Status:** Proposed public preview catalog. This is not an approved, shipped, or
-implemented catalog.
+**Status:** Prototype, pending API review and sign-off before check-in. The
+policy store ships inside MXC as new APIs in the existing MXC SDKs. It is not
+part of MXC 1.0; a later MXC SDK release is targeted. The API names in this
+document are the current proposal and may change in review (see
+[§13](#13-open-questions)).
 
-**IMPORTANT NOTE:** This is a time-limited bridge, not a long-term supported
-Microsoft product. Applying a published floor does not guarantee that a tool's
-end-to-end workflow will work under process containment. The catalog and its
-dedicated repository are expected to be retired when Learning Mode provides
-the replacement workflow.
+**IMPORTANT NOTE:** A resolved policy is a best-effort floor, not a guarantee.
+Applying it does not guarantee that a tool's end-to-end workflow will work
+under process containment. The policy store is complementary to Learning Mode,
+not a replacement for it (see [§8](#8-relationship-to-learning-mode)).
 
 ---
 
@@ -50,8 +49,8 @@ revision, and inspection behavior. It reuses #779's model where possible and
 calls out differences directly.
 
 This document does not restate general MXC sandboxing concepts already covered
-by [`docs/sandbox-policy/0.8.0/policy.md`](sandbox-policy/0.8.0/policy.md) or
-[`docs/versioning.md`](versioning.md). It covers only what a policy store adds.
+by [`docs/sandbox-policy/0.8.0/policy.md`](../sandbox-policy/0.8.0/policy.md) or
+[`docs/versioning.md`](../versioning.md). It covers only what a policy store adds.
 
 ### Non-goals
 
@@ -69,8 +68,8 @@ by [`docs/sandbox-policy/0.8.0/policy.md`](sandbox-policy/0.8.0/policy.md) or
 
 ### MXC feature impact and defaults
 
-This is a standalone catalog and library proposal. Following the feature-impact
-checklist in [`docs/authoring-a-new-feature.md`](authoring-a-new-feature.md):
+This adds known-tool lookup APIs to the existing MXC SDKs. Following the feature-impact
+checklist in [`docs/authoring-a-new-feature.md`](../authoring-a-new-feature.md):
 
 - **Policy changes:** None. Catalog entries embed an existing, registered
   `SandboxPolicy`.
@@ -78,14 +77,15 @@ checklist in [`docs/authoring-a-new-feature.md`](authoring-a-new-feature.md):
   fields or change omission behavior in an existing contract.
 - **OS and backend changes:** None. Backends continue to validate whether they
   can enforce the resolved policy.
-- **MXC SDK changes:** None. This proposal does not add catalog lookup, types,
-  or resolver code to the MXC SDKs.
-- **Standalone libraries:** The dedicated catalog repository provides its own
-  library API for TypeScript/JavaScript, Rust, and C#/.NET. See
-  [§6](#6-intended-repository-and-packaging-boundary).
+- **MXC SDK changes:** Additive. The Node (`@microsoft/mxc-sdk`), Rust
+  (`mxc-sdk`), and C# (`Microsoft.Mxc.Sdk`) SDKs gain catalog lookup and
+  inspection APIs that return each SDK's existing `SandboxPolicy` type. Existing
+  APIs and behavior are unchanged. See
+  [§6](#6-packaging-inside-the-mxc-sdks).
+- **No separate deliverable:** There is no separate repository, standalone
+  library, or CLI utility.
 
-The proposed **public preview** designation describes the catalog's support
-status. It does not add an MXC schema feature, activate the
+The policy store does not add an MXC schema feature, activate the
 `--experimental` runtime gate, or change executor behavior.
 
 Defaults and omission behavior are:
@@ -94,11 +94,11 @@ Defaults and omission behavior are:
   must explicitly enable or invoke it.
 - Omitted `ResolveContext.platform` uses the current host platform.
 - Omitted `ResolveContext.architecture` uses the device's native system
-  architecture, not the architecture of the library's process or a detected
+  architecture, not the architecture of the calling process or a detected
   tool build. Explicit caller selection takes precedence. See the selection
   rules and emulation risk in [§4.4](#44-platform-variants).
-- Omitted `ResolveContext.catalogRevision` uses the currently installed
-  catalog revision.
+- Omitted `ResolveContext.catalogRevision` uses the catalog revision bundled
+  with the SDK.
 - Omitted `ResolveContext.allowWeakIdentityFallback` is `false`.
 - Omitted `projectRoot` and `symbols` provide no caller overrides. The resolver
   may use approved host-known symbols, but it does not invent machine-specific
@@ -113,11 +113,10 @@ Defaults and omission behavior are:
 
 ## 2. Ownership boundary
 
-The proposed dedicated catalog project owns an integrity-validated, versioned,
-read-only data set of known-tool sandbox requirements, its resolver libraries,
-and their public APIs. MXC continues to own the existing `SandboxPolicy`
-contract, but not the catalog entries, libraries, repository, or publication
-lifecycle.
+MXC owns an integrity-validated, versioned, read-only data set of known-tool
+sandbox requirements, the resolver that reads it, and the SDK APIs that expose
+it, alongside the existing `SandboxPolicy` contract. The data is reviewed and
+released with the MXC SDKs.
 
 The catalog states a candidate minimum that a tool needs. It does not grant
 access, modify caller state, create a sandbox, or guarantee workflow success.
@@ -293,7 +292,7 @@ Selection first filters by platform, then uses the following precedence:
 | Architecture omitted | Device's native system architecture for the selected platform | Architecture-neutral for that platform |
 
 The native system architecture is the architecture reported by the host OS,
-not the architecture of the process hosting the library. For example, on an
+not the architecture of the process hosting the SDK. For example, on an
 ARM64 device with both x64 and ARM64 catalog variants and no neutral variant,
 omitting architecture selects ARM64. An explicit `architecture: "x64"` selects
 x64 on that same device. The resolver does not require a neutral variant to
@@ -303,7 +302,7 @@ Catalog validation rejects duplicate exact selectors and more than one
 architecture-neutral variant for the same platform. If neither an exact nor
 architecture-neutral variant exists, that entry contributes no match, not an
 empty policy or a variant for a different architecture. A failure to determine
-the native system architecture when it is needed is a library error, not a
+the native system architecture when it is needed is an SDK error, not a
 guessed selection.
 
 **Emulation risk:** A host-derived default does not establish the architecture
@@ -369,19 +368,19 @@ catalog-supported policy fields because no cross-entry merge occurs.
 
 ## 5. API surface
 
-The standalone libraries separate runtime resolution from catalog inspection.
+The MXC SDKs separate runtime resolution from catalog inspection.
 Resolution accepts one tool or an array and composes all applicable matching
 entries and dependencies into one `SandboxPolicy`. Callers choose a policy-only
 operation or a diagnostic operation over the same resolution logic. Neither
-implicitly returns the whole catalog. These are in-process library calls, not
-a hosted service or additions to the MXC SDKs.
+implicitly returns the whole catalog. These are in-process SDK calls, not a
+hosted service, and they never launch a sandbox.
 
 The signatures below use TypeScript to describe the shared contract. Rust and
 C# expose the same operations and metadata with idiomatic names and types.
 TypeScript and C# expose single-tool and array overloads; Rust uses an idiomatic
 one-or-many input type because it does not support function overloading. An
 absent policy is `undefined` in TypeScript/JavaScript, `None` in Rust, and
-`null` in C#. Library failures remain distinct from policy absence.
+`null` in C#. Failures remain distinct from policy absence.
 
 ### 5.1 Runtime lookup
 
@@ -556,92 +555,72 @@ A consumer that uses this API:
    records matched identities, catalog/entry revisions, warnings, and approval
    state in its own audit trail.
 
-The catalog libraries never write a consumer's policy store. A consumer's own
+The policy store APIs never write a consumer's own policy state. A consumer's own
 capability observation (see [§8](#8-relationship-to-learning-mode)) can produce
 candidate evidence for a future contribution to this catalog; it is not a
 mechanism for mutating the catalog at request time.
 
-## 6. Intended repository and packaging boundary
+## 6. Packaging inside the MXC SDKs
 
-The catalog is intended to live in a new public repository outside
-`microsoft/mxc`. Its schema, entries, resolver libraries, contribution history,
-validation, and publication workflow belong there. This specification remains
-in MXC while the proposed contract is reviewed. No catalog repository or
-package is created by this proposal.
+The policy store ships inside MXC as new APIs in the existing MXC SDKs. There
+is no separate repository, standalone library, package, or CLI utility. A
+consumer that already uses an MXC SDK resolves a floor and passes its final,
+authorized policy to that SDK's existing sandbox APIs.
 
-MXC retains the existing `SandboxPolicy` contract. The catalog libraries
-produce policy data conforming to that contract; they do not require an MXC
-executor or execution library to perform lookup. A consumer that uses MXC
-passes its final, authorized policy to an existing MXC SDK separately.
-Catalog and library releases do not require an MXC SDK release or changes to
-MXC repository governance.
+### 6.1 SDK surface and bundled data
 
-### 6.1 Library distribution and consumption
-
-The initial library language coverage matches MXC's current first-party SDK
-languages, but the packages are owned and released by the catalog project:
-
-| Language | Distribution | API form |
+| Language | Package | API |
 |---|---|---|
-| TypeScript / JavaScript | npm package | JavaScript library with TypeScript declarations |
-| Rust | Cargo crate | Public Rust library API |
-| C# / .NET | NuGet package | Managed library API |
+| TypeScript / JavaScript | `@microsoft/mxc-sdk` | `resolveSandboxPolicy`, `resolveSandboxPolicyWithDiagnostics`, `getCatalogInfo`, `listCatalogEntries` |
+| Rust | `mxc-sdk` (`mxc_sdk::policy_store`) | `resolve_sandbox_policy`, `resolve_sandbox_policy_with_diagnostics`, `get_catalog_info`, `list_catalog_entries` |
+| C# / .NET | `Microsoft.Mxc.Sdk` (`MxcPolicyStore`) | `ResolveSandboxPolicy`, `ResolveSandboxPolicyWithDiagnostics`, `GetCatalogInfo`, `ListCatalogEntries` |
 
-Repository and package names remain to be selected. This language match does
-not require copying MXC's native-binding architecture or exposing sandbox
-execution operations.
+Each SDK returns its own existing `SandboxPolicy` type, not a parallel
+catalog-only type.
+
+The V1 policy data is bundled statically in each SDK package. It is not
+downloaded. Lookup is local and does not contact a hosted service or run the
+candidate tool. `ResolveContext.catalogRevision` selects a bundled revision,
+not a network lookup; an explicitly requested revision that is unavailable is
+an error, not a substitution with a different revision. An omitted revision
+uses the SDK's bundled default.
 
 A consumer:
 
-1. Installs and pins the standalone library package for its language. Each
-   package includes a reviewed default catalog revision for local use.
-2. Calls `getCatalogInfo()` or `listCatalogEntries()` for inspection.
+1. Calls `getCatalogInfo()` or `listCatalogEntries()` for inspection.
    `resolveSandboxPolicy()` returns a policy for one tool or an array;
    `resolveSandboxPolicyWithDiagnostics()` adds match attribution and warnings.
-3. Handles policy absence without widening its restrictive baseline. It
+2. Handles policy absence without widening its restrictive baseline. It
    reviews the composed policy and uses the diagnostics operation when it
    needs contributing identities, revisions, and warnings, applying the
    consumer obligations in [§5.3](#53-consumer-obligations).
-4. Supplies its final policy to its chosen execution integration. The catalog
-   library does not launch a sandbox.
+3. Supplies its final policy to the SDK's existing sandbox APIs. The lookup
+   APIs do not launch a sandbox.
 
-Lookup is local and does not download updates, contact a hosted service, or
-run the candidate tool. `ResolveContext.catalogRevision` selects an available
-local revision, not a network lookup; an explicitly requested revision that
-is unavailable is an error, not a substitution with a different revision.
-An omitted revision uses the library's installed default.
+An SDK release reports its bundled `catalogRevision`; the SDK version does not
+identify the catalog revision or embedded `SandboxPolicy.version`. Updating
+the SDK does not rewrite a consumer's previously accepted per-tool policies.
 
-Catalog revisions are also published as immutable, language-neutral data
-artifacts. A library package version identifies the library release, not the
-catalog revision or embedded `SandboxPolicy.version`; it declares the catalog
-schema and policy versions it supports and reports its bundled
-`catalogRevision`. Publishing newer data can update the packages' bundled
-revision without changing resolver behavior. Installing an update does not
-rewrite a consumer's previously accepted per-tool policies.
+### 6.2 Implementation and cross-language consistency
 
-### 6.2 Cross-language consistency and support
+There is one resolver implementation, in Rust (`src/core/mxc_policy_store`),
+which also owns the bundled catalog data, its JSON schemas, and the shared
+conformance fixtures. The Rust SDK re-exports it. The Node and C# SDKs reach it
+through the existing `mxc_ffi` C ABI, the same native library they already
+load, so all three SDKs agree on matching, variant selection, dependency
+metadata, resolved policy, warnings, and failure categories by construction.
+Language-specific absence and error types preserve those distinctions.
 
-All three libraries use the same catalog format and shared conformance
-fixtures. Given the same catalog revision, tool inputs, and explicit resolution
-context, they must agree on matching, variant selection, dependency metadata,
-resolved policy, warnings, and failure categories. Language-specific absence
-and error types must preserve those distinctions.
+Resolution stays outside `mxc_engine`: it never selects a backend or launches
+a sandbox, so it does not belong in the execution engine.
 
-Shared fixtures cover platform path semantics as well as ordinary lookup;
-matching function names alone is not compatibility. Package CI must also
-exercise installation, public API usage, and host-derived defaults on the
-supported platforms. Implementation sharing between languages is a separate
-engineering decision, not a requirement to depend on MXC's engine.
-
-Supporting three languages includes maintaining parity, dependencies,
-documentation, and releases, not only writing the initial implementations.
-The libraries and catalog have the same limited public-preview horizon and
-are intended to retire together when Learning Mode replaces this workflow.
+Shared fixtures cover platform path semantics as well as ordinary lookup, and
+each SDK's own test suite exercises its binding against them.
 
 ## 7. Contribution and review
 
-- Catalog contributions are pull requests against the dedicated catalog
-  repository. No client or SDK can write a catalog entry at runtime.
+- Catalog contributions are pull requests against `microsoft/mxc`. No client
+  or SDK can write a catalog entry at runtime.
 - Every entry change includes identity evidence, supported tool version
   range(s), platform evidence, a minimized requirement set, test fixtures,
   and provenance.
@@ -654,20 +633,21 @@ are intended to retire together when Learning Mode replaces this workflow.
   evidence where available.
 - A requirement reduction requires regression evidence that every supported
   tool version still functions under the narrower requirement.
-- Library API and implementation contributions are reviewed in the dedicated
-  catalog repository. These contribution requirements do not require
-  applications to seek maintainer approval to use the public catalog or
-  libraries.
+- SDK API changes follow MXC's normal API review. These contribution
+  requirements do not require applications to seek maintainer approval to use
+  the bundled catalog.
 
 ## 8. Relationship to Learning Mode
 
-Learning Mode is the intended long-term solution. The known-tool catalog only
-reduces immediate first-run failures while that workflow is completed. It is
-not a parallel long-term policy platform.
+Learning Mode is complementary to the policy store, not a replacement for it.
+The policy store supplies a reviewed, best-effort starting floor for known
+tools before anything has run; Learning Mode observes what a specific workload
+actually touches and helps author policy for it, including for tools the
+catalog does not know.
 
 MXC's learning-mode capabilities (`learningModeLogging`,
 `permissiveLearningMode`, `captureDenials`; see
-[`docs/learning-mode/capabilities.md`](learning-mode/capabilities.md)) are the
+[`docs/learning-mode/capabilities.md`](../learning-mode/capabilities.md)) are the
 substrate a contributor can use to observe what a tool actually touches, the
 same way [#779 §5.1](https://github.com/microsoft/mxc/pull/779) describes for
 config floors. That observation workflow is unchanged by this document and
@@ -676,10 +656,7 @@ consumer runtime behavior and not a catalog-mutation path.
 
 Whether and how a consumer turns its own runtime capability observations into
 a candidate catalog contribution or a locally scoped policy suggestion is
-that consumer's design. No runtime submission hook is proposed here. When
-Learning Mode can provide the required observation and policy-authoring
-experience directly, this catalog should be retired rather than promoted into
-a durable platform.
+that consumer's design. No runtime submission hook is proposed here.
 
 ## 9. Trust model
 
@@ -717,16 +694,14 @@ have cached or recorded in an audit trail.
 
 - No change to `SandboxPolicy` or `ContainerConfig` schema.
 - No change to executor behavior.
-- No change to the MXC SDK APIs or dependencies. Catalog lookup requires an
-  explicit call to a standalone library; existing MXC callers see no behavior
-  change.
-- Catalog schema and API compatibility are limited to the stopgap's support
-  horizon. Retirement in favor of Learning Mode is an expected outcome, not a
-  normal promotion milestone.
+- The MXC SDK changes are additive. Catalog lookup requires an explicit call
+  to a new SDK API; existing MXC callers see no behavior change.
+- The policy store is not part of MXC 1.0. Once it ships, the catalog schema
+  stays compatible within MXC 1.x.
 
 ## 12. Test plan
 
-**Resolver libraries (TypeScript/JavaScript, Rust, and C#/.NET)**
+**Resolver (Rust, exercised directly and through each SDK binding)**
 
 - shared conformance fixtures produce equivalent results and failure
   categories in all three languages
@@ -754,14 +729,14 @@ have cached or recorded in an audit trail.
   selectors are rejected; no matching variant produces `undefined`
 - on an ARM64 host with both architecture-specific variants and no neutral
   variant, omitted architecture selects ARM64; explicit x64 selects x64
-- a library process running as x64 under emulation on an ARM64 host still
+- an SDK process running as x64 under emulation on an ARM64 host still
   defaults to the native ARM64 system architecture, not its process
   architecture
 - a missing exact variant falls back to the platform's neutral variant;
   a different architecture's variant is never used as a fallback
 - successful host-derived selection and neutral fallback produce the
   diagnostics specified in [§5.1](#51-runtime-lookup); host-architecture
-  detection failure produces a library error, not a guessed match
+  detection failure produces an SDK error, not a guessed match
 - dependency chain resolution, including cycles (terminate, no duplication)
 - dependency `versionRange` is returned as unevaluated metadata and never used
   for v1 resolver matching
@@ -781,12 +756,12 @@ have cached or recorded in an audit trail.
 
 **Integration**
 
-- each package installs and performs lookup without an MXC executor or
-  execution library; lookup requires no network access
+- each SDK performs lookup without launching a sandbox or selecting a
+  backend; lookup requires no network access
 - the bundled catalog revision matches `getCatalogInfo()`; selecting an
   unavailable revision fails explicitly, without falling back to another
   revision
-- a package update leaves previously accepted consumer policies unchanged
+- an SDK update leaves previously accepted consumer policies unchanged
 - a representative tool that fails under a minimal consumer policy succeeds
   once its resolved entry is composed in
 - the same tool still fails when the consumer's policy forbids what the entry
@@ -798,23 +773,23 @@ Recommended answers are proposals for review, not decisions.
 
 | Question | Recommended answer |
 |---|---|
-| What is the dedicated repository name and owning team? | Use a public repository outside `microsoft/mxc`; publish a separately versioned artifact so catalog updates are not coupled to SDK releases. |
+| Final API names? | Pending API review. Current names are kept for now; the names may drop "Sandbox" (for example, `resolvePolicy`). |
+| Does lookup need an intent, such as `git pull` versus `git push`? | Open. One floor per tool can over-grant a read-only intent; an optional intent input could select a narrower variant. |
+| How does the catalog schema evolve? | Keep it compatible within MXC 1.x; a breaking change waits for a major version. |
 | Is invocation-name-only identity accepted automatically, or does it require explicit consumer opt-in? | Treat it as a fallback requiring explicit opt-in (`allowWeakIdentityFallback`), not the default. |
 | What happens on a detected tool-version mismatch: `undefined`, or a warning-bearing result the consumer may still use? | Return the resolved result with a warning; refusing outright removes information the consumer needs to decide for itself. |
-| Are private or enterprise catalog overlays in scope, and if so with what precedence? | Defer until the shared catalog contract and its API are stable; define precedence explicitly before any library implementation adds overlay support. |
+| Are private or enterprise catalog overlays in scope, and if so with what precedence? | Defer until the shared catalog contract and its API are stable; define precedence explicitly before the SDKs add overlay support. |
 | Should the first contract version's composition vocabulary expand beyond [§4.5](#45-dependencies-and-composition) before implementation? | No. Start with conflict-rejecting filesystem composition and expand only with an explicit, reviewed rule per field. |
-| Who owns catalog schema, data, and library API review? | Assign catalog, library, and security reviewers in the dedicated repository; no MXC SDK integration is proposed. |
-| Should the libraries share a resolver implementation or implement the contract independently? | Choose based on dependency footprint and maintenance cost, with shared conformance fixtures required either way. |
+| Who owns catalog schema, data, and API review? | MXC, through its normal API review, with named catalog and security reviewers. |
 
 ## 14. Related work
 
 - [`microsoft/mxc#779`](https://github.com/microsoft/mxc/pull/779) - Sandbox
   Config Floors feature spec. This document's data model, floor/policy
   direction argument, and identity-layering analysis build directly on it.
-- [`ChazGo/mxc#1`](https://github.com/ChazGo/mxc/pull/1) - draft SDK resolver
-  and catalog prototype exercising lookup, dependency closure, and symbol
-  resolution against an earlier version of this shape.
-- [`docs/sandbox-policy/0.8.0/policy.md`](sandbox-policy/0.8.0/policy.md) -
+- [`ChazGo/mxc#1`](https://github.com/ChazGo/mxc/pull/1) - the prototype of
+  this design inside the MXC SDKs, pending API review.
+- [`docs/sandbox-policy/0.8.0/policy.md`](../sandbox-policy/0.8.0/policy.md) -
   the `SandboxPolicy` contract every catalog entry embeds.
-- [`docs/versioning.md`](versioning.md) - the versioning model
+- [`docs/versioning.md`](../versioning.md) - the versioning model
   [§4.1](#41-versions) builds on.

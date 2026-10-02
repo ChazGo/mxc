@@ -51,7 +51,7 @@ check that already-published revisions are unchanged.
 
 ## Contributing a revision
 
-Add a new file under `catalog/revisions/`, list it with its canonical SHA-256
-in `catalog/manifest.json`, add a bundled-catalog conformance case under
-`conformance/fixtures/`, and run the tests above. Published revisions are
-immutable.
+Published revisions are immutable. See
+[`docs/policy-store/README.md`](../../../docs/policy-store/README.md#changing-the-catalog)
+for the steps, and [`docs/policy-store/design.md`](../../../docs/policy-store/design.md)
+for the design.
