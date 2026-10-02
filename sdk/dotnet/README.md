@@ -577,13 +577,28 @@ var context = new ResolveContext
 SandboxPolicy? floor = MxcPolicyStore.ResolveSandboxPolicy(
     new ToolInput("npm") { PackageUrl = "pkg:npm/npm" }, context);
 
-// Name-only matches need an explicit opt-in; diagnostics report what matched.
+// One floor for a git fetch and push. DetectedVersion selects a version
+// overlay; Intent narrows the floor to what that intent needs.
+var gitContext = context with
+{
+    Symbols = new Dictionary<string, string>(context.Symbols!) { ["git_prefix"] = "/usr" },
+};
 var resolution = MxcPolicyStore.ResolveSandboxPolicyWithDiagnostics(
-    new ToolInput[] { "git", "npm" },
-    context with { AllowWeakIdentityFallback = true });
+    new[]
+    {
+        new ToolInput("git") { PackageUrl = "pkg:generic/git", DetectedVersion = "2.45.1", Intent = "fetch" },
+        new ToolInput("git") { PackageUrl = "pkg:generic/git", DetectedVersion = "2.45.1", Intent = "push" },
+    },
+    gitContext);
+// resolution.Diagnostics.Tools[i].Status: "matched_default", "matched_version",
+// "version_out_of_range", "version_unparseable", "intent_unsupported", or "tool_unmatched".
 ```
 
-`GetCatalogInfo()` and `ListCatalogEntries()` inspect the bundled catalog.
+Name-only inputs (`"git"`) need `AllowWeakIdentityFallback = true`. Each input
+resolves independently, so a result may cover only some of the requested
+tools. Each `ResolutionWarning` in `Diagnostics.Warnings` has a `Message`;
+structured per-input warnings also carry `Code`, `InputIndex`, and related
+fields, while `Code` is `null` for free-text warnings. `GetCatalogInfo()` and `ListCatalogEntries()` inspect the bundled catalog.
 Failures throw `MxcException`: `Code` carries the `ErrorCode` and `Reason`
 carries the stable store reason (for example `invalid_context`). `Reason` is
 `null` for failures outside the policy store. See [`docs/policy-store/`](../../docs/policy-store/README.md).

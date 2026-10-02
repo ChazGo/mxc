@@ -519,14 +519,18 @@ const context = {
 // A SandboxPolicy, or undefined when nothing resolves.
 const floor = resolveSandboxPolicy({ invocationName: 'npm', packageUrl: 'pkg:npm/npm' }, context);
 
-// Name-only matches need an explicit opt-in; diagnostics report what matched.
+// One floor for a git fetch and push. detectedVersion selects a version overlay;
+// intent narrows the floor to what that intent needs.
+const git = { invocationName: 'git', packageUrl: 'pkg:generic/git', detectedVersion: '2.45.1' };
 const { policy, diagnostics } = resolveSandboxPolicyWithDiagnostics(
-  ['git', 'npm'],
-  { ...context, symbols: { ...context.symbols, git_prefix: '/usr' }, allowWeakIdentityFallback: true },
+  [{ ...git, intent: 'fetch' }, { ...git, intent: 'push' }],
+  { ...context, symbols: { ...context.symbols, git_prefix: '/usr' } },
 );
+// diagnostics.tools[i].status: 'matched_default' | 'matched_version' | 'version_out_of_range'
+//   | 'version_unparseable' | 'intent_unsupported' | 'tool_unmatched'
 ```
 
-`getCatalogInfo()` and `listCatalogEntries()` inspect the bundled catalog without resolving a policy. Failures throw `MxcError` with the stable store reason in `details.reason` (for example `invalid_context`). See [`docs/policy-store/`](../../docs/policy-store/README.md).
+Name-only inputs (`'git'`) need `allowWeakIdentityFallback: true`. Each input resolves independently, so a result may cover only some of the requested tools; non-default outcomes also appear in `diagnostics.warnings` as structured `ToolResolutionWarning` objects alongside free-text warnings. `getCatalogInfo()` and `listCatalogEntries()` inspect the bundled catalog without resolving a policy. Failures throw `MxcError` with the stable store reason in `details.reason` (for example `invalid_context`). See [`docs/policy-store/`](../../docs/policy-store/README.md).
 
 ---
 

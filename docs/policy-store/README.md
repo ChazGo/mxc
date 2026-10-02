@@ -12,7 +12,9 @@ own policy and ceilings, and passes the result to the SDK's existing sandbox
 APIs. It is complementary to Learning Mode, not a replacement.
 
 - [design.md](design.md) — the design proposal, updated for the design review
-  outcome.
+  outcome and the entry model below.
+- [`catalog/views/`](../../src/core/mxc_policy_store/catalog/views/) — a
+  generated reviewer view of every effective policy in each revision.
 
 ## Where it lives
 
@@ -32,35 +34,68 @@ into `mxc_sdk::SandboxPolicy`. The Node and C# SDKs send a JSON request
 `SandboxPolicy` types. Resolution stays outside `mxc_engine`: it never selects
 a backend or launches a sandbox.
 
+## Entry model
+
+Each catalog entry has one unversioned **default** (a `sandboxPolicy`, its
+dependencies, and named **intents** such as `fetch` and `push`) and additive
+**overlays**: `platformVariants` for a platform or architecture, and
+`versionVariants` keyed by a purl `vers` range in the entry's required
+`versionScheme` (`npm`, `semver`, `pypi`, `nuget`, or `intdot`). Overlays
+can add paths, outbound allow rules, dependencies, and intents; they can never
+remove or narrow anything. The **effective policy** is the default plus the
+platform overlay plus at most one version overlay, and an intent then selects
+from it. See [design §4](design.md#4-data-model).
+
 ## Resolution pipeline
 
-One call resolves one input or an array of inputs in a single pass:
+One call resolves one input or an array of inputs in a single pass. Each
+input is a tool candidate (`invocationName`, optional `packageUrl`,
+`detectedVersion`, and `intent`), or a bare name.
 
 1. **Validate inputs and context.** Invalid input fails as
    `malformed_request` (`invalid_context`), never as absence.
 2. **Load the revision** — the requested `catalogRevision`, or the bundled
    default. A missing revision is `backend_error` (`revision_unavailable`);
    unreadable bundled data is `backend_error` (`integrity`).
-3. **Match each input additively** in `entryId` order. A `purl` match is
-   strong; an `invocation-name` match is weak and needs
-   `allowWeakIdentityFallback`. Names and paths fold case on Windows and macOS
-   and are exact on Linux.
-4. **Select a variant.** The exact architecture wins over the
-   architecture-neutral variant; another architecture is never a fallback. An
-   omitted architecture uses the device's native system architecture, not
-   the process architecture.
-5. **Close over dependencies**, depth-first, rejecting cycles.
-6. **Apply the composition limits**: one `sandboxPolicy.version`, and only
-   filesystem lists when more than one entry is selected.
+3. **Match each input to at most one entry.** A `purl` match is strong; an
+   `invocation-name` match is weak and needs `allowWeakIdentityFallback`.
+   Names compare case-insensitively on Windows and macOS and exactly on Linux.
+   A version embedded in `packageUrl` is ignored with a warning. Candidates
+   are ranked by strength, then intent support, then architecture
+   specificity; a tie fails as `policy_validation` (`ambiguous_match`).
+4. **Build the effective policy.** The exact architecture overlay wins over
+   the neutral one; another architecture is never a fallback. An omitted
+   architecture uses the device's native system architecture, with a warning.
+   `detectedVersion` selects at most one version overlay.
+5. **Select the intent** and record a per-input status:
+
+   | Situation | Status | Contributes |
+   |---|---|---|
+   | No version | `matched_default` | default (+ platform) |
+   | Version in a range | `matched_version` | default + that overlay |
+   | Valid version in no range | `version_out_of_range` | default (+ platform) |
+   | Unparseable version | `version_unparseable` | nothing |
+   | Intent not defined | `intent_unsupported` | nothing |
+   | No eligible entry | `tool_unmatched` | nothing |
+
+   No intent selects the base policy plus every intent. Non-default outcomes
+   also appear as structured warnings. Other inputs still resolve.
+6. **Close over dependencies**, depth-first, rejecting cycles. Dependencies
+   contribute their default, platform overlay, and all intents.
 7. **Resolve symbols.** `project_root` comes only from `projectRoot`. A
    missing required symbol yields no policy plus a warning naming it; the
    resolver never returns a partial policy.
-8. **Compose.** Paths are substituted, normalized, and de-duplicated per
-   access class. Overlapping paths in different classes fail as
-   `policy_validation` (`composition_conflict`).
+8. **Compose** to satisfy every contributing pair, and never more. Paths are
+   substituted, normalized, and de-duplicated; read-write supersedes
+   read-only; a catalog deny that overlaps a grant is removed; outbound allow
+   rules are unioned, so a tool without network needs never vetoes another's.
+   Each adjustment produces a warning. Mixed policy versions and anything the
+   model cannot express fail as `policy_validation`
+   (`composition_conflict`).
 
 Verifying that the executable really carries the strong identity passed in
-`packageUrl` is the caller's job.
+`packageUrl`, and that `detectedVersion` is accurate, is the caller's job.
+The caller's own restrictions always win over the floor.
 
 ## Failures
 
@@ -71,9 +106,10 @@ on the Node `MxcError`, `MxcException.Reason` in C#, and
 | Code | Reason | Meaning |
 |---|---|---|
 | `policy_validation` | `invalid_catalog` | Catalog data violates the contract, or a resolved field does not fit the SDK `SandboxPolicy`. |
-| `policy_validation` | `composition_conflict` | The selected entries cannot be composed under the V1 rules. |
+| `policy_validation` | `composition_conflict` | The contributing pairs cannot be composed without granting broader access. |
+| `policy_validation` | `ambiguous_match` | An input matches more than one entry at the same rank. |
 | `malformed_request` | `invalid_context` | The caller's inputs or context are invalid. |
-| `unsupported_containment` | `unsupported_host` | The host platform or native architecture cannot be determined. |
+| `unsupported_containment` | `unsupported_host` | The host platform, or a needed native architecture, cannot be determined. |
 | `backend_error` | `integrity` | Bundled catalog data cannot be read or declares the wrong revision. |
 | `backend_error` | `revision_unavailable` | An explicitly requested revision is not bundled. |
 
@@ -87,13 +123,20 @@ Published revisions are immutable. Never edit a file under
 
 1. Copy the latest revision to `catalog/revisions/<YYYY-MM-DD.N>.json` and set
    its `catalogRevision`.
-2. Make the change. Bump `entryRevision` for every entry that changes.
+2. Make the change. Bump `entryRevision` for every entry that changes. Every
+   entry needs a `versionScheme` and one `default`; overlays are additive
+   only, and version ranges in one entry must not overlap.
 3. Append `{ catalogRevision, file }` to the manifest and point
    `defaultRevision` at it. There is no separate catalog digest: the data is
    compiled into the native library and inherits MXC package signing.
 4. Add or update a case in `conformance/fixtures/bundled-catalog.json`. Every
-   entry in the default revision needs one.
-5. Run the checks (from `src/`):
+   entry in the default revision needs one. To record actual outcomes
+   for review, run the conformance test with
+   `MXC_POLICY_STORE_UPDATE_FIXTURES=<output-dir>`, then merge them into the
+   fixtures by hand.
+5. Regenerate the reviewer view with `MXC_POLICY_STORE_UPDATE_VIEWS=1`
+   (`cargo test -p mxc_policy_store --test catalog_validation`) and review it.
+6. Run the checks (from `src/`):
 
    ```text
    cargo test -p mxc_policy_store

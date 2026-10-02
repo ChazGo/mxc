@@ -738,17 +738,26 @@ let floor = resolve_sandbox_policy(
     &ctx,
 )?;
 
-// Name-only matches need an explicit opt-in; diagnostics report what matched.
+// One floor for a git fetch and push. The detected version selects a version
+// overlay; the intent narrows the floor to what that intent needs.
+let git = ToolCandidate::new("git")
+    .with_package_url("pkg:generic/git")
+    .with_detected_version("2.45.1");
 let resolution = resolve_sandbox_policy_with_diagnostics(
-    vec![ToolInput::from("git"), ToolInput::from("npm")],
-    &ctx.clone()
-        .symbol("git_prefix", "/usr")
-        .allow_weak(true),
+    vec![
+        ToolInput::from(git.clone().with_intent("fetch")),
+        ToolInput::from(git.with_intent("push")),
+    ],
+    &ctx.clone().symbol("git_prefix", "/usr"),
 )?;
+// Each resolution.diagnostics.tools[i].status is a ToolResolutionStatus.
 # let _ = (floor, resolution);
 # Ok::<(), mxc_sdk::policy_store::PolicyCatalogError>(())
 ```
 
+Name-only inputs need `.allow_weak(true)`. Each input resolves independently,
+so a result may cover only some of the requested tools; non-default outcomes
+also appear as `Warning::Tool` entries in `diagnostics.warnings`.
 `get_catalog_info` and `list_catalog_entries` inspect the bundled catalog.
 Errors carry an MXC `ErrorCode` and a stable `reason()`. See
 [`docs/policy-store/`](../../../docs/policy-store/README.md).
