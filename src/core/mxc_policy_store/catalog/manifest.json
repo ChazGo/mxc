@@ -4,8 +4,7 @@
   "revisions": [
     {
       "catalogRevision": "2026-09-29.1",
-      "file": "revisions/2026-09-29.1.json",
-      "sha256": "00f0c644d5fc67783520a12b0d4eca565457d99a713efb61d97daa558c1a7a10"
+      "file": "revisions/2026-09-29.1.json"
     }
   ]
 }

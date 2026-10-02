@@ -7,13 +7,12 @@
 //! every number is an IEEE double, object keys follow ECMAScript property
 //! order (array-index keys ascending first, then insertion order; a repeated
 //! key keeps its first position and takes the last value), and there is no
-//! nesting limit. [`Json::parse`] reproduces those rules exactly so digests,
-//! validation messages, and output match byte for byte.
+//! nesting limit. [`Json::parse`] reproduces those rules exactly so validation
+//! messages and output match byte for byte.
 //!
 //! Known difference: a lone UTF-16 surrogate escape (`"\ud800"`) cannot be
 //! represented in a Rust `String` and is rejected as a parse error.
 
-use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -684,21 +683,6 @@ fn write_canonical(value: &Json, out: &mut String) {
         }
         scalar => write_value(scalar, out, None, 0),
     }
-}
-
-/// Lower-case hex SHA-256 of `text` (UTF-8).
-pub fn sha256_hex(text: &str) -> String {
-    let digest = Sha256::digest(text.as_bytes());
-    let mut out = String::with_capacity(64);
-    for byte in digest.iter() {
-        out.push_str(&format!("{byte:02x}"));
-    }
-    out
-}
-
-/// Lower-case hex SHA-256 of the canonical JSON form.
-pub fn canonical_sha256(value: &Json) -> String {
-    sha256_hex(&canonical_json(value))
 }
 
 /// ECMAScript `String(value)` for a JSON value (used where TypeScript

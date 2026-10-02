@@ -8,9 +8,8 @@ mod common;
 
 use common::*;
 use mxc_policy_store::tooling::{
-    canonical_json, canonical_sha256, check_entry_revisions, check_published_immutability,
-    check_store_history, validate_catalog_revision, validate_contract, Json, PublishedRevision,
-    PublishedState,
+    canonical_json, check_entry_revisions, check_published_immutability, check_store_history,
+    validate_catalog_revision, validate_contract, Json, PublishedRevision, PublishedState,
 };
 use mxc_policy_store::{
     get_catalog_info, list_catalog_entries, resolve_sandbox_policy,
@@ -988,7 +987,7 @@ fn validation_composition_vocabulary() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn bundled_store_verifies_and_canonical_digest_ignores_formatting() {
+fn bundled_store_verifies_and_canonical_json_ignores_formatting() {
     let store = mxc_policy_store::bundled_catalog_store().unwrap();
     assert!(check_store_history(&store).is_empty());
     assert_eq!(
@@ -1000,20 +999,22 @@ fn bundled_store_verifies_and_canonical_digest_ignores_formatting() {
         r#"{"a":[2,{"c":4,"d":3}],"b":1}"#
     );
     assert_eq!(
-        canonical_sha256(&j(r#"{"a":1,"b":2}"#)),
-        canonical_sha256(&j(r#"{"b":2,"a":1}"#))
-    );
-    assert_ne!(
-        canonical_sha256(&j(r#"{"a":1}"#)),
-        canonical_sha256(&j(r#"{"a":2}"#))
+        canonical_json(&j(r#"{"a":1,"b":2}"#)),
+        canonical_json(&j(r#"{"b":2,"a":1}"#))
     );
 }
 
 #[test]
-fn tampered_revision_is_an_integrity_error_everywhere() {
-    let digests = HashMap::from([("2000-01-01.1".to_string(), "0".repeat(64))]);
-    let store =
-        Arc::new(store_with(&[revision(vec![entry("tool:a", "")])], None, &digests).unwrap());
+fn unreadable_revision_is_an_integrity_error_everywhere() {
+    let source = mxc_policy_store::MemorySource {
+        files: HashMap::new(),
+        ..mxc_policy_store::MemorySource::publishing(
+            contract(),
+            &[revision(vec![entry("tool:a", "")])],
+            None,
+        )
+    };
+    let store = Arc::new(mxc_policy_store::CatalogStore::new(source).unwrap());
     assert_eq!(reason_of(store.revision(None)), ErrorReason::Integrity);
     let catalog = PolicyCatalog::with_host(store, linux_x64());
     assert_eq!(
@@ -1041,20 +1042,10 @@ fn revision_id_mismatch_and_invalid_manifest() {
     if let Json::Object(o) = &mut relabeled {
         o.insert("catalogRevision", "2000-01-01.1".into());
     }
-    let digests = HashMap::from([("2000-01-01.1".to_string(), canonical_sha256(&other))]);
-    assert_eq!(
-        reason_of(
-            store_with(&[relabeled.clone()], None, &digests)
-                .unwrap()
-                .revision(None)
-        ),
-        ErrorReason::Integrity
-    );
-    // Correct digest but wrong declared id → integrity (revision-id check).
-    let digests = HashMap::from([("2000-01-01.1".to_string(), canonical_sha256(&other))]);
+    // A file that declares another revision id → integrity.
     let source = mxc_policy_store::MemorySource {
         files: HashMap::from([("revisions/2000-01-01.1.json".to_string(), other.clone())]),
-        ..mxc_policy_store::MemorySource::publishing(contract(), &[relabeled], None, &digests)
+        ..mxc_policy_store::MemorySource::publishing(contract(), &[relabeled], None)
     };
     let error = mxc_policy_store::CatalogStore::new(source)
         .unwrap()
@@ -1066,11 +1057,7 @@ fn revision_id_mismatch_and_invalid_manifest() {
     );
     let r = revision(vec![entry("tool:a", "")]);
     assert_eq!(
-        reason_of(store_with(
-            std::slice::from_ref(&r),
-            Some("2001-01-01.1"),
-            &HashMap::new()
-        )),
+        reason_of(store_with(std::slice::from_ref(&r), Some("2001-01-01.1"))),
         ErrorReason::InvalidCatalog
     );
     assert_eq!(
@@ -1163,11 +1150,7 @@ fn entry_revision_history() {
 
 #[test]
 fn published_immutability() {
-    let published = PublishedRevision::new(
-        "2000-01-01.1",
-        "revisions/2000-01-01.1.json",
-        &"a".repeat(64),
-    );
+    let published = PublishedRevision::new("2000-01-01.1", "revisions/2000-01-01.1.json");
     let files = HashMap::from([(
         "revisions/2000-01-01.1.json".to_string(),
         "{\"x\":1}\n".to_string(),
@@ -1179,11 +1162,7 @@ fn published_immutability() {
     let appended = PublishedState {
         revisions: vec![
             published.clone(),
-            PublishedRevision::new(
-                "2000-01-02.1",
-                "revisions/2000-01-02.1.json",
-                &"b".repeat(64),
-            ),
+            PublishedRevision::new("2000-01-02.1", "revisions/2000-01-02.1.json"),
         ],
         files: HashMap::from([(
             "revisions/2000-01-01.1.json".to_string(),
@@ -1202,16 +1181,15 @@ fn published_immutability() {
         check_published_immutability(&base, &edited),
         ["published revision file 'revisions/2000-01-01.1.json' was modified; publish a new revision instead"]
     );
-    let redigested = PublishedState {
+    let moved = PublishedState {
         revisions: vec![PublishedRevision::new(
             "2000-01-01.1",
-            "revisions/2000-01-01.1.json",
-            &"c".repeat(64),
+            "revisions/moved.json",
         )],
         files,
     };
     assert_eq!(
-        check_published_immutability(&base, &redigested),
+        check_published_immutability(&base, &moved),
         ["published revision '2000-01-01.1' manifest entry was modified"]
     );
     let removed = PublishedState::default();

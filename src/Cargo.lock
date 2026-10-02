@@ -1719,7 +1719,6 @@ name = "mxc_policy_store"
 version = "0.9.0"
 dependencies = [
  "libc",
- "sha2 0.10.9",
 ]
 
 [[package]]

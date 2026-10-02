@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/policy-catalog/manifest.v1.schema.json",
   "title": "Published catalog revision manifest (catalogSchemaVersion 1)",
-  "description": "Append-only list of published, immutable catalog revisions and their integrity digests. sha256 is computed over the canonical JSON form of the revision file (recursively sorted keys, no insignificant whitespace, UTF-8).",
+  "description": "Append-only list of published, immutable catalog revisions. V1 has no separate catalog digest; the data is compiled into the MXC native library and inherits MXC package signing.",
   "type": "object",
   "additionalProperties": false,
   "required": ["catalogSchemaVersion", "defaultRevision", "revisions"],
@@ -15,11 +15,10 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["catalogRevision", "file", "sha256"],
+        "required": ["catalogRevision", "file"],
         "properties": {
           "catalogRevision": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}\\.[1-9][0-9]*$" },
-          "file": { "type": "string", "pattern": "^revisions/[0-9]{4}-[0-9]{2}-[0-9]{2}\\.[1-9][0-9]*\\.json$" },
-          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          "file": { "type": "string", "pattern": "^revisions/[0-9]{4}-[0-9]{2}-[0-9]{2}\\.[1-9][0-9]*\\.json$" }
         }
       }
     }

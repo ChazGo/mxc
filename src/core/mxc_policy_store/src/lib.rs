@@ -68,9 +68,7 @@ pub mod tooling {
         PublishedRevision, PublishedState,
     };
     pub use crate::host::architecture_from_machine;
-    pub use crate::json::{
-        canonical_json, canonical_sha256, js_number_to_string, Json, JsonObject,
-    };
+    pub use crate::json::{canonical_json, js_number_to_string, Json, JsonObject};
     pub use crate::paths::{
         case_key, folds_case, is_absolute_path, normalize_path, path_key_segments,
     };

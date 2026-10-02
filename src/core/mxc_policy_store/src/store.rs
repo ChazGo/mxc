@@ -1,15 +1,17 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Manifest validation and lazy, digest-checked, validated revision loading
-//! plus the catalog bundled into this crate.
+//! Manifest validation and lazy, validated revision loading plus the catalog
+//! bundled into this crate. V1 has no separate catalog digest: the data is
+//! compiled into the native library and inherits MXC package signing
+//! (design §10).
 
 use crate::catalog::{
     compare_catalog_revisions, is_catalog_revision_id, validate_catalog_revision,
     validate_contract, CatalogContract, CatalogRevision, CATALOG_SCHEMA_VERSION,
 };
 use crate::errors::{invalid_catalog, ErrorReason, PolicyCatalogError, Result};
-use crate::json::{canonical_sha256, Json, JsonObject};
+use crate::json::{Json, JsonObject};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -20,7 +22,6 @@ use std::sync::{Arc, Mutex, OnceLock};
 pub struct ManifestRevision {
     pub catalog_revision: String,
     pub file: String,
-    pub sha256: String,
 }
 
 /// A validated manifest.
@@ -50,15 +51,9 @@ pub struct MemorySource {
 }
 
 impl MemorySource {
-    /// A source whose manifest publishes `revisions` with correct canonical
-    /// digests; the default is the last revision unless `default_revision`
-    /// is given. `digest_overrides` replaces digests by revision id.
-    pub fn publishing(
-        contract: Json,
-        revisions: &[Json],
-        default_revision: Option<&str>,
-        digest_overrides: &HashMap<String, String>,
-    ) -> Self {
+    /// A source whose manifest publishes `revisions`; the default is the last
+    /// revision unless `default_revision` is given.
+    pub fn publishing(contract: Json, revisions: &[Json], default_revision: Option<&str>) -> Self {
         let mut files = HashMap::new();
         let mut listed = Vec::new();
         for revision in revisions {
@@ -72,11 +67,6 @@ impl MemorySource {
             let mut entry = JsonObject::new();
             entry.insert("catalogRevision", Json::String(id.clone()));
             entry.insert("file", Json::String(file));
-            let digest = digest_overrides
-                .get(&id)
-                .cloned()
-                .unwrap_or_else(|| canonical_sha256(revision));
-            entry.insert("sha256", Json::String(digest));
             listed.push(Json::Object(entry));
         }
         let default = default_revision.map(str::to_string).unwrap_or_else(|| {
@@ -205,7 +195,7 @@ pub fn validate_manifest(raw: &Json) -> Result<CatalogManifest> {
             return invalid(format!("'{at}' must be an object"));
         };
         for key in item.keys() {
-            if !["catalogRevision", "file", "sha256"].contains(&key) {
+            if !["catalogRevision", "file"].contains(&key) {
                 return invalid(format!("unsupported field '{at}.{key}'"));
             }
         }
@@ -217,24 +207,9 @@ pub fn validate_manifest(raw: &Json) -> Result<CatalogManifest> {
         if item.get("file").and_then(Json::as_str) != Some(expected_file.as_str()) {
             return invalid(format!("'{at}.file' must be '{expected_file}'"));
         }
-        let sha256 = match item.get("sha256").and_then(Json::as_str) {
-            Some(d)
-                if d.len() == 64
-                    && d.bytes()
-                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) =>
-            {
-                d.to_string()
-            }
-            _ => {
-                return invalid(format!(
-                    "'{at}.sha256' must be a lower-case hex SHA-256 digest"
-                ))
-            }
-        };
         revisions.push(ManifestRevision {
             catalog_revision,
             file: expected_file,
-            sha256,
         });
     }
     for index in 1..revisions.len() {
@@ -260,9 +235,9 @@ pub fn validate_manifest(raw: &Json) -> Result<CatalogManifest> {
     })
 }
 
-/// Read-only access to installed, integrity-validated catalog revisions.
-/// Revisions load lazily on first use, are verified against the manifest
-/// digest and the contract, and are cached (successes only).
+/// Read-only access to installed catalog revisions. Revisions load lazily on
+/// first use, are validated against the contract, and are cached (successes
+/// only).
 pub struct CatalogStore {
     contract: CatalogContract,
     manifest: CatalogManifest,
@@ -335,17 +310,6 @@ impl CatalogStore {
                 format!("catalog revision '{id}' could not be read: {message}"),
             )
         })?;
-        let digest = canonical_sha256(&raw);
-        // BREAK-VERIFY(tamper): the published-digest comparison.
-        if digest != listed.sha256 {
-            return Err(PolicyCatalogError::new(
-                ErrorReason::Integrity,
-                format!(
-                    "catalog revision '{id}' digest {digest} does not match the published digest {}",
-                    listed.sha256
-                ),
-            ));
-        }
         let revision = validate_catalog_revision(&raw, &self.contract)?;
         if revision.catalog_revision != id {
             return Err(PolicyCatalogError::new(

@@ -39,8 +39,8 @@ One call resolves one input or an array of inputs in a single pass:
 1. **Validate inputs and context.** Invalid input fails as
    `malformed_request` (`invalid_context`), never as absence.
 2. **Load the revision** — the requested `catalogRevision`, or the bundled
-   default. A missing revision is `backend_error` (`revision_unavailable`); a
-   digest mismatch is `backend_error` (`integrity`).
+   default. A missing revision is `backend_error` (`revision_unavailable`);
+   unreadable bundled data is `backend_error` (`integrity`).
 3. **Match each input additively** in `entryId` order. A `purl` match is
    strong; an `invocation-name` match is weak and needs
    `allowWeakIdentityFallback`. Names and paths fold case on Windows and macOS
@@ -74,7 +74,7 @@ on the Node `MxcError`, `MxcException.Reason` in C#, and
 | `policy_validation` | `composition_conflict` | The selected entries cannot be composed under the V1 rules. |
 | `malformed_request` | `invalid_context` | The caller's inputs or context are invalid. |
 | `unsupported_containment` | `unsupported_host` | The host platform or native architecture cannot be determined. |
-| `backend_error` | `integrity` | Catalog data does not match its published digest. |
+| `backend_error` | `integrity` | Bundled catalog data cannot be read or declares the wrong revision. |
 | `backend_error` | `revision_unavailable` | An explicitly requested revision is not bundled. |
 
 Absence is not a failure: the resolve call returns no policy.
@@ -88,9 +88,9 @@ Published revisions are immutable. Never edit a file under
 1. Copy the latest revision to `catalog/revisions/<YYYY-MM-DD.N>.json` and set
    its `catalogRevision`.
 2. Make the change. Bump `entryRevision` for every entry that changes.
-3. Append `{ catalogRevision, file, sha256 }` to the manifest and point
-   `defaultRevision` at it. To get the digest, enter 64 zeros, run the tests
-   below, and copy the actual digest from the integrity failure.
+3. Append `{ catalogRevision, file }` to the manifest and point
+   `defaultRevision` at it. There is no separate catalog digest: the data is
+   compiled into the native library and inherits MXC package signing.
 4. Add or update a case in `conformance/fixtures/bundled-catalog.json`. Every
    entry in the default revision needs one.
 5. Run the checks (from `src/`):

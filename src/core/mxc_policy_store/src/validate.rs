@@ -249,7 +249,7 @@ pub fn check_against_base_ref(
         .map(|r| {
             let text = read_text(&Path::new(&dir).join(&r.file)).unwrap_or_default();
             files.insert(r.file.clone(), text);
-            PublishedRevision::new(&r.catalog_revision, &r.file, &r.sha256)
+            PublishedRevision::new(&r.catalog_revision, &r.file)
         })
         .collect();
     let proposed = PublishedState { revisions, files };

@@ -11,7 +11,6 @@ use mxc_policy_store::{
     Architecture, CatalogStore, ErrorReason, FixedHost, MemorySource, Platform, PolicyCatalog,
     PolicyCatalogError, ResolveContext, ToolInputs,
 };
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -45,19 +44,17 @@ pub fn linux_x64() -> Arc<FixedHost> {
 }
 
 pub fn store_for(revisions: &[Json]) -> Result<CatalogStore, PolicyCatalogError> {
-    store_with(revisions, None, &HashMap::new())
+    store_with(revisions, None)
 }
 
 pub fn store_with(
     revisions: &[Json],
     default_revision: Option<&str>,
-    digests: &HashMap<String, String>,
 ) -> Result<CatalogStore, PolicyCatalogError> {
     CatalogStore::new(MemorySource::publishing(
         contract(),
         revisions,
         default_revision,
-        digests,
     ))
 }
 

@@ -82,15 +82,13 @@ pub fn check_store_history(store: &CatalogStore) -> Vec<String> {
 pub struct PublishedRevision {
     pub catalog_revision: Option<Json>,
     pub file: Option<Json>,
-    pub sha256: Option<Json>,
 }
 
 impl PublishedRevision {
-    pub fn new(catalog_revision: &str, file: &str, sha256: &str) -> Self {
+    pub fn new(catalog_revision: &str, file: &str) -> Self {
         Self {
             catalog_revision: Some(Json::from(catalog_revision)),
             file: Some(Json::from(file)),
-            sha256: Some(Json::from(sha256)),
         }
     }
 
@@ -98,7 +96,6 @@ impl PublishedRevision {
         Self {
             catalog_revision: value.get("catalogRevision").cloned(),
             file: value.get("file").cloned(),
-            sha256: value.get("sha256").cloned(),
         }
     }
 
@@ -153,7 +150,7 @@ fn canonical_text(text: Option<&String>) -> Option<String> {
     })
 }
 
-/// Published revisions keep their manifest entry, digest, and content; new
+/// Published revisions keep their manifest entry and content; new
 /// revisions are only appended (design §10).
 pub fn check_published_immutability(
     base: &PublishedState,
@@ -169,7 +166,7 @@ pub fn check_published_immutability(
             ));
             continue;
         };
-        if now.file != published.file || now.sha256 != published.sha256 {
+        if now.file != published.file {
             errors.push(format!(
                 "published revision '{name}' manifest entry was modified"
             ));

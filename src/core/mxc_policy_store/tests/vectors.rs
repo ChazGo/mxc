@@ -8,8 +8,8 @@ mod common;
 
 use common::*;
 use mxc_policy_store::tooling::{
-    canonical_json, canonical_sha256, is_absolute_path, normalize_path, parse_purl,
-    path_key_segments, Json, ParsedPurl,
+    canonical_json, is_absolute_path, normalize_path, parse_purl, path_key_segments, Json,
+    ParsedPurl,
 };
 use mxc_policy_store::Platform;
 
@@ -29,11 +29,6 @@ fn canonical_json_vectors() {
         assert_eq!(
             canonical_json(&value),
             case.get("canonical").and_then(Json::as_str).unwrap(),
-            "{text}"
-        );
-        assert_eq!(
-            canonical_sha256(&value),
-            case.get("sha256").and_then(Json::as_str).unwrap(),
             "{text}"
         );
     }
