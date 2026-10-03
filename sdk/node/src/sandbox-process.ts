@@ -85,9 +85,9 @@ export class MxcSandboxProcess {
    */
   readonly id: number;
 
-  private readonly input: Writable | null;
-  private readonly output: Readable | null;
-  private readonly errorOutput: Readable | null;
+  private readonly inputStream: Writable | null;
+  private readonly outputStream: Readable | null;
+  private readonly errorOutputStream: Readable | null;
   private inputTaken = false;
   private outputTaken = false;
   private errorTaken = false;
@@ -111,9 +111,9 @@ export class MxcSandboxProcess {
       defaultBackgroundErrorReporter,
   ) {
     this.id = driver.id;
-    this.input = driver.standardInput;
-    this.output = driver.standardOutput;
-    this.errorOutput = driver.standardError;
+    this.inputStream = driver.standardInput;
+    this.outputStream = driver.standardOutput;
+    this.errorOutputStream = driver.standardError;
     this.warningsValue = driver.warnings();
     this.deadline = timeoutMs !== undefined && timeoutMs > 0
       ? this.scheduler.now() + timeoutMs
@@ -123,13 +123,19 @@ export class MxcSandboxProcess {
       this.rejectWait = reject;
     });
     void this.waitPromise.catch(() => {});
-    this.input?.on('error', (error) => {
+    this.inputStream?.on('error', (error) => {
       if (!isExpectedStdinClosure(error)) {
         this.handleStreamError(asError(error));
       }
     });
-    this.output?.on('error', (error) => this.handleStreamError(asError(error)));
-    this.errorOutput?.on('error', (error) => this.handleStreamError(asError(error)));
+    this.outputStream?.on(
+      'error',
+      (error) => this.handleStreamError(asError(error)),
+    );
+    this.errorOutputStream?.on(
+      'error',
+      (error) => this.handleStreamError(asError(error)),
+    );
     this.poll();
   }
 
@@ -140,7 +146,7 @@ export class MxcSandboxProcess {
   get standardInput(): Writable | null {
     this.throwIfDisposed();
     this.inputTaken = true;
-    return this.input;
+    return this.inputStream;
   }
 
   /**
@@ -156,7 +162,7 @@ export class MxcSandboxProcess {
       );
     }
     this.outputTaken = true;
-    return this.output;
+    return this.outputStream;
   }
 
   /**
@@ -172,7 +178,7 @@ export class MxcSandboxProcess {
       );
     }
     this.errorTaken = true;
-    return this.errorOutput;
+    return this.errorOutputStream;
   }
 
   /** Warnings collected during spawn and refreshed after terminal settling. */
@@ -192,8 +198,12 @@ export class MxcSandboxProcess {
    */
   waitAsync(): Promise<SandboxWaitResult> {
     this.throwIfDisposed();
-    if (!this.inputTaken && this.input !== null && !this.input.destroyed) {
-      this.input.end();
+    if (
+      !this.inputTaken &&
+      this.inputStream !== null &&
+      !this.inputStream.destroyed
+    ) {
+      this.inputStream.end();
     }
     if (!this.outputTaken) this.drainOutput();
     if (!this.errorTaken) this.drainError();
@@ -205,6 +215,14 @@ export class MxcSandboxProcess {
     if (this.phase !== 'active' || this.killRequested) return;
     this.driver.kill();
     this.killRequested = true;
+  }
+
+  protected runWhileActive(operation: () => void): void {
+    this.throwIfDisposed();
+    if (this.phase !== 'active') {
+      throw new Error('sandbox process is no longer active');
+    }
+    operation();
   }
 
   dispose(): void {
@@ -221,9 +239,9 @@ export class MxcSandboxProcess {
       }
     }
     this.stopPolling();
-    destroyNativeStream(this.input);
-    destroyNativeStream(this.output);
-    destroyNativeStream(this.errorOutput);
+    destroyNativeStream(this.inputStream);
+    destroyNativeStream(this.outputStream);
+    destroyNativeStream(this.errorOutputStream);
     if (previousPhase === 'active') {
       void this.cleanupDisposedProcess(firstError === undefined);
     }
@@ -376,12 +394,12 @@ export class MxcSandboxProcess {
 
   private drainOutput(): void {
     this.outputDrained = true;
-    this.output?.resume();
+    this.outputStream?.resume();
   }
 
   private drainError(): void {
     this.errorDrained = true;
-    this.errorOutput?.resume();
+    this.errorOutputStream?.resume();
   }
 
   private throwIfDisposed(): void {

@@ -328,7 +328,66 @@ public static class MxcSandbox
                         NativeMethods.mxc_error_detail_free(&error);
                     }
                 }
+
                 return new MxcSandboxProcess(
+                    MxcSandboxHandle.FromRaw(handle),
+                    request.Policy.TimeoutMs);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Spawn <paramref name="command"/> attached to an MXC-owned
+    /// pseudo-terminal.
+    /// </summary>
+    public static MxcPtyProcess SpawnWithPty(
+        SandboxPolicy policy,
+        string command,
+        MxcPtySize? size = null)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        ArgumentNullException.ThrowIfNull(command);
+        return SpawnWithPty(CreatePtyCompatibilityRequest(policy, command), size);
+    }
+
+    /// <summary>Spawn a complete request attached to an MXC-owned PTY.</summary>
+    public static MxcPtyProcess SpawnWithPty(
+        SandboxRequest request,
+        MxcPtySize? size = null)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var terminalSize = size ?? MxcPtySize.Default;
+        terminalSize.Validate(nameof(size));
+
+        var requestBuf = ToNullTerminatedUtf8(SerializeRequest(request));
+        unsafe
+        {
+            fixed (byte* requestPtr = requestBuf)
+            {
+                NativeSandbox* handle = null;
+                MxcErrorDetail error = default;
+                var status = NativeMethods.mxc_spawn_pty_json(
+                    requestPtr,
+                    NoExperimentalOptIn,
+                    terminalSize.Rows,
+                    terminalSize.Columns,
+                    &handle,
+                    &error);
+                if (status != (int)ErrorCode.Success)
+                {
+                    try
+                    {
+                        throw NativeError.ToException(
+                            status,
+                            error,
+                            "spawning sandbox PTY failed");
+                    }
+                    finally
+                    {
+                        NativeMethods.mxc_error_detail_free(&error);
+                    }
+                }
+                return new MxcPtyProcess(
                     MxcSandboxHandle.FromRaw(handle),
                     request.Policy.TimeoutMs);
             }
@@ -339,6 +398,14 @@ public static class MxcSandbox
         SandboxPolicy policy,
         string command) =>
         new(policy, command);
+
+    internal static SandboxRequest CreatePtyCompatibilityRequest(
+        SandboxPolicy policy,
+        string command) =>
+        new(policy, command)
+        {
+            Containment = new IsolationSessionContainment(),
+        };
 
     private static byte[] ToNullTerminatedUtf8(string value)
     {

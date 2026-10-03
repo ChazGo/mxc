@@ -61,7 +61,8 @@ pub use run::resolve_runner_for_audit;
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 pub use run::{log_policy_hash, resolve_runner, run, ResolvedRunner};
 pub use state_aware::{
-    exec_state_aware_attached, exec_state_aware_json, exec_typed_state_aware_attached_request,
+    exec_state_aware_attached, exec_state_aware_json, exec_state_aware_pty_json,
+    exec_typed_state_aware_attached_request, exec_typed_state_aware_pty_request,
     exec_typed_state_aware_request, run_state_aware, run_state_aware_json,
     run_typed_state_aware_request, EngineProvisionMetadata, EngineStateAwareResult,
 };
@@ -71,7 +72,9 @@ pub use verbose_telemetry::emit_verbose_telemetry;
 use wxc_common::logger::{Logger, Mode};
 use wxc_common::models::{ContainmentBackend, ExecutionRequest, FailurePhase, ScriptResponse};
 use wxc_common::mxc_error::MxcError;
-use wxc_common::sandbox_process::{NativeStdio, SandboxProcess, StreamCloser};
+use wxc_common::sandbox_process::{
+    NativeStdio, PtyReaderWithCloser, PtySize, SandboxProcess, StreamCloser,
+};
 use wxc_common::state_aware_request::MxcRequest;
 use wxc_common::telemetry;
 
@@ -114,9 +117,18 @@ pub fn spawn_one_shot_json(
     experimental: bool,
 ) -> Result<Box<dyn SandboxProcess>, Error> {
     let mut logger = Logger::new(Mode::Buffer);
+    let request = parse_one_shot_json(request_json, experimental, &mut logger)?;
+    spawn_execution_request_with_logger(&request, logger)
+}
+
+fn parse_one_shot_json(
+    request_json: &str,
+    experimental: bool,
+    logger: &mut Logger,
+) -> Result<ExecutionRequest, Error> {
     let mut request = match wxc_common::config_parser::load_mxc_request_from_json(
         request_json,
-        &mut logger,
+        logger,
     )
     .map_err(state_aware::parse_error_to_mxc)
     .map_err(Error::from)?
@@ -129,12 +141,20 @@ pub fn spawn_one_shot_json(
         }
     };
     request.experimental_enabled = experimental;
-    spawn_execution_request_with_logger(&request, logger)
+    Ok(request)
 }
 
 fn spawn_execution_request_with_logger(
     request: &ExecutionRequest,
+    logger: Logger,
+) -> Result<Box<dyn SandboxProcess>, Error> {
+    spawn_execution_request_with_logger_and(request, logger, dispatch::spawn_runner)
+}
+
+fn spawn_execution_request_with_logger_and(
+    request: &ExecutionRequest,
     mut logger: Logger,
+    spawn: impl FnOnce(&ExecutionRequest, &mut Logger) -> Result<Box<dyn SandboxProcess>, MxcError>,
 ) -> Result<Box<dyn SandboxProcess>, Error> {
     let telemetry_active = request
         .telemetry
@@ -148,7 +168,7 @@ fn spawn_execution_request_with_logger(
         .and_then(|config| config.requested_sandbox_kind);
     let containment = request.containment.clone();
     let started = std::time::Instant::now();
-    let process = match dispatch::spawn_runner(request, &mut logger) {
+    let process = match spawn(request, &mut logger) {
         Ok(process) => process,
         Err(error) => {
             // Preserve the actual error category so bounded telemetry
@@ -180,6 +200,31 @@ fn spawn_execution_request_with_logger(
     } else {
         Ok(process)
     }
+}
+
+/// Spawn a sandbox attached to an MXC-owned pseudo-terminal.
+pub fn spawn_with_pty(
+    request: &ExecutionRequest,
+    size: wxc_common::sandbox_process::PtySize,
+) -> Result<Box<dyn SandboxProcess>, Error> {
+    spawn_execution_request_with_logger_and(
+        request,
+        Logger::new(Mode::Buffer),
+        |request, logger| dispatch::spawn_pty_runner(request, logger, size),
+    )
+}
+
+/// Spawn a raw exact-version one-shot JSON request attached to an MXC-owned PTY.
+pub fn spawn_one_shot_pty_json(
+    request_json: &str,
+    experimental: bool,
+    size: wxc_common::sandbox_process::PtySize,
+) -> Result<Box<dyn SandboxProcess>, Error> {
+    let mut logger = Logger::new(Mode::Buffer);
+    let request = parse_one_shot_json(request_json, experimental, &mut logger)?;
+    spawn_execution_request_with_logger_and(&request, logger, |request, logger| {
+        dispatch::spawn_pty_runner(request, logger, size)
+    })
 }
 
 pub(crate) struct TelemetryRegistration {
@@ -566,6 +611,30 @@ impl SandboxProcess for TelemetryProcess {
         self.inner.take_native_stdio()
     }
 
+    fn is_pty(&self) -> bool {
+        self.inner.is_pty()
+    }
+
+    fn pty_clone_reader(&self) -> std::io::Result<Box<dyn std::io::Read + Send>> {
+        self.inner.pty_clone_reader()
+    }
+
+    fn pty_clone_reader_with_closer(&self) -> std::io::Result<PtyReaderWithCloser> {
+        self.inner.pty_clone_reader_with_closer()
+    }
+
+    fn pty_take_writer(&self) -> std::io::Result<Box<dyn std::io::Write + Send>> {
+        self.inner.pty_take_writer()
+    }
+
+    fn pty_resize(&self, size: PtySize) -> std::io::Result<()> {
+        self.inner.pty_resize(size)
+    }
+
+    fn pty_size(&self) -> std::io::Result<PtySize> {
+        self.inner.pty_size()
+    }
+
     fn take_stdout(&mut self) -> Option<Box<dyn std::io::Read + Send>> {
         self.inner.take_stdout()
     }
@@ -704,6 +773,30 @@ impl SandboxProcess for ProcessWithWarnings {
         self.inner.take_native_stdio()
     }
 
+    fn is_pty(&self) -> bool {
+        self.inner.is_pty()
+    }
+
+    fn pty_clone_reader(&self) -> std::io::Result<Box<dyn std::io::Read + Send>> {
+        self.inner.pty_clone_reader()
+    }
+
+    fn pty_clone_reader_with_closer(&self) -> std::io::Result<PtyReaderWithCloser> {
+        self.inner.pty_clone_reader_with_closer()
+    }
+
+    fn pty_take_writer(&self) -> std::io::Result<Box<dyn std::io::Write + Send>> {
+        self.inner.pty_take_writer()
+    }
+
+    fn pty_resize(&self, size: PtySize) -> std::io::Result<()> {
+        self.inner.pty_resize(size)
+    }
+
+    fn pty_size(&self) -> std::io::Result<PtySize> {
+        self.inner.pty_size()
+    }
+
     fn take_stdout(&mut self) -> Option<Box<dyn std::io::Read + Send>> {
         self.inner.take_stdout()
     }
@@ -766,7 +859,19 @@ mod telemetry_process_tests {
     struct NativeStdioProbe {
         calls: Arc<AtomicUsize>,
         stdin_closer_calls: Arc<AtomicUsize>,
+        pty_reader_calls: Arc<AtomicUsize>,
+        pty_closer_calls: Arc<AtomicUsize>,
         timeout_kill_calls: Arc<AtomicUsize>,
+    }
+
+    struct CountingCloser {
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl StreamCloser for CountingCloser {
+        fn close(&self) {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+        }
     }
 
     impl SandboxProcess for NativeStdioProbe {
@@ -782,6 +887,16 @@ mod telemetry_process_tests {
         fn stdin_closer(&self) -> Option<Box<dyn StreamCloser>> {
             self.stdin_closer_calls.fetch_add(1, Ordering::SeqCst);
             None
+        }
+
+        fn pty_clone_reader_with_closer(&self) -> std::io::Result<PtyReaderWithCloser> {
+            self.pty_reader_calls.fetch_add(1, Ordering::SeqCst);
+            Ok((
+                Box::new(std::io::empty()),
+                Some(Box::new(CountingCloser {
+                    calls: Arc::clone(&self.pty_closer_calls),
+                })),
+            ))
         }
 
         fn take_stdout(&mut self) -> Option<Box<dyn std::io::Read + Send>> {
@@ -902,14 +1017,18 @@ mod telemetry_process_tests {
     }
 
     #[test]
-    fn process_wrappers_forward_native_stdio_transfer() {
+    fn process_wrappers_forward_stream_lifecycle_operations() {
         let telemetry_calls = Arc::new(AtomicUsize::new(0));
         let telemetry_closer_calls = Arc::new(AtomicUsize::new(0));
+        let telemetry_pty_reader_calls = Arc::new(AtomicUsize::new(0));
+        let telemetry_pty_closer_calls = Arc::new(AtomicUsize::new(0));
         let telemetry_timeout_calls = Arc::new(AtomicUsize::new(0));
         let mut telemetry = TelemetryProcess::new(
             Box::new(NativeStdioProbe {
                 calls: Arc::clone(&telemetry_calls),
                 stdin_closer_calls: Arc::clone(&telemetry_closer_calls),
+                pty_reader_calls: Arc::clone(&telemetry_pty_reader_calls),
+                pty_closer_calls: Arc::clone(&telemetry_pty_closer_calls),
                 timeout_kill_calls: Arc::clone(&telemetry_timeout_calls),
             }),
             true,
@@ -923,28 +1042,63 @@ mod telemetry_process_tests {
         );
         assert!(telemetry.take_native_stdio().unwrap().is_none());
         assert!(telemetry.stdin_closer().is_none());
+        let (_, telemetry_pty_closer) = telemetry.pty_clone_reader_with_closer().unwrap();
+        telemetry_pty_closer.unwrap().close();
         telemetry.kill_for_timeout().unwrap();
         assert_eq!(telemetry_calls.load(Ordering::SeqCst), 1);
         assert_eq!(telemetry_closer_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(telemetry_pty_reader_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(telemetry_pty_closer_calls.load(Ordering::SeqCst), 1);
         assert_eq!(telemetry_timeout_calls.load(Ordering::SeqCst), 1);
 
         let warning_calls = Arc::new(AtomicUsize::new(0));
         let warning_closer_calls = Arc::new(AtomicUsize::new(0));
+        let warning_pty_reader_calls = Arc::new(AtomicUsize::new(0));
+        let warning_pty_closer_calls = Arc::new(AtomicUsize::new(0));
         let warning_timeout_calls = Arc::new(AtomicUsize::new(0));
         let mut with_warnings = ProcessWithWarnings::wrap(
             Box::new(NativeStdioProbe {
                 calls: Arc::clone(&warning_calls),
                 stdin_closer_calls: Arc::clone(&warning_closer_calls),
+                pty_reader_calls: Arc::clone(&warning_pty_reader_calls),
+                pty_closer_calls: Arc::clone(&warning_pty_closer_calls),
                 timeout_kill_calls: Arc::clone(&warning_timeout_calls),
             }),
             vec!["test warning".to_string()],
         );
         assert!(with_warnings.take_native_stdio().unwrap().is_none());
         assert!(with_warnings.stdin_closer().is_none());
+        let (_, warning_pty_closer) = with_warnings.pty_clone_reader_with_closer().unwrap();
+        warning_pty_closer.unwrap().close();
         with_warnings.kill_for_timeout().unwrap();
         assert_eq!(warning_calls.load(Ordering::SeqCst), 1);
         assert_eq!(warning_closer_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(warning_pty_reader_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(warning_pty_closer_calls.load(Ordering::SeqCst), 1);
         assert_eq!(warning_timeout_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn alternate_spawn_dispatch_preserves_buffered_warnings() {
+        let request = ExecutionRequest::default();
+        let process = spawn_execution_request_with_logger_and(
+            &request,
+            Logger::new(Mode::Buffer),
+            |_request, logger| {
+                logger.warning_line("PTY spawn warning");
+                Ok(Box::new(StubProcess {
+                    try_wait_result: TryWaitResult::Running,
+                    wait_result: Ok(0),
+                    kill_fails: false,
+                    finalized: None,
+                    metadata_read_before_finalization: None,
+                    output_metadata: None,
+                }))
+            },
+        )
+        .expect("alternate dispatcher should spawn");
+
+        assert_eq!(process.warnings(), ["PTY spawn warning"]);
     }
 
     #[test]

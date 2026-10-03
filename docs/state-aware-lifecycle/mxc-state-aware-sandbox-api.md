@@ -62,7 +62,7 @@ elaborates.
 
 | MXC layer | What's new | What's unchanged |
 |---|---|---|
-| TypeScript SDK (§6) | Five new functions: `provisionSandbox`, `startSandbox`, `execInSandbox` / `execInSandboxAsync`, `stopSandbox`, `deprovisionSandbox`. Branded `SandboxId<C>` type tagging ids by backend (`containment` named once at provision, inferred from the id thereafter). Per-(backend, phase) typed `*Config` interfaces (e.g. `IsolationSessionProvisionConfig`) that absorb cross-cutting fields directly — no separate policy parameter. Per-phase typed `*Result` types per backend. `AbortSignal` cancellation for promise-returning operations via the existing `SandboxSpawnOptions`; live exec callers use `MxcSandboxProcess.kill()`. Typed `MxcError` class carrying a closed-enum `code`. | `spawnSandbox` family preserved. `ContainmentBackend` extension mechanism reused. The existing wire-format-aligned `ProcessConfig` / `FilesystemConfig` / `NetworkConfig` / `UiConfig` interfaces from `sdk/node/src/types.ts` are reused as field types inside the new state-aware Configs. `SandboxSpawnOptions` reused as the third-arg options bag (gains `signal?: AbortSignal`). Existing typed `*Config` naming convention reused. |
+| TypeScript SDK (§6) | Five lifecycle functions: `provisionSandbox`, `startSandbox`, `execInSandbox` / `execInSandboxAsync`, `stopSandbox`, `deprovisionSandbox`, plus `spawnInContainerWithPty` for a caller-controlled interactive terminal when supported by the selected backend. Branded `SandboxId<C>` type tagging ids by backend (`containment` named once at provision, inferred from the id thereafter). Per-(backend, phase) typed `*Config` interfaces (e.g. `IsolationSessionProvisionConfig`) that absorb cross-cutting fields directly — no separate policy parameter. Per-phase typed `*Result` types per backend. `AbortSignal` cancellation for promise-returning operations via the existing `SandboxSpawnOptions`; live exec callers use `MxcSandboxProcess.kill()` or dispose the returned `MxcPtyProcess`. Typed `MxcError` class carrying a closed-enum `code`. | `spawnSandbox` family preserved. `ContainmentBackend` extension mechanism reused. The existing wire-format-aligned `ProcessConfig` / `FilesystemConfig` / `NetworkConfig` / `UiConfig` interfaces from `sdk/node/src/types.ts` are reused as field types inside the new state-aware Configs. `SandboxSpawnOptions` reused as the third-arg options bag (gains `signal?: AbortSignal`). Existing typed `*Config` naming convention reused. |
 | JSON wire format (§7) | Top-level `phase` discriminator. Top-level `sandboxId`. `containment` carried on provision only; non-provision phases route via the `sandboxId` prefix. Per-phase nesting under each backend's permanent top-level section. Named envelope types as a TypeScript discriminated union over `phase`. Exact registered roots admit only the cross-cutting fields supported by each backend and phase. | One-shot remains the no-`phase` request mode and uses its own exact versioned roots. |
 | Rust executor (§9) | Exact registered request contracts selected by version, phase, and provision containment; typed neutral operations; checked backend binding; and `StatefulSandboxBackend` dispatch. | `ScriptRunner` trait. Existing one-shot dispatch path. Existing backends function without modification. |
 | Error model (§8) | Closed enum of 12 error codes. `MxcError` class with `code: ErrorCode`. `details` open object as escape hatch for backend-specific structured information. Exact-root structural failures precede backend validation. | One-shot retains its existing response surface, while exact-contract failures use that surface's structural-error mapping. |
@@ -252,9 +252,10 @@ One-shot calls carry `containerId` (when present); they do not carry `sandboxId`
 
 ## 6. TypeScript SDK
 
-The SDK adds five new functions, exported from `@microsoft/mxc-sdk/v1`
-alongside the existing v1 one-shot entry points. Each function corresponds to a
-lifecycle phase from §4. The
+The SDK adds five lifecycle functions plus
+`spawnInContainerWithPty`, exported from `@microsoft/mxc-sdk/v1` alongside the
+existing v1 one-shot entry points. Each lifecycle function corresponds to a
+phase from §4. The
 state-aware surface does not use `SandboxPolicy` — its cross-cutting fields live
 directly on the per-(backend, phase) Configs introduced below.
 
@@ -445,6 +446,13 @@ function execInSandboxAsync<C extends 'isolation_session' | 'wslc'>(
   options?: SandboxSpawnOptions,
 ): Promise<ExecResult>;
 
+function spawnInContainerWithPty(
+  sandboxId: SandboxId<'isolation_session'>,
+  config: IsolationSessionExecConfig,
+  size?: MxcPtySize,
+  options?: StateAwareStreamingOptions,
+): Promise<MxcPtyProcess>;
+
 function stopSandbox<C extends StateAwareContainmentBackend>(
   sandboxId: SandboxId<C>,
   config?: StopConfigFor<C>,
@@ -463,6 +471,11 @@ For IsolationSession and WSLC, `execInSandbox` returns an owning
 IsolationSession also exposes stdin; WSLC currently exposes stdout/stderr only.
 `execInSandboxAsync` is a buffered convenience that accumulates output and
 resolves on exit.
+
+`spawnInContainerWithPty` is IsolationSession-only. It establishes the
+requested terminal dimensions before releasing the workload, then returns an
+owning `MxcPtyProcess` with merged output, caller-driven input, resize, wait,
+timeout, termination, and disposal.
 
 `provisionSandbox` takes `containment` as its first argument, binding the backend choice
 into the returned `SandboxId<C>`. Subsequent calls (`startSandbox`, `execInSandbox` /

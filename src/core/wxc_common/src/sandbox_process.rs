@@ -19,6 +19,7 @@ use std::io::{Read, Write};
 
 use crate::logger::Logger;
 use crate::models::{ExecutionRequest, FailurePhase, SandboxOutputMetadata, ScriptResponse};
+use crate::mxc_error::MxcError;
 use crate::script_runner::ScriptRunner;
 use crate::validator::{validate_common, validate_network_policy_support, NetworkPolicySupport};
 
@@ -26,6 +27,12 @@ use crate::validator::{validate_common, validate_network_policy_support, Network
 pub type OwnedPipe = std::os::fd::OwnedFd;
 #[cfg(windows)]
 pub type OwnedPipe = std::os::windows::io::OwnedHandle;
+
+/// A boxed reader for a pseudo-terminal's merged output.
+pub type PtyReader = Box<dyn Read + Send>;
+
+/// A pseudo-terminal reader paired with an optional out-of-band closer.
+pub type PtyReaderWithCloser = (PtyReader, Option<Box<dyn StreamCloser>>);
 
 /// Owned native endpoints for a sandbox process.
 ///
@@ -160,6 +167,49 @@ pub trait SandboxProcess: Send {
     /// endpoints return `Ok(None)`.
     fn take_native_stdio(&mut self) -> std::io::Result<Option<NativeStdio>> {
         Ok(None)
+    }
+
+    /// Whether this process is attached to a caller-driven pseudo-terminal.
+    fn is_pty(&self) -> bool {
+        false
+    }
+
+    /// Clone a reader for the pseudo-terminal's merged output stream.
+    fn pty_clone_reader(&self) -> std::io::Result<PtyReader> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "this sandbox process is not attached to a pseudo-terminal",
+        ))
+    }
+
+    /// Clone a reader and its optional out-of-band closer for the
+    /// pseudo-terminal's merged output stream.
+    fn pty_clone_reader_with_closer(&self) -> std::io::Result<PtyReaderWithCloser> {
+        self.pty_clone_reader().map(|reader| (reader, None))
+    }
+
+    /// Take the pseudo-terminal input writer. This may succeed only once.
+    fn pty_take_writer(&self) -> std::io::Result<Box<dyn Write + Send>> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "this sandbox process is not attached to a pseudo-terminal",
+        ))
+    }
+
+    /// Resize the pseudo-terminal.
+    fn pty_resize(&self, _size: PtySize) -> std::io::Result<()> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "this sandbox process is not attached to a pseudo-terminal",
+        ))
+    }
+
+    /// Return the current pseudo-terminal dimensions.
+    fn pty_size(&self) -> std::io::Result<PtySize> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "this sandbox process is not attached to a pseudo-terminal",
+        ))
     }
 
     /// Take ownership of the child's stdin so the caller can write to it.
@@ -439,6 +489,44 @@ pub fn wait_with_timeout(
     }
 }
 
+/// Dimensions of a pseudo-terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PtySize {
+    pub rows: u16,
+    pub cols: u16,
+    pub pixel_width: u16,
+    pub pixel_height: u16,
+}
+
+impl Default for PtySize {
+    fn default() -> Self {
+        Self {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        }
+    }
+}
+
+impl PtySize {
+    /// Reject dimensions that cannot be represented by supported PTY backends.
+    pub fn validate(self) -> Result<(), MxcError> {
+        const MAX_DIMENSION: u16 = i16::MAX as u16;
+
+        if self.rows == 0
+            || self.cols == 0
+            || self.rows > MAX_DIMENSION
+            || self.cols > MAX_DIMENSION
+        {
+            return Err(MxcError::malformed_request(
+                "PTY rows and columns must be between 1 and 32767",
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// How a [`SandboxBackend`] wires the sandboxed child's standard streams.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StdioMode {
@@ -451,6 +539,10 @@ pub enum StdioMode {
     /// the child sees a TTY exactly when the binary does. The returned handle's
     /// `take_*` all return `None`; [`wait`](SandboxProcess::wait) just waits.
     Inherit,
+    /// The backend allocates a pseudo-terminal, attaches the sandboxed process
+    /// to its secondary side, and retains the primary side for the returned
+    /// handle. Output is a single merged stream.
+    Pty(PtySize),
 }
 
 /// A containment backend that spawns a sandboxed process and hands back a
@@ -649,6 +741,50 @@ mod runner_tests {
         assert!(stdin.is_none());
         assert!(stdout.is_none());
         assert!(stderr.is_none());
+    }
+
+    #[test]
+    fn pty_size_rejects_dimensions_outside_signed_16_bit_range() {
+        for size in [
+            PtySize {
+                rows: 0,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            },
+            PtySize {
+                rows: 24,
+                cols: 0,
+                pixel_width: 0,
+                pixel_height: 0,
+            },
+            PtySize {
+                rows: i16::MAX as u16 + 1,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            },
+            PtySize {
+                rows: 24,
+                cols: i16::MAX as u16 + 1,
+                pixel_width: 0,
+                pixel_height: 0,
+            },
+        ] {
+            let error = size
+                .validate()
+                .expect_err("out-of-range dimensions must fail");
+            assert_eq!(error.code, crate::mxc_error::MxcErrorCode::MalformedRequest);
+        }
+        assert!(PtySize::default().validate().is_ok());
+        assert!(PtySize {
+            rows: i16::MAX as u16,
+            cols: i16::MAX as u16,
+            pixel_width: 0,
+            pixel_height: 0,
+        }
+        .validate()
+        .is_ok());
     }
 
     #[test]

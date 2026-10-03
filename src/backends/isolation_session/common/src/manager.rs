@@ -132,6 +132,22 @@ pub struct IsolationSessionManager {
 }
 
 impl IsolationSessionManager {
+    /// Start an interactive process whose ConPTY handles remain caller-driven.
+    pub(super) fn pty_process(
+        &self,
+        options: &ProcessOptions,
+        logger: Option<&Logger>,
+    ) -> Result<Arc<ClosingProcess>, IsolationSessionError> {
+        owned_thread::call(&self.impersonation, || {
+            let mta = MtaReference::acquire()?;
+            Ok(Arc::new(ClosingProcess::new(
+                self.start_process(options, logger)?,
+                self.impersonation.clone(),
+                mta,
+            )))
+        })
+    }
+
     /// Pegs a manager to an existing OS-assigned agent user name (the value
     /// returned by `add_user`). Activates the service factory once and
     /// reuses it for the manager's lifetime.
@@ -949,24 +965,10 @@ impl StartedProcess {
     /// so waiting on the assumption that `Terminate` succeeded would wedge this
     /// call forever if it ever failed against a live process.
     ///
-    /// That bound covers *this call only*, and does not make teardown as a whole
-    /// bounded. The streaming adapter's `Drop` joins the waiter thread whenever
-    /// it believes the process is dead — which includes the case where this
-    /// function returned `Ok(())` for a `Terminate` the platform accepted but
-    /// that never took effect, since the bounded wait's result is discarded. A
-    /// process that survives the kill can then park that join by either of two
-    /// routes, so supplying a timeout does not bound it:
-    ///
-    /// - With no timeout, the waiter is still sitting in its leading
-    ///   `WaitForExit(timeout_ms)`, which is INFINITE for `0`.
-    /// - With a timeout, that call returns and the waiter proceeds into
-    ///   [`wait_with_graceful_shutdown`], which ends in `Terminate` followed by
-    ///   `WaitForExit(0)` — INFINITE again.
-    ///
-    /// Neither route is *certain* to stall: the ladder's tier 3 is a fresh
-    /// `Terminate` that may land where this one did not. The narrow claim is
-    /// only that nothing in this function bounds that wait — so if the process
-    /// does survive, it is the join that waits, not this call.
+    /// That bound covers *this call only*. A caller that also owns a waiter must
+    /// not infer completion from `Ok(())` and unconditionally join it. The PTY
+    /// streaming adapter joins only an already-finished waiter during drop and
+    /// otherwise detaches it, keeping handle destruction bounded.
     ///
     /// **What this does not tell you.** The bounded wait's result is discarded,
     /// so a `Terminate` the platform accepted but that left the process running
@@ -986,6 +988,39 @@ impl StartedProcess {
         // note above, which also covers why this does not bound teardown.
         let _ = self.process.WaitForExit(TERMINATE_WAIT_MS);
         Ok(())
+    }
+
+    /// Force-terminate and confirm within a bounded wait that the process is gone.
+    ///
+    /// Setup-failure paths cannot return a public process handle, so unlike
+    /// [`Self::terminate`] they must not report success merely because the
+    /// terminate request was accepted.
+    fn terminate_and_confirm(&self) -> Result<(), IsolationSessionError> {
+        let termination_error = self.process.Terminate().err();
+        if let Some(error) = &termination_error {
+            self.record_kill_failed(error.code().0);
+        }
+        let waited = self
+            .process
+            .WaitForExit(TERMINATE_WAIT_MS)
+            .map_err(|error| transport_err(op::RUN_PROCESS, "WaitForExit failed", &error))?;
+        let exit_code =
+            if waited == WAIT_FOR_EXIT_TIMEOUT {
+                Some(self.process.ExitCode().map_err(|error| {
+                    transport_err(op::RUN_PROCESS, "get ExitCode failed", &error)
+                })?)
+            } else {
+                None
+            };
+        if termination_is_confirmed(waited, exit_code) {
+            return Ok(());
+        }
+        if let Some(error) = termination_error {
+            return Err(transport_err(op::RUN_PROCESS, "Terminate failed", &error));
+        }
+        Err(lifecycle_err(
+            "the sandboxed process was still running after the bounded terminate wait",
+        ))
     }
 }
 
@@ -1121,6 +1156,41 @@ impl ClosingProcess {
             _mta: mta,
         }
     }
+
+    pub(super) fn resize_console(
+        &self,
+        columns: u16,
+        rows: u16,
+    ) -> Result<(), IsolationSessionError> {
+        owned_thread::call(&self.impersonation, || {
+            self.process
+                .ResizeConsole(columns, rows)
+                .map_err(|error| lifecycle_err(format!("ResizeConsole failed: {error}")))
+        })
+    }
+
+    pub(super) fn close_standard_input(&self) -> Result<(), IsolationSessionError> {
+        owned_thread::call(&self.impersonation, || {
+            self.process
+                .CloseStandardInput()
+                .map_err(|error| lifecycle_err(format!("CloseStandardInput failed: {error}")))
+        })
+    }
+
+    pub(super) fn wait_for_exit(
+        &self,
+        timeout_ms: u32,
+    ) -> Result<ExecOutcome, IsolationSessionError> {
+        owned_thread::call(&self.impersonation, || self.wait(timeout_ms))
+    }
+
+    pub(super) fn terminate_process(&self) -> Result<(), IsolationSessionError> {
+        owned_thread::call(&self.impersonation, || self.terminate())
+    }
+
+    pub(super) fn terminate_and_confirm_process(&self) -> Result<(), IsolationSessionError> {
+        owned_thread::call(&self.impersonation, || self.terminate_and_confirm())
+    }
 }
 
 impl std::ops::Deref for ClosingProcess {
@@ -1160,6 +1230,10 @@ const WAIT_FOR_EXIT_TIMEOUT: i32 = -1;
 /// reporting success anyway. Bounded so a failed `Terminate` cannot wedge that
 /// call; generous enough that a normal kill is observed synchronously.
 const TERMINATE_WAIT_MS: u32 = 5_000;
+
+fn termination_is_confirmed(waited: i32, exit_code: Option<i32>) -> bool {
+    waited != WAIT_FOR_EXIT_TIMEOUT || exit_code.is_some_and(|code| code != STILL_ACTIVE)
+}
 
 /// What [`StartedProcess::wait`] should do once its wait has returned.
 ///
@@ -1282,6 +1356,19 @@ fn wait_with_graceful_shutdown(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bounded_termination_requires_confirmation_after_a_timeout_sentinel() {
+        assert!(termination_is_confirmed(0, None));
+        assert!(termination_is_confirmed(
+            WAIT_FOR_EXIT_TIMEOUT,
+            Some(WAIT_FOR_EXIT_TIMEOUT)
+        ));
+        assert!(!termination_is_confirmed(
+            WAIT_FOR_EXIT_TIMEOUT,
+            Some(STILL_ACTIVE)
+        ));
+    }
 
     #[test]
     fn teardown_status_distinguishes_failure_success_and_skipped() {

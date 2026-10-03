@@ -147,6 +147,11 @@ impl SandboxBackend for SeatbeltScriptRunner {
     ) -> Result<Box<dyn SandboxProcess>, ScriptResponse> {
         validate_common(request)?;
         self.validate(request)?;
+        if matches!(stdio, StdioMode::Pty(_)) {
+            return Err(ScriptResponse::rejected(
+                "Seatbelt does not support caller-controlled PTY spawning",
+            ));
+        }
 
         // Start the cooperative network proxy (if configured) before building
         // the profile and launching the child: the profile's proxy-reachability
@@ -277,6 +282,7 @@ fn spawn_exec(
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit());
         }
+        StdioMode::Pty(_) => unreachable!("PTY mode was rejected before backend setup"),
     }
 
     let mut child = command
@@ -286,6 +292,7 @@ fn spawn_exec(
     let (stdin, stdout, stderr) = match stdio {
         StdioMode::Pipes => (child.stdin.take(), child.stdout.take(), child.stderr.take()),
         StdioMode::Inherit => (None, None, None),
+        StdioMode::Pty(_) => unreachable!("PTY mode was rejected before spawn"),
     };
 
     // Wrap the pipe reads so the caller can abandon a stream a backgrounded
