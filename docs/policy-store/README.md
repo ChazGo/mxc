@@ -80,18 +80,28 @@ input is a tool candidate (`invocationName`, optional `packageUrl`,
 
    No intent selects the base policy plus every intent. Non-default outcomes
    also appear as structured warnings. Other inputs still resolve.
-6. **Close over dependencies**, depth-first, rejecting cycles. Dependencies
-   contribute their default, platform overlay, and all intents.
+6. **Close over dependencies**, depth-first, rejecting cycles. A dependency
+   contributes only its default base plus its platform overlay's base
+   additions; it never selects a version overlay. A reference that names
+   intents (`{ "entryId": "tool:ssh", "intents": ["connect"] }`) adds those
+   intents too, and catalog validation rejects a named intent the dependency
+   does not define. Dependency diagnostics report intent mode `none` or
+   `named`.
 7. **Resolve symbols.** `project_root` comes only from `projectRoot`. A
    missing required symbol yields no policy plus a warning naming it; the
    resolver never returns a partial policy.
 8. **Compose** to satisfy every contributing pair, and never more. Paths are
    substituted, normalized, and de-duplicated; read-write supersedes
-   read-only; a catalog deny that overlaps a grant is removed; outbound allow
-   rules are unioned, so a tool without network needs never vetoes another's.
-   Each adjustment produces a warning. Mixed policy versions and anything the
-   model cannot express fail as `policy_validation`
-   (`composition_conflict`).
+   read-only; a catalog filesystem deny that overlaps a required path is
+   removed; outbound allow rules are unioned, so a tool without network needs
+   never vetoes another's; a catalog egress deny that overlaps any required
+   allow rule (destinations intersect after `except`, and protocol/port
+   selectors intersect) is removed in full, and non-overlapping denies stay.
+   Each adjustment produces a warning naming the full removed scope and the
+   contributing entries; a conflicting deny never fails the request. Mixed
+   policy versions, non-egress network settings across several network
+   requirements, and other fields the model cannot express fail as
+   `policy_validation` (`composition_conflict`).
 
 Verifying that the executable really carries the strong identity passed in
 `packageUrl`, and that `detectedVersion` is accurate, is the caller's job.
@@ -136,6 +146,8 @@ Published revisions are immutable. Never edit a file under
    fixtures by hand.
 5. Regenerate the reviewer view with `MXC_POLICY_STORE_UPDATE_VIEWS=1`
    (`cargo test -p mxc_policy_store --test catalog_validation`) and review it.
+   Its *Added to default* column shows what each platform, version, and
+   intent row adds to the common default.
 6. Run the checks (from `src/`):
 
    ```text

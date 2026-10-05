@@ -18,6 +18,13 @@ overlays; per tool-and-intent resolution statuses; and composition that
 satisfies every requested pair. Changed sections: §4, §5.1, §5.2, §7, §9,
 §12, and §13. The canonical design document remains the source of truth; this
 copy summarizes the prototype's behavior and is not a substitute for it.
+
+Updated again on 2026-10-05 to align with the pushed spec (microsoft/mxc#1309
+at 5a2c52c): overlays use `newIntents` for new intents; dependencies
+contribute their base only unless the reference names intents; overlapping
+catalog egress denies are removed in full instead of failing; and the reviewer
+view shows additions relative to the default. Changed sections: §4.2, §4.5,
+§4.6, §4.7, §5.1, §5.2, §12, and §13.
 -->
 # Feature Spec: Known-tool Policy Floors
 
@@ -205,7 +212,7 @@ another overlay grants. Abbreviated from the bundled `tool:git` entry:
       "filesystem": { "readonlyPaths": ["${git_prefix}"], "readwritePaths": ["${project_root}"] }
     },
     "intents": {
-      "local": { "exampleSubcommands": ["status", "commit", "log"] },
+      "local": { "exampleSubcommands": ["status", "diff"] },
       "fetch": { "policyAdditions": { "network": { "egress": { "allow": ["…tcp/443…"] } } } },
       "push":  { "policyAdditions": { "network": { "egress": { "allow": ["…tcp/22…"] } } } }
     }
@@ -218,13 +225,13 @@ another overlay grants. Abbreviated from the bundled `tool:git` entry:
     { "versionRange": "vers:intdot/>=2.40|<2.50",
       "intentAdditions": { "push": { "dependencies": [{ "entryId": "tool:ssh" }] } } },
     { "versionRange": "vers:intdot/>=2.50|<3",
-      "intents": { "bundle-fetch": { "policyAdditions": { "…": "…" } } } }
+      "newIntents": { "bundle-fetch": { "policyAdditions": { "…": "…" } } } }
   ],
   "provenance": { "method": "design-example", "sourceRevision": "…" }
 }
 ```
 
-The bundled revision (`2026-10-02.1`) carries `tool:git`, `tool:node`,
+The bundled revision (`2026-10-05.1`) carries `tool:git`, `tool:node`,
 `tool:npm`, and `tool:ssh`. Its network addresses are documentation ranges
 (RFC 5737), not real endpoints.
 
@@ -242,7 +249,7 @@ The bundled revision (`2026-10-02.1`) carries `tool:git`, `tool:node`,
   overlay can.
 - **Intents** are lower-case names (`[a-z][a-z0-9_-]*`). An intent adds
   access and dependencies on top of the base policy. `intentAdditions` may
-  extend only intents the default declares; `intents` may introduce only
+  extend only intents the default declares; `newIntents` may introduce only
   names no other applicable overlay declares.
 - **Not additive**, and therefore rejected in an overlay: `deniedPaths`,
   `network.egress.deny`, `network.egress.default`, ingress, `ui`, and
@@ -301,9 +308,16 @@ Each input is one tool-and-intent pair, resolved independently:
 
 There is no wildcard fallback and no "require all" option: other inputs still
 resolve, so a result may cover only some of the requested tools.
-Dependencies are materialized with their default, the platform overlay, and
-all intents; a dependency's `versionRange` (in the target entry's scheme) is
-recorded as unevaluated metadata.
+A dependency contributes only its unversioned default base plus its
+applicable platform overlay's base additions; it never selects a version
+overlay or includes intents. This differs from a requested tool with no
+intent, which includes all effective intents. A reference may name dependency
+intents (`{ "entryId": "tool:ssh", "intents": ["connect"] }`); those intents,
+including their applicable platform `intentAdditions`, are then added.
+Catalog validation rejects a named dependency intent that is missing from any
+materialized platform combination where the reference applies. A
+dependency's `versionRange` (in the target entry's scheme) is recorded as
+unevaluated metadata.
 
 ### 4.6 Composition
 
@@ -318,13 +332,20 @@ All contributing pairs and their dependency closure compose into one policy:
 4. A catalog deny that overlaps any required read-only or read-write path is
    removed entirely, with a warning naming its scope. Non-conflicting denies
    are kept.
-5. Outbound allow rules from every pair are unioned under a default-deny
-   egress posture, so a pair without network needs never vetoes another
-   pair's. If only one contribution uses network, its section passes through
-   unchanged.
-6. A single contribution with no additions passes through whole, including
+5. Outbound allow rules and catalog egress deny rules from every pair are
+   unioned (whole rules, never a cross-product) under a default-deny egress
+   posture, so a pair without network needs never vetoes another pair's. If
+   only one contribution uses network, its other network settings are kept.
+6. A catalog egress deny that overlaps any required allow rule (destination
+   CIDRs intersect after `except` exclusions, and protocol/port selectors
+   intersect) is removed in full, not narrowed, within one entry or across
+   entries. The warning names the full removed scope, notes that other grants
+   may now apply throughout it, and lists the contributing entries.
+   Non-overlapping denies are kept, and a conflicting deny never fails the
+   request.
+7. A single contribution with no additions passes through whole, including
    fields such as `ui` and `timeoutMs`. Anything else the model cannot
-   express across contributions (for example a catalog egress deny alongside
+   express across contributions (for example ingress settings alongside
    another contribution's network, or `timeoutMs` in a composed set) fails as
    `policy_validation` (`composition_conflict`) rather than granting broader
    access.
@@ -341,8 +362,10 @@ additive-only overlays, dependency targets and their ranges, and cycles. It
 then materializes every platform × architecture × version × intent effective
 policy (including the "all intents" case) with its dependency closure,
 validates each composed policy, and checks that the default is a subset of
-each. A Markdown reviewer view of every effective policy is generated into
-`catalog/views/<revision>.md` and must stay current.
+each, and that every dependency reference's named intents exist. A Markdown
+reviewer view of every effective policy, with an *Added to default* column
+showing each row's additions relative to the common default, is generated
+into `catalog/views/<revision>.md` and must stay current.
 
 ## 5. API surface
 
@@ -393,7 +416,7 @@ interface VersionSelection {
 
 interface IntentSelection {
   requested?: string;
-  mode: "named" | "all" | "unsupported";
+  mode: "named" | "all" | "none" | "unsupported"; // dependencies: none or named
   selected: string[];
 }
 
@@ -481,7 +504,7 @@ interface CatalogIntentMetadata {
 interface CatalogAdditionsMetadata {
   dependencyEntryIds: string[];
   intentAdditions: CatalogIntentMetadata[];
-  intents: CatalogIntentMetadata[];
+  newIntents: CatalogIntentMetadata[];
 }
 
 interface CatalogEntryMetadata {
@@ -705,11 +728,15 @@ have cached or recorded in an audit trail.
   cross-architecture fallback; neutral fallback warning
 - unresolved symbols prevent policy output; host-derived symbols only for the
   current host platform, overridable by the caller
-- composition: read-write supersedes read-only, conflicting denies removed
-  with diagnostics, outbound allows unioned without a network veto, mixed
-  policy versions and inexpressible combinations rejected
+- composition: read-write supersedes read-only, conflicting filesystem
+  denies removed with diagnostics, outbound allows unioned without a network
+  veto, overlapping catalog egress denies removed in full (within one entry
+  and across entries) while non-overlapping denies stay, mixed policy versions
+  and inexpressible combinations rejected
 - dependency chains compose each entry once; dependency records keep distinct
-  required ranges
+  required ranges; a plain dependency contributes its base only (mode
+  `none`), a reference naming intents adds them (mode `named`), and a
+  missing named intent fails validation
 
 **Data (CI)**
 
@@ -736,9 +763,10 @@ Recommended answers are proposals for review, not decisions.
 
 | Question | Status |
 |---|---|
-| Final API names? | Pending API review. Current names are kept; they may drop "Sandbox" (for example, `resolvePolicy`). |
+| Final API names? | Pending API review. Follow MXC's policy-type rename that drops "Sandbox" and align the resolver names with it; current names are kept until then. |
 | Exact policy validator and `SandboxPolicy` version mapping used at build time | Open. The prototype validates composed effective policies with the catalog contract's own subset validator. |
 | Purl normalization and equality, including purl-embedded versions | Open. The prototype lower-cases the type, compares namespace and name as written, and ignores an embedded version with a warning. |
+| Symbol `defaults` metadata and local discovery (caller, then discovery, then documented default) | Specified by the canonical design; not yet implemented in the prototype, which uses caller-supplied symbols and a small set of host-derived ones. |
 | `vers` conformance for `pypi` and `nuget` | The prototype implements practical subsets of PEP 440 and NuGet versioning. Exact conformance is open. |
 | How does the catalog schema evolve? | Keep it compatible within MXC 1.x; a breaking change waits for a major version. |
 | Is invocation-name-only identity accepted automatically? | No: it requires `allowWeakIdentityFallback`. |
