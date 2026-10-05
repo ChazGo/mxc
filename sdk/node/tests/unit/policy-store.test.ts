@@ -54,6 +54,11 @@ describe('policy store (prototype)', { skip }, () => {
       git.versionVariants.map((variant) => variant.versionRange),
       ['vers:intdot/>=2.40|<2.50', 'vers:intdot/>=2.50|<3'],
     );
+    assert.deepStrictEqual(
+      git.versionVariants[1].newIntents.map((intent) => intent.name),
+      ['bundle-fetch'],
+    );
+    assert.ok(!('intents' in git.versionVariants[1]));
   });
 
   it('resolves a strong identity to an SDK SandboxPolicy', () => {
@@ -122,7 +127,10 @@ describe('policy store (prototype)', { skip }, () => {
       mode: 'named',
       selected: ['push'],
     });
-    assert.strictEqual(push.diagnostics.resolvedDependencies[0].entryId, 'tool:ssh');
+    const [ssh] = push.diagnostics.resolvedDependencies;
+    assert.strictEqual(ssh.entryId, 'tool:ssh');
+    // A plain dependency reference contributes the dependency's base only.
+    assert.deepStrictEqual(ssh.intentSelection, { mode: 'none', selected: [] });
     assert.deepStrictEqual(push.policy?.filesystem?.readonlyPaths, ['/usr/bin', '/usr/lib/ssh']);
     assert.strictEqual(push.policy?.network?.egress?.allow?.length, 1);
   });

@@ -102,11 +102,15 @@ export interface VersionSelection {
   selectedVersionRange?: string;
 }
 
-/** Intent selection for one matched entry. */
+/**
+ * Intent selection for one matched entry or resolved dependency. A
+ * dependency reports `none` (base only) unless its reference names intents,
+ * which report `named`.
+ */
 export interface IntentSelection {
   requested?: string;
-  mode: 'named' | 'all' | 'unsupported';
-  /** Selected intent names, sorted; empty when unsupported. */
+  mode: 'named' | 'all' | 'none' | 'unsupported';
+  /** Selected intent names, sorted; empty when unsupported or none. */
   selected: string[];
 }
 
@@ -177,7 +181,7 @@ export interface CatalogAdditionsMetadata {
   /** Extensions of intents the default declares. */
   intentAdditions: CatalogIntentMetadata[];
   /** Intents the overlay introduces. */
-  intents: CatalogIntentMetadata[];
+  newIntents: CatalogIntentMetadata[];
 }
 
 /** Inspection metadata for one catalog entry. It never exposes a policy body. */
