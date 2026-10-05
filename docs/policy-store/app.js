@@ -102,7 +102,7 @@ const details = {
       "The SDK reads a local, immutable catalog revision bundled statically with that SDK release. Its content, including shared symbol defaults, is checked against the packaged digest on load. Lookup never downloads updates or contacts a service.",
     code: "ctx.catalogRevision ?? installed default",
     items: [
-      "Entries carry one default, add-only host/version overlays, intents, dependencies, and provenance",
+      "Overlays use policyAdditions, intentAdditions for default intents, and newIntents for new names",
       "Every entry declares one of five version schemes: npm, semver, pypi, nuget, or intdot",
       "A requested revision that is unavailable is an error, not a substitution",
       "Consumers cannot write approvals or learned changes into the catalog",
@@ -118,7 +118,8 @@ const details = {
     items: [
       "Valid uncovered versions use the default with version_out_of_range; unparseable versions contribute nothing",
       "An unsupported named intent contributes nothing instead of falling back to base or every intent",
-      "Read-write supersedes overlapping read-only; conflicting catalog denies are removed and diagnosed",
+      "Dependencies contribute default and platform base only unless their reference names intents",
+      "Overlapping catalog filesystem and egress denies are removed in full and diagnosed",
       "Unsupported compositions fail rather than approximating broader access",
     ],
   },
@@ -158,6 +159,7 @@ const details = {
     items: [
       "Diagnostics show superseded read-only paths and the full scope of removed catalog denies",
       "A no-network pair does not veto scoped network access required by another pair",
+      "An overlapping catalog egress deny is removed, never treated as a composition conflict",
       "Caller-owned denies are never removed by catalog composition",
       "Consumer settings and UI remain outside the read-only catalog",
     ],

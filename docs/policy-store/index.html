@@ -482,13 +482,13 @@ export declare function resolveSandboxPolicyWithDiagnostics(
         <article>
           <span>2. Host overlay</span>
           <strong>Platform + architecture</strong>
-          <small>At most one matching additive overlay.</small>
+          <small>At most one matching overlay using additive catalog fields.</small>
         </article>
         <b aria-hidden="true">+</b>
         <article>
           <span>3. Version overlay</span>
           <strong>Zero or one VERS range</strong>
-          <small>Non-overlapping and parsed with the entry's required scheme.</small>
+          <small>Non-overlapping, additive, and parsed with the entry's required scheme.</small>
         </article>
         <b aria-hidden="true">+</b>
         <article>
@@ -526,19 +526,20 @@ export declare function resolveSandboxPolicyWithDiagnostics(
           <h3>Small overlays, complete rendered review</h3>
           <div class="git-layers">
             <div><b>Default</b><span>Read Git; read/write project; <code>fetch</code> and <code>push</code>.</span></div>
-            <div><b>Windows</b><span>Add read access to <code>${programData}/Git</code>.</span></div>
-            <div><b><code>&gt;=2.40 &lt;2.50</code></b><span>Add the SSH dependency only to inherited <code>push</code>.</span></div>
-            <div><b><code>&gt;=2.50 &lt;3</code></b><span>Add the new <code>bundle-fetch</code> intent, cache path, and HTTPS rule.</span></div>
+            <div><b>Windows</b><span><code>policyAdditions</code> adds read access to <code>${programData}/Git</code>.</span></div>
+            <div><b><code>&gt;=2.40 &lt;2.50</code></b><span><code>intentAdditions</code> adds the SSH dependency only to default-declared <code>push</code>.</span></div>
+            <div><b><code>&gt;=2.50 &lt;3</code></b><span><code>newIntents</code> defines <code>bundle-fetch</code>, its cache path, and its HTTPS rule.</span></div>
           </div>
           <p>Git 2.45 + <code>push</code> includes the default, Windows path, push rule, and SSH dependency. Git 2.55 + <code>bundle-fetch</code> includes that newer intent but not the other range's SSH addition. With no version, <code>bundle-fetch</code> is unsupported and contributes no base policy.</p>
-          <p>Publication materializes every platform × architecture × version × intent policy, validates it against the MXC schema, proves the default is a subset, rejects overlapping ranges or narrowing operations, and produces a rendered view for reviewers.</p>
+          <p>Overlays use <code>policyAdditions</code> for base access, <code>intentAdditions</code> only for intents declared by the default, and <code>newIntents</code> only for new names. Publication materializes every platform × architecture × version × intent policy, validates it against the MXC schema, proves the default is a subset, rejects overlapping ranges or narrowing operations, and produces a rendered view for reviewers.</p>
         </article>
       </div>
 
       <aside class="composition-callout">
         <span class="card-label">Composition across contributing pairs</span>
         <h3>Satisfy every selected requirement, never a broader approximation</h3>
-        <p>A tool with no network need does not veto another tool's scoped network requirement. Read-write supersedes overlapping read-only access. Catalog denies that conflict with required access are removed and diagnosed, while caller-owned restrictions remain authoritative. If selected requirements cannot be represented by the defined filesystem and network rules, resolution fails instead of granting broader access.</p>
+        <p>A tool with no network need does not veto another tool's scoped network requirement. Read-write supersedes overlapping read-only access. A catalog filesystem deny or egress deny that overlaps required access from any selected tool-plus-intent pair is removed in full; diagnostics name its full scope and the contributing entries. Non-overlapping catalog denies remain, and an overlapping catalog egress deny is never a composition conflict. Caller-owned restrictions remain authoritative. If other selected requirements cannot be represented by the defined filesystem and network rules, resolution fails instead of granting broader access.</p>
+        <p>A dependency contributes only its unversioned default base plus applicable platform base additions. It contributes no intents unless the reference explicitly names them, for example <code>{ entryId: "tool:ssh", intents: ["connect"] }</code>. A named dependency intent that is missing from any applicable materialized platform combination fails catalog validation.</p>
       </aside>
 
       <ol class="flow-list">
