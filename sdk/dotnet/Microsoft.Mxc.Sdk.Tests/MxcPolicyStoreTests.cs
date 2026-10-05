@@ -60,7 +60,7 @@ public class MxcPolicyStoreTests
                 Assert.Equal("push", push.Name);
                 Assert.Equal(new[] { "tool:ssh" }, push.DependencyEntryIds);
             },
-            newer => Assert.Equal("bundle-fetch", Assert.Single(newer.Intents).Name));
+            newer => Assert.Equal("bundle-fetch", Assert.Single(newer.NewIntents).Name));
     }
 
     [Fact]
@@ -144,7 +144,11 @@ public class MxcPolicyStoreTests
         Assert.Equal("vers:intdot/>=2.40|<2.50", match.VersionSelection.SelectedVersionRange);
         Assert.Equal("push", match.IntentSelection!.Requested);
         Assert.Equal("named", match.IntentSelection.Mode);
-        Assert.Equal("tool:ssh", Assert.Single(push.Diagnostics.ResolvedDependencies).EntryId);
+        var ssh = Assert.Single(push.Diagnostics.ResolvedDependencies);
+        Assert.Equal("tool:ssh", ssh.EntryId);
+        // A plain dependency reference contributes the dependency's base only.
+        Assert.Equal("none", ssh.IntentSelection.Mode);
+        Assert.Empty(ssh.IntentSelection.Selected);
         Assert.Equal(new[] { "/usr/bin", "/usr/lib/ssh" }, push.Policy!.Filesystem!.ReadonlyPaths);
         Assert.Single(push.Policy.Network!.Egress!.Allow!);
     }

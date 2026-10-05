@@ -348,9 +348,13 @@ public sealed record VersionSelection(string Status)
     public string? SelectedVersionRange { get; init; }
 }
 
-/// <summary>Which intents of the effective policy were selected.</summary>
-/// <param name="Mode"><c>named</c>, <c>all</c>, or <c>unsupported</c>.</param>
-/// <param name="Selected">Selected intent names, sorted; empty when unsupported.</param>
+/// <summary>
+/// Which intents of the effective policy were selected. A resolved dependency
+/// reports <c>none</c> (base only) unless its reference names intents, which
+/// report <c>named</c>.
+/// </summary>
+/// <param name="Mode"><c>named</c>, <c>all</c>, <c>none</c>, or <c>unsupported</c>.</param>
+/// <param name="Selected">Selected intent names, sorted; empty when unsupported or none.</param>
 public sealed record IntentSelection(string Mode, IReadOnlyList<string> Selected)
 {
     /// <summary>The requested intent, when one was supplied.</summary>
@@ -545,24 +549,24 @@ public sealed record CatalogDefaultMetadata(
 /// <param name="Architecture">A <see cref="CatalogArchitectures"/> value, or <see langword="null"/> for every architecture.</param>
 /// <param name="DependencyEntryIds">Added dependencies.</param>
 /// <param name="IntentAdditions">Extensions of intents the default declares.</param>
-/// <param name="Intents">Intents the overlay introduces.</param>
+/// <param name="NewIntents">Intents the overlay introduces.</param>
 public sealed record CatalogPlatformVariantMetadata(
     string Platform,
     string? Architecture,
     IReadOnlyList<string> DependencyEntryIds,
     IReadOnlyList<CatalogIntentMetadata> IntentAdditions,
-    IReadOnlyList<CatalogIntentMetadata> Intents);
+    IReadOnlyList<CatalogIntentMetadata> NewIntents);
 
 /// <summary>An additive version overlay, selected by a purl <c>vers</c> range.</summary>
 /// <param name="VersionRange">The <c>vers</c> range.</param>
 /// <param name="DependencyEntryIds">Added dependencies.</param>
 /// <param name="IntentAdditions">Extensions of intents the default declares.</param>
-/// <param name="Intents">Intents the overlay introduces.</param>
+/// <param name="NewIntents">Intents the overlay introduces.</param>
 public sealed record CatalogVersionVariantMetadata(
     string VersionRange,
     IReadOnlyList<string> DependencyEntryIds,
     IReadOnlyList<CatalogIntentMetadata> IntentAdditions,
-    IReadOnlyList<CatalogIntentMetadata> Intents);
+    IReadOnlyList<CatalogIntentMetadata> NewIntents);
 
 /// <summary>Entry provenance.</summary>
 public sealed record CatalogProvenance(string Method, string SourceRevision);
