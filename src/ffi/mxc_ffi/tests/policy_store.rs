@@ -96,6 +96,23 @@ fn intent_and_version_cross_the_boundary() {
 }
 
 #[test]
+fn dependency_intent_selection_crosses_the_boundary() {
+    let (status, json, _, message) = call(
+        mxc_resolve_sandbox_policy_with_diagnostics_json,
+        r#"{"tools":{"invocationName":"git","packageUrl":"pkg:generic/git","detectedVersion":"2.45.1","intent":"push"},"context":{"platform":"linux","architecture":"x64","projectRoot":"/w","symbols":{"git_prefix":"/usr/bin","ssh_prefix":"/usr/lib/ssh"}}}"#,
+    );
+    assert_eq!(status, MXC_STATUS_SUCCESS, "{message:?}");
+    let json: serde_json::Value = serde_json::from_str(&json.unwrap()).unwrap();
+    let dependency = &json["diagnostics"]["resolvedDependencies"][0];
+    assert_eq!(dependency["entryId"], "tool:ssh");
+    assert_eq!(dependency["intentSelection"]["mode"], "none");
+    assert_eq!(
+        dependency["intentSelection"]["selected"],
+        serde_json::json!([])
+    );
+}
+
+#[test]
 fn store_failures_carry_status_and_reason() {
     let (status, json, reason, message) = call(
         mxc_resolve_sandbox_policy_json,

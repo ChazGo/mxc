@@ -79,10 +79,11 @@ fn version_and_intent_select_the_effective_policy() {
         tool.matches[0].intent_selection.as_ref().unwrap().mode,
         IntentMode::Named
     );
-    assert_eq!(
-        push.diagnostics.resolved_dependencies[0].entry_id,
-        "tool:ssh"
-    );
+    let ssh = &push.diagnostics.resolved_dependencies[0];
+    assert_eq!(ssh.entry_id, "tool:ssh");
+    // A dependency contributes its base only unless the reference names intents.
+    assert_eq!(ssh.intent_selection.mode, IntentMode::None);
+    assert!(ssh.intent_selection.selected.is_empty());
     let policy = push.policy.unwrap();
     assert_eq!(
         policy.filesystem.unwrap().readonly_paths,
@@ -137,6 +138,13 @@ fn inspection_reports_the_bundled_catalog() {
         .map(|e| e.entry_id)
         .collect();
     assert!(ids.contains(&"tool:git".to_string()), "{ids:?}");
+    let git = list_catalog_entries()
+        .unwrap()
+        .into_iter()
+        .find(|e| e.entry_id == "tool:git")
+        .unwrap();
+    let newer = &git.version_variants[1];
+    assert_eq!(newer.additions.new_intents[0].name, "bundle-fetch");
 }
 
 fn fixture() -> Value {
