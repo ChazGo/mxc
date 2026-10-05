@@ -17,7 +17,7 @@ use crate::model::{
     Architecture, DependencyRecord, IntentMode, IntentSelection, Platform, SandboxPolicy,
     VersionSelection,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// The platform overlay selected for an entry.
 #[derive(Clone, Copy, Debug)]
@@ -98,8 +98,10 @@ pub enum IntentChoice<'s> {
     All,
     /// Base plus one named intent.
     Named(&'s str),
-    /// Base only (used to compare a default with a new intent).
+    /// Base only (dependencies, and comparing a default with a new intent).
     BaseOnly,
+    /// Base plus the named intents (a dependency reference naming intents).
+    Set(&'s [String]),
 }
 
 /// The selected base plus intents of one effective policy.
@@ -188,7 +190,7 @@ pub fn materialize<'a>(
             true,
             &origin,
         )?;
-        add_intents(&mut effective.intents, &overlay.intents, false, &origin)?;
+        add_intents(&mut effective.intents, &overlay.new_intents, false, &origin)?;
     }
     effective
         .intents
@@ -211,7 +213,17 @@ impl<'a> Effective<'a> {
             IntentChoice::All => self.intents.iter().collect(),
             IntentChoice::BaseOnly => Vec::new(),
             IntentChoice::Named(name) => vec![self.intents.iter().find(|i| i.name == name)?],
+            IntentChoice::Set(names) => self
+                .intents
+                .iter()
+                .filter(|i| names.contains(&i.name))
+                .collect(),
         };
+        if let IntentChoice::Set(names) = choice {
+            if chosen.len() != names.len() {
+                return None;
+            }
+        }
         let mut additions = self.base_additions.clone();
         let mut dependencies = self.base_dependencies.clone();
         for intent in &chosen {
@@ -236,13 +248,17 @@ pub struct Node<'a> {
 }
 
 /// Accumulates the dependency closure of every contribution in one lookup.
+/// A dependency contributes its default base plus its platform overlay's base
+/// additions; a reference naming intents also adds those intents (design
+/// §4.5). Each (entry, base or intent) component contributes once.
 pub struct Closure<'a, 'm> {
     pub by_id: &'m EntryIndex<'a>,
     pub platform: Platform,
     pub architecture: &'m dyn Fn() -> Result<Architecture>,
     pub nodes: Vec<Node<'a>>,
     pub records: Vec<DependencyRecord>,
-    done: HashSet<&'a str>,
+    /// Node index per dependency entry, and the intents already added to it.
+    done: HashMap<&'a str, (usize, HashSet<String>)>,
 }
 
 impl<'a, 'm> Closure<'a, 'm> {
@@ -257,7 +273,7 @@ impl<'a, 'm> Closure<'a, 'm> {
             architecture,
             nodes: Vec::new(),
             records: Vec::new(),
-            done: HashSet::new(),
+            done: HashMap::new(),
         }
     }
 
@@ -295,9 +311,14 @@ impl<'a, 'm> Closure<'a, 'm> {
             let selection = select_platform_variant(target, self.platform, self.architecture)?;
             let effective = materialize(target, selection.map(|s| s.variant), None)
                 .map_err(|e| invalid_catalog(format!("'{}': {e}", target.entry_id)))?;
-            let selected = effective
-                .select(IntentChoice::All)
-                .expect("all intents always select");
+            let mut named: Vec<String> = dependency.intents.clone().unwrap_or_default();
+            named.sort_by(|a, b| cmp_utf16(a, b));
+            if let Some(missing) = named.iter().find(|n| !effective.has_intent(n)) {
+                return Err(invalid_catalog(format!(
+                    "dependency resolution failed: {from} -> {} names intent '{missing}', which {} does not define on {}",
+                    target.entry_id, target.entry_id, self.platform
+                )));
+            }
             let record = DependencyRecord {
                 entry_id: target.entry_id.clone(),
                 entry_revision: target.entry_revision,
@@ -305,28 +326,69 @@ impl<'a, 'm> Closure<'a, 'm> {
                 version_selection: VersionSelection::default_match(),
                 intent_selection: IntentSelection {
                     requested: None,
-                    mode: IntentMode::All,
-                    selected: selected.intent_names.clone(),
+                    mode: if dependency.intents.is_some() {
+                        IntentMode::Named
+                    } else {
+                        IntentMode::None
+                    },
+                    selected: named.clone(),
                 },
             };
             if !self.records.contains(&record) {
                 self.records.push(record);
             }
-            if !self.done.insert(&target.entry_id) {
+            let (new_base, new_intents): (bool, Vec<String>) =
+                match self.done.get(target.entry_id.as_str()) {
+                    None => (true, named),
+                    Some((_, added)) => (
+                        false,
+                        named.into_iter().filter(|n| !added.contains(n)).collect(),
+                    ),
+                };
+            if !new_base && new_intents.is_empty() {
                 continue;
             }
-            self.nodes.push(Node {
-                component: Component {
-                    entry_id: &target.entry_id,
-                    base: &target.default.sandbox_policy,
-                    additions: selected.additions,
-                },
-                neutral_fallback: selection
-                    .filter(|s| !s.exact && has_arch_specific(target, self.platform))
-                    .map(|_| self.platform),
-            });
+            let base = effective
+                .select(IntentChoice::BaseOnly)
+                .expect("the base always selects");
+            let chosen = effective
+                .select(IntentChoice::Set(&new_intents))
+                .expect("named intents were checked");
+            // `chosen` repeats the base; keep only what is new.
+            let base_len = base.additions.len();
+            let base_dep_len = base.dependencies.len();
+            let mut additions: Vec<&'a Additions> = Vec::new();
+            let mut next: Vec<&'a Dependency> = Vec::new();
+            if new_base {
+                additions.extend(&base.additions);
+                next.extend(&base.dependencies);
+            }
+            additions.extend(&chosen.additions[base_len..]);
+            next.extend(&chosen.dependencies[base_dep_len..]);
+            match self.done.get_mut(target.entry_id.as_str()) {
+                Some((index, added)) => {
+                    added.extend(new_intents);
+                    self.nodes[*index].component.additions.extend(additions);
+                }
+                None => {
+                    self.done.insert(
+                        &target.entry_id,
+                        (self.nodes.len(), new_intents.into_iter().collect()),
+                    );
+                    self.nodes.push(Node {
+                        component: Component {
+                            entry_id: &target.entry_id,
+                            base: &target.default.sandbox_policy,
+                            additions,
+                        },
+                        neutral_fallback: selection
+                            .filter(|s| !s.exact && has_arch_specific(target, self.platform))
+                            .map(|_| self.platform),
+                    });
+                }
+            }
             stack.push(&target.entry_id);
-            self.visit_all(&selected.dependencies, stack)?;
+            self.visit_all(&next, stack)?;
             stack.pop();
         }
         Ok(())
@@ -378,6 +440,10 @@ pub struct Materialized {
     pub policy: SandboxPolicy,
     pub dependency_entry_ids: Vec<String>,
     pub intent_names: Vec<String>,
+    /// The common default (no platform or version overlay) for the same
+    /// intent, or its base for an intent the default does not declare.
+    pub default_policy: SandboxPolicy,
+    pub default_dependency_entry_ids: Vec<String>,
 }
 
 fn compose_symbolic(
@@ -541,6 +607,8 @@ pub fn materialize_entry(
                         policy,
                         dependency_entry_ids: deps,
                         intent_names: selected.intent_names,
+                        default_policy,
+                        default_dependency_entry_ids: default_deps,
                     });
                 }
             }

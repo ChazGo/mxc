@@ -31,6 +31,7 @@ pub mod history;
 pub mod host;
 pub mod json;
 pub mod model;
+pub mod netrule;
 pub mod paths;
 pub mod purl;
 pub mod request;

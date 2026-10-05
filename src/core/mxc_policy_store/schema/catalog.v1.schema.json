@@ -202,8 +202,8 @@
           "description": "Additions to intents the default declares.",
           "$ref": "#/$defs/intents"
         },
-        "intents": {
-          "description": "New intents.",
+        "newIntents": {
+          "description": "Intents the default does not declare.",
           "$ref": "#/$defs/intents"
         }
       }
@@ -230,8 +230,8 @@
           "description": "Additions to intents the default declares.",
           "$ref": "#/$defs/intents"
         },
-        "intents": {
-          "description": "New intents.",
+        "newIntents": {
+          "description": "Intents the default does not declare.",
           "$ref": "#/$defs/intents"
         }
       }
@@ -318,6 +318,16 @@
             "type": "string",
             "pattern": "^vers:",
             "description": "A vers range in the target entry's versionScheme. Recorded in diagnostics; it does not select a version variant."
+          },
+          "intents": {
+            "description": "Intents of the target to add to its base. Without it, a dependency contributes its base only.",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]*$"
+            }
           }
         }
       }

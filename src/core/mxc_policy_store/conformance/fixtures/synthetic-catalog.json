@@ -225,7 +225,7 @@
           },
           {
             "versionRange": "vers:npm/>=3.0.0",
-            "intents": {
+            "newIntents": {
               "publish": {
                 "exampleSubcommands": [
                   "publish"
@@ -325,7 +325,7 @@
                 "status": "matched_default"
               },
               "intentSelection": {
-                "mode": "all",
+                "mode": "none",
                 "selected": []
               }
             },
@@ -337,7 +337,7 @@
                 "status": "matched_default"
               },
               "intentSelection": {
-                "mode": "all",
+                "mode": "none",
                 "selected": []
               }
             }
@@ -437,7 +437,7 @@
                 "status": "matched_default"
               },
               "intentSelection": {
-                "mode": "all",
+                "mode": "none",
                 "selected": []
               }
             }
@@ -539,7 +539,7 @@
                 "status": "matched_default"
               },
               "intentSelection": {
-                "mode": "all",
+                "mode": "none",
                 "selected": []
               }
             }
@@ -693,7 +693,7 @@
                 "status": "matched_default"
               },
               "intentSelection": {
-                "mode": "all",
+                "mode": "none",
                 "selected": []
               }
             }
@@ -876,7 +876,7 @@
                 "status": "matched_default"
               },
               "intentSelection": {
-                "mode": "all",
+                "mode": "none",
                 "selected": []
               }
             },
@@ -888,7 +888,7 @@
                 "status": "matched_default"
               },
               "intentSelection": {
-                "mode": "all",
+                "mode": "none",
                 "selected": []
               }
             }
@@ -969,7 +969,7 @@
                 "status": "matched_default"
               },
               "intentSelection": {
-                "mode": "all",
+                "mode": "none",
                 "selected": []
               }
             }
@@ -1198,7 +1198,7 @@
                 "status": "matched_default"
               },
               "intentSelection": {
-                "mode": "all",
+                "mode": "none",
                 "selected": []
               }
             }
@@ -1373,7 +1373,7 @@
                 "status": "matched_default"
               },
               "intentSelection": {
-                "mode": "all",
+                "mode": "none",
                 "selected": []
               }
             }
@@ -1449,7 +1449,7 @@
                 "status": "matched_default"
               },
               "intentSelection": {
-                "mode": "all",
+                "mode": "none",
                 "selected": []
               }
             }

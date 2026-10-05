@@ -62,7 +62,7 @@
           }
         },
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -70,7 +70,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "invocation-name",
@@ -127,7 +127,7 @@
           }
         },
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -191,7 +191,7 @@
           }
         },
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -229,7 +229,7 @@
                 "status": "matched_default"
               },
               "intentSelection": {
-                "mode": "all",
+                "mode": "none",
                 "selected": []
               }
             }
@@ -308,7 +308,7 @@
           }
         },
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -316,7 +316,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "invocation-name",
@@ -415,7 +415,7 @@
                 "status": "matched_default"
               },
               "intentSelection": {
-                "mode": "all",
+                "mode": "none",
                 "selected": []
               }
             }
@@ -490,7 +490,7 @@
           }
         },
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -503,7 +503,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "invocation-name",
@@ -553,7 +553,7 @@
       "expect": {
         "policy": null,
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -582,7 +582,7 @@
       "expect": {
         "policy": null,
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [],
           "resolvedDependencies": [],
           "warnings": []
@@ -603,7 +603,7 @@
       "expect": {
         "policy": null,
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -611,7 +611,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "invocation-name",
@@ -732,7 +732,7 @@
           }
         },
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -740,7 +740,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "invocation-name",
@@ -844,7 +844,7 @@
           }
         },
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -852,7 +852,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "purl",
@@ -934,7 +934,7 @@
           }
         },
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -942,7 +942,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "purl",
@@ -977,7 +977,7 @@
                 "status": "matched_default"
               },
               "intentSelection": {
-                "mode": "all",
+                "mode": "none",
                 "selected": []
               }
             }
@@ -1038,7 +1038,7 @@
           }
         },
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -1046,7 +1046,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "purl",
@@ -1099,7 +1099,7 @@
       "expect": {
         "policy": null,
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -1107,7 +1107,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "purl",
@@ -1167,7 +1167,7 @@
       "expect": {
         "policy": null,
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -1175,7 +1175,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "purl",
@@ -1242,7 +1242,7 @@
       "expect": {
         "policy": null,
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -1250,7 +1250,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "purl",
@@ -1360,7 +1360,7 @@
           }
         },
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -1368,7 +1368,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "purl",
@@ -1432,7 +1432,7 @@
           }
         },
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -1440,7 +1440,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "purl",
@@ -1546,7 +1546,7 @@
           }
         },
         "diagnostics": {
-          "catalogRevision": "2026-10-02.1",
+          "catalogRevision": "2026-10-05.1",
           "tools": [
             {
               "inputIndex": 0,
@@ -1554,7 +1554,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "purl",
@@ -1584,7 +1584,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "purl",
@@ -1614,7 +1614,7 @@
               "matches": [
                 {
                   "entryId": "tool:git",
-                  "entryRevision": 1,
+                  "entryRevision": 2,
                   "matchedIdentities": [
                     {
                       "kind": "purl",

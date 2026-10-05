@@ -1,0 +1,688 @@
+{
+  "$comment": "Composition fixtures: dependency intent references and catalog egress-deny removal. Outcomes are recorded with MXC_POLICY_STORE_UPDATE_FIXTURES and reviewed by hand.",
+  "catalog": {
+    "catalogSchemaVersion": "1",
+    "catalogRevision": "2000-01-02.1",
+    "entries": [
+      {
+        "entryId": "tool:helper",
+        "entryRevision": 1,
+        "displayName": "Credential helper",
+        "versionScheme": "semver",
+        "identity": [
+          {
+            "kind": "invocation-name",
+            "names": [
+              "helper"
+            ]
+          }
+        ],
+        "default": {
+          "sandboxPolicy": {
+            "version": "0.9.0-alpha",
+            "filesystem": {
+              "readonlyPaths": [
+                "${git_prefix}/helper"
+              ]
+            }
+          },
+          "intents": {
+            "store": {
+              "exampleSubcommands": [
+                "store"
+              ],
+              "policyAdditions": {
+                "filesystem": {
+                  "readwritePaths": [
+                    "${temp_dir}/helper-store"
+                  ]
+                }
+              }
+            },
+            "sync": {
+              "exampleSubcommands": [
+                "sync"
+              ],
+              "policyAdditions": {
+                "network": {
+                  "egress": {
+                    "allow": [
+                      {
+                        "to": [
+                          {
+                            "cidr": "203.0.113.0/24"
+                          }
+                        ],
+                        "ports": [
+                          {
+                            "protocol": "tcp",
+                            "port": 443
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "provenance": {
+          "method": "fixture",
+          "sourceRevision": "fixture"
+        }
+      },
+      {
+        "entryId": "tool:fetcher",
+        "entryRevision": 1,
+        "displayName": "Fetcher",
+        "versionScheme": "semver",
+        "identity": [
+          {
+            "kind": "invocation-name",
+            "names": [
+              "fetcher"
+            ]
+          }
+        ],
+        "default": {
+          "sandboxPolicy": {
+            "version": "0.9.0-alpha",
+            "filesystem": {
+              "readonlyPaths": [
+                "${git_prefix}/fetcher"
+              ]
+            },
+            "network": {
+              "egress": {
+                "allow": [
+                  {
+                    "to": [
+                      {
+                        "cidr": "192.0.2.0/24"
+                      }
+                    ],
+                    "ports": [
+                      {
+                        "protocol": "tcp",
+                        "port": 443
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "dependencies": [
+            {
+              "entryId": "tool:helper",
+              "intents": [
+                "sync"
+              ]
+            }
+          ]
+        },
+        "provenance": {
+          "method": "fixture",
+          "sourceRevision": "fixture"
+        }
+      },
+      {
+        "entryId": "tool:locker",
+        "entryRevision": 1,
+        "displayName": "Locker",
+        "versionScheme": "semver",
+        "identity": [
+          {
+            "kind": "invocation-name",
+            "names": [
+              "locker"
+            ]
+          }
+        ],
+        "default": {
+          "sandboxPolicy": {
+            "version": "0.9.0-alpha",
+            "filesystem": {
+              "readonlyPaths": [
+                "${git_prefix}/locker"
+              ]
+            },
+            "network": {
+              "egress": {
+                "deny": [
+                  {
+                    "to": [
+                      {
+                        "cidr": "192.0.2.0/23"
+                      }
+                    ]
+                  },
+                  {
+                    "to": [
+                      {
+                        "cidr": "198.51.100.0/24"
+                      }
+                    ],
+                    "ports": [
+                      {
+                        "protocol": "tcp",
+                        "port": 25
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "dependencies": [
+            {
+              "entryId": "tool:helper"
+            }
+          ]
+        },
+        "provenance": {
+          "method": "fixture",
+          "sourceRevision": "fixture"
+        }
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "a dependency reference that names intents contributes the dependency base plus those intents",
+      "tools": "fetcher",
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "policy": {
+          "version": "0.9.0-alpha",
+          "filesystem": {
+            "readonlyPaths": [
+              "/g/fetcher",
+              "/g/helper"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.0/24"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                },
+                {
+                  "to": [
+                    {
+                      "cidr": "203.0.113.0/24"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-02.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "status": "matched_default",
+              "matches": [
+                {
+                  "entryId": "tool:fetcher",
+                  "entryRevision": 1,
+                  "matchedIdentities": [
+                    {
+                      "kind": "invocation-name",
+                      "strength": "weak"
+                    }
+                  ],
+                  "versionSelection": {
+                    "status": "matched_default"
+                  },
+                  "intentSelection": {
+                    "mode": "all",
+                    "selected": []
+                  }
+                }
+              ]
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:helper",
+              "entryRevision": 1,
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "named",
+                "selected": [
+                  "sync"
+                ]
+              }
+            }
+          ],
+          "warnings": [
+            "input 0 ('fetcher') matched tool:fetcher only by invocation name (weak identity)"
+          ]
+        }
+      }
+    },
+    {
+      "name": "a plain dependency reference contributes only the dependency base (intent mode none)",
+      "tools": "locker",
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "policy": {
+          "version": "0.9.0-alpha",
+          "filesystem": {
+            "readonlyPaths": [
+              "/g/locker",
+              "/g/helper"
+            ]
+          },
+          "network": {
+            "egress": {
+              "deny": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.0/23"
+                    }
+                  ]
+                },
+                {
+                  "to": [
+                    {
+                      "cidr": "198.51.100.0/24"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 25
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-02.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "status": "matched_default",
+              "matches": [
+                {
+                  "entryId": "tool:locker",
+                  "entryRevision": 1,
+                  "matchedIdentities": [
+                    {
+                      "kind": "invocation-name",
+                      "strength": "weak"
+                    }
+                  ],
+                  "versionSelection": {
+                    "status": "matched_default"
+                  },
+                  "intentSelection": {
+                    "mode": "all",
+                    "selected": []
+                  }
+                }
+              ]
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:helper",
+              "entryRevision": 1,
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            }
+          ],
+          "warnings": [
+            "input 0 ('locker') matched tool:locker only by invocation name (weak identity)"
+          ]
+        }
+      }
+    },
+    {
+      "name": "the dependency requested directly without an intent contributes all of its intents",
+      "tools": [
+        "helper",
+        "fetcher"
+      ],
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "policy": {
+          "version": "0.9.0-alpha",
+          "filesystem": {
+            "readonlyPaths": [
+              "/g/helper",
+              "/g/fetcher"
+            ],
+            "readwritePaths": [
+              "/tmp/helper-store"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "203.0.113.0/24"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                },
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.0/24"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-02.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "status": "matched_default",
+              "matches": [
+                {
+                  "entryId": "tool:helper",
+                  "entryRevision": 1,
+                  "matchedIdentities": [
+                    {
+                      "kind": "invocation-name",
+                      "strength": "weak"
+                    }
+                  ],
+                  "versionSelection": {
+                    "status": "matched_default"
+                  },
+                  "intentSelection": {
+                    "mode": "all",
+                    "selected": [
+                      "store",
+                      "sync"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "inputIndex": 1,
+              "status": "matched_default",
+              "matches": [
+                {
+                  "entryId": "tool:fetcher",
+                  "entryRevision": 1,
+                  "matchedIdentities": [
+                    {
+                      "kind": "invocation-name",
+                      "strength": "weak"
+                    }
+                  ],
+                  "versionSelection": {
+                    "status": "matched_default"
+                  },
+                  "intentSelection": {
+                    "mode": "all",
+                    "selected": []
+                  }
+                }
+              ]
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:helper",
+              "entryRevision": 1,
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "named",
+                "selected": [
+                  "sync"
+                ]
+              }
+            }
+          ],
+          "warnings": [
+            "input 0 ('helper') matched tool:helper only by invocation name (weak identity)",
+            "input 1 ('fetcher') matched tool:fetcher only by invocation name (weak identity)"
+          ]
+        }
+      }
+    },
+    {
+      "name": "a catalog egress deny that overlaps another tool's required allow is removed in full; a non-overlapping deny stays",
+      "tools": [
+        "fetcher",
+        "locker"
+      ],
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "policy": {
+          "version": "0.9.0-alpha",
+          "filesystem": {
+            "readonlyPaths": [
+              "/g/fetcher",
+              "/g/locker",
+              "/g/helper"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.0/24"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                },
+                {
+                  "to": [
+                    {
+                      "cidr": "203.0.113.0/24"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                }
+              ],
+              "deny": [
+                {
+                  "to": [
+                    {
+                      "cidr": "198.51.100.0/24"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 25
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-02.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "status": "matched_default",
+              "matches": [
+                {
+                  "entryId": "tool:fetcher",
+                  "entryRevision": 1,
+                  "matchedIdentities": [
+                    {
+                      "kind": "invocation-name",
+                      "strength": "weak"
+                    }
+                  ],
+                  "versionSelection": {
+                    "status": "matched_default"
+                  },
+                  "intentSelection": {
+                    "mode": "all",
+                    "selected": []
+                  }
+                }
+              ]
+            },
+            {
+              "inputIndex": 1,
+              "status": "matched_default",
+              "matches": [
+                {
+                  "entryId": "tool:locker",
+                  "entryRevision": 1,
+                  "matchedIdentities": [
+                    {
+                      "kind": "invocation-name",
+                      "strength": "weak"
+                    }
+                  ],
+                  "versionSelection": {
+                    "status": "matched_default"
+                  },
+                  "intentSelection": {
+                    "mode": "all",
+                    "selected": []
+                  }
+                }
+              ]
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:helper",
+              "entryRevision": 1,
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            },
+            {
+              "entryId": "tool:helper",
+              "entryRevision": 1,
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "named",
+                "selected": [
+                  "sync"
+                ]
+              }
+            }
+          ],
+          "warnings": [
+            "input 0 ('fetcher') matched tool:fetcher only by invocation name (weak identity)",
+            "input 1 ('locker') matched tool:locker only by invocation name (weak identity)",
+            "removed catalog egress deny [192.0.2.0/23; any protocol and port] (tool:locker) because it overlaps required egress allow [192.0.2.0/24; tcp/443] (tool:fetcher); the entire deny rule was removed, so other grants may now apply throughout [192.0.2.0/23; any protocol and port]"
+          ]
+        }
+      }
+    }
+  ]
+}

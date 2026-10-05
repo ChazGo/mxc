@@ -442,6 +442,8 @@ impl VersionSelection {
 pub enum IntentMode {
     Named,
     All,
+    /// A dependency contributing its base only.
+    None,
     Unsupported,
 }
 
@@ -450,6 +452,7 @@ impl IntentMode {
         match self {
             IntentMode::Named => "named",
             IntentMode::All => "all",
+            IntentMode::None => "none",
             IntentMode::Unsupported => "unsupported",
         }
     }
@@ -732,14 +735,14 @@ fn intents_json(intents: &[CatalogIntentMetadata]) -> Json {
 pub struct CatalogAdditionsMetadata {
     pub dependency_entry_ids: Vec<String>,
     pub intent_additions: Vec<CatalogIntentMetadata>,
-    pub intents: Vec<CatalogIntentMetadata>,
+    pub new_intents: Vec<CatalogIntentMetadata>,
 }
 
 impl CatalogAdditionsMetadata {
     fn write(&self, o: &mut JsonObject) {
         o.insert("dependencyEntryIds", strings(&self.dependency_entry_ids));
         o.insert("intentAdditions", intents_json(&self.intent_additions));
-        o.insert("intents", intents_json(&self.intents));
+        o.insert("newIntents", intents_json(&self.new_intents));
     }
 }
 

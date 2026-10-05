@@ -8,9 +8,9 @@
 use crate::catalog::{Additions, CatalogPolicy};
 use crate::json::{canonical_json, cmp_utf16, Json, JsonObject};
 use crate::model::{FilesystemPolicy, Platform, SandboxPolicy};
+use crate::netrule::{describe_rule, rules_overlap};
 use crate::paths::{normalize_path, path_exact_segments, path_key_segments};
 use crate::text::symbol_matches;
-use std::collections::HashSet;
 
 /// One selected (entry, base, additions) contribution.
 #[derive(Clone, Debug)]
@@ -125,7 +125,7 @@ pub fn compose_check(components: &[Component<'_>]) -> Result<(), String> {
             }
         }
     }
-    if verbatim_network(components).is_some() {
+    if components.iter().filter(|c| c.needs_network()).count() <= 1 {
         return Ok(());
     }
     for component in components {
@@ -140,7 +140,7 @@ pub fn compose_check(components: &[Component<'_>]) -> Result<(), String> {
                 ));
             }
             for (field, _) in value.as_object().into_iter().flat_map(|o| o.iter()) {
-                if !matches!(field, "default" | "allow") {
+                if !matches!(field, "default" | "allow" | "deny") {
                     return Err(format!(
                         "'{}' uses 'network.egress.{field}', which cannot be combined with other network requirements",
                         component.entry_id
@@ -156,17 +156,6 @@ pub fn compose_check(components: &[Component<'_>]) -> Result<(), String> {
 /// catalog-supported field without cross-policy composition.
 fn is_passthrough(components: &[Component<'_>]) -> bool {
     components.len() == 1 && !components[0].has_additions()
-}
-
-/// The one component whose base network passes through unchanged: the only
-/// component needing network, contributing no outbound additions.
-fn verbatim_network<'c, 'a>(components: &'c [Component<'a>]) -> Option<&'c Component<'a>> {
-    let mut needing = components.iter().filter(|c| c.needs_network());
-    let only = needing.next()?;
-    if needing.next().is_some() || only.additions.iter().any(|a| !a.egress_allow.is_empty()) {
-        return None;
-    }
-    Some(only)
 }
 
 /// The composed policy and the composition diagnostics.
@@ -322,13 +311,7 @@ pub fn compose_policy(
 
     let root = components[0].base;
     let passthrough = is_passthrough(components);
-    let network = if passthrough {
-        root.field("network").cloned()
-    } else if let Some(only) = verbatim_network(components) {
-        only.base.field("network").cloned()
-    } else {
-        compose_network(components)
-    };
+    let network = compose_network(components, &mut warnings);
     Composed {
         policy: SandboxPolicy {
             version: root.version().to_string(),
@@ -343,42 +326,115 @@ pub fn compose_policy(
     }
 }
 
-/// Unions the outbound allow rules under a deny-by-default egress.
-fn compose_network(components: &[Component<'_>]) -> Option<Json> {
-    let mut seen = HashSet::new();
-    let mut allow = Vec::new();
-    let mut any = false;
-    for component in components {
-        if let Some(network) = component.base.field("network") {
-            any = true;
-            let rules = network
-                .get("egress")
-                .and_then(|e| e.get("allow"))
-                .and_then(Json::as_array);
-            for rule in rules.into_iter().flatten() {
-                if seen.insert(canonical_json(rule)) {
-                    allow.push(rule.clone());
+/// Outbound rules keyed by canonical JSON, with the entries contributing each.
+#[derive(Default)]
+struct Rules {
+    items: Vec<(String, Json, Vec<String>)>,
+}
+
+impl Rules {
+    fn add(&mut self, rule: &Json, entry_id: &str) {
+        let key = canonical_json(rule);
+        match self.items.iter_mut().find(|(k, _, _)| *k == key) {
+            Some((_, _, ids)) => {
+                if !ids.iter().any(|id| id == entry_id) {
+                    ids.push(entry_id.to_string());
                 }
             }
+            None => self
+                .items
+                .push((key, rule.clone(), vec![entry_id.to_string()])),
+        }
+    }
+
+    fn json(&self) -> Option<Json> {
+        (!self.items.is_empty())
+            .then(|| Json::Array(self.items.iter().map(|(_, rule, _)| rule.clone()).collect()))
+    }
+}
+
+fn egress_rules<'j>(network: Option<&'j Json>, field: &str) -> impl Iterator<Item = &'j Json> {
+    network
+        .and_then(|n| n.get("egress"))
+        .and_then(|e| e.get(field))
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+}
+
+/// Composes network requirements (design §4.5). A single component needing
+/// network keeps its own network section, plus its outbound additions. Several
+/// such components union their outbound allow rules and catalog egress denies
+/// under a deny-by-default egress. Either way, a catalog deny overlapping any
+/// required allow rule is removed in full, with a warning.
+fn compose_network(components: &[Component<'_>], warnings: &mut Vec<String>) -> Option<Json> {
+    let needing: Vec<&Component<'_>> = components.iter().filter(|c| c.needs_network()).collect();
+    if needing.is_empty() {
+        return None;
+    }
+    let mut allow = Rules::default();
+    let mut deny = Rules::default();
+    for component in &needing {
+        let network = component.base.field("network");
+        for rule in egress_rules(network, "allow") {
+            allow.add(rule, component.entry_id);
         }
         for additions in &component.additions {
             for rule in &additions.egress_allow {
-                any = true;
-                if seen.insert(canonical_json(rule)) {
-                    allow.push(rule.clone());
-                }
+                allow.add(rule, component.entry_id);
             }
         }
+        for rule in egress_rules(network, "deny") {
+            deny.add(rule, component.entry_id);
+        }
     }
-    if !any {
-        return None;
-    }
+    deny.items.retain(|(_, rule, deny_ids)| {
+        let Some((_, required, allow_ids)) = allow
+            .items
+            .iter()
+            .find(|(_, a, _)| rules_overlap(a, rule))
+        else {
+            return true;
+        };
+        warnings.push(format!(
+            "removed catalog egress deny {} ({}) because it overlaps required egress allow {} ({}); the entire deny rule was removed, so other grants may now apply throughout {}",
+            describe_rule(rule),
+            deny_ids.join(", "),
+            describe_rule(required),
+            allow_ids.join(", "),
+            describe_rule(rule)
+        ));
+        false
+    });
+
+    let single_base = match needing.as_slice() {
+        [only] => only.base.field("network").and_then(Json::as_object),
+        _ => None,
+    };
     let mut egress = JsonObject::new();
-    egress.insert("default", "deny".into());
-    if !allow.is_empty() {
-        egress.insert("allow", Json::Array(allow));
+    match single_base.and_then(|b| b.get("egress")) {
+        Some(base_egress) => {
+            if let Some(default) = base_egress.get("default") {
+                egress.insert("default", default.clone());
+            }
+        }
+        None if single_base.is_some() => {}
+        None => egress.insert("default", "deny".into()),
+    }
+    if let Some(rules) = allow.json() {
+        egress.insert("allow", rules);
+    }
+    if let Some(rules) = deny.json() {
+        egress.insert("deny", rules);
     }
     let mut network = JsonObject::new();
-    network.insert("egress", Json::Object(egress));
+    if !egress.is_empty() || single_base.is_some_and(|b| b.contains_key("egress")) {
+        network.insert("egress", Json::Object(egress));
+    }
+    for (key, value) in single_base.into_iter().flat_map(|b| b.iter()) {
+        if key != "egress" {
+            network.insert(key, value.clone());
+        }
+    }
     Some(Json::Object(network))
 }

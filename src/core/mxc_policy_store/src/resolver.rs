@@ -96,7 +96,7 @@ fn additions_metadata(overlay: &Overlay) -> CatalogAdditionsMetadata {
     CatalogAdditionsMetadata {
         dependency_entry_ids: dependency_ids(&overlay.dependencies),
         intent_additions: intent_metadata(&overlay.intent_additions),
-        intents: intent_metadata(&overlay.intents),
+        new_intents: intent_metadata(&overlay.new_intents),
     }
 }
 

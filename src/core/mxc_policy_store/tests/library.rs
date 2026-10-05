@@ -944,8 +944,8 @@ fn dependency_diagnostics_keep_distinct_ranges_sorted() {
             .get("resolvedDependencies")
             .unwrap(),
         &j(r#"[
-            {"entryId":"tool:c","entryRevision":1,"versionSelection":{"status":"matched_default"},"intentSelection":{"mode":"all","selected":["run"]}},
-            {"entryId":"tool:c","entryRevision":1,"requiredVersionRange":"vers:semver/>=2.0.0","versionSelection":{"status":"matched_default"},"intentSelection":{"mode":"all","selected":["run"]}}]"#)
+            {"entryId":"tool:c","entryRevision":1,"versionSelection":{"status":"matched_default"},"intentSelection":{"mode":"none","selected":[]}},
+            {"entryId":"tool:c","entryRevision":1,"requiredVersionRange":"vers:semver/>=2.0.0","versionSelection":{"status":"matched_default"},"intentSelection":{"mode":"none","selected":[]}}]"#)
     );
     assert_eq!(
         result.policy.unwrap().to_json(),
@@ -985,6 +985,13 @@ fn unsupported_combinations_fail_rather_than_broaden() {
                 "tool:u",
                 &with_default(&format!(r#"{{"version":"{V}","timeoutMs":5}}"#), ""),
             ),
+            entry(
+                "tool:i",
+                &with_default(
+                    &format!(r#"{{"version":"{V}","network":{{"ingress":{{"default":"deny"}}}}}}"#),
+                    "",
+                ),
+            ),
         ]),
         linux_x64(),
     );
@@ -995,8 +1002,21 @@ fn unsupported_combinations_fail_rather_than_broaden() {
         error.message(),
         "[policy_validation] selected entries cannot be composed: mixed sandboxPolicy.version values (0.8.0-alpha, 0.9.0-alpha)"
     );
+    // A deny that does not overlap another pair's required allow stays.
     assert_eq!(
-        reason_of(catalog.resolve_sandbox_policy(vec!["d", "n"], &weak())),
+        catalog
+            .resolve_sandbox_policy(vec!["d", "n"], &weak())
+            .unwrap()
+            .unwrap()
+            .network,
+        Some(j(&format!(
+            r#"{{"egress":{{"default":"deny","allow":[{}],"deny":[{{"ports":[{{"port":22}}]}}]}}}}"#,
+            tcp("192.0.2.1/32", 443)
+        )))
+    );
+    // Non-egress network keys cannot be combined across network requirements.
+    assert_eq!(
+        reason_of(catalog.resolve_sandbox_policy(vec!["i", "n"], &weak())),
         ErrorReason::CompositionConflict
     );
     assert_eq!(
@@ -1032,7 +1052,7 @@ fn inspection_over_the_bundled_catalog() {
     let info = get_catalog_info().unwrap();
     assert_eq!(
         info.to_json(),
-        j(r#"{"catalogSchemaVersion":"1","catalogRevision":"2026-10-02.1"}"#)
+        j(r#"{"catalogSchemaVersion":"1","catalogRevision":"2026-10-05.1"}"#)
     );
     let entries = list_catalog_entries().unwrap();
     let ids: Vec<&str> = entries.iter().map(|e| e.entry_id.as_str()).collect();
@@ -1046,8 +1066,8 @@ fn inspection_over_the_bundled_catalog() {
     assert_eq!(
         git.get("versionVariants").unwrap(),
         &j(r#"[
-          {"versionRange":"vers:intdot/>=2.40|<2.50","dependencyEntryIds":[],"intentAdditions":[{"name":"push","dependencyEntryIds":["tool:ssh"]}],"intents":[]},
-          {"versionRange":"vers:intdot/>=2.50|<3","dependencyEntryIds":[],"intentAdditions":[],"intents":[{"name":"bundle-fetch","exampleSubcommands":["fetch --bundle-uri"],"dependencyEntryIds":[]}]}]"#)
+          {"versionRange":"vers:intdot/>=2.40|<2.50","dependencyEntryIds":[],"intentAdditions":[{"name":"push","dependencyEntryIds":["tool:ssh"]}],"newIntents":[]},
+          {"versionRange":"vers:intdot/>=2.50|<3","dependencyEntryIds":[],"intentAdditions":[],"newIntents":[{"name":"bundle-fetch","exampleSubcommands":["clone --bundle-uri=<uri>"],"dependencyEntryIds":[]}]}]"#)
     );
     let text = Json::Array(entries.iter().map(|e| e.to_json()).collect()).to_compact_string();
     assert!(!text.contains("Paths") && !text.contains("${") && !text.contains("sandboxPolicy\""));
@@ -1354,16 +1374,21 @@ fn validation_overlays_are_additive_only() {
         "extends an intent the default does not declare",
     );
     validate_err(
-        overlay(r#""intents":{"run":{}}"#),
+        overlay(r#""newIntents":{"run":{}}"#),
         "redeclares an inherited intent",
     );
     validate_err(
-        overlay(r#""intents":{"Run":{}}"#),
+        overlay(r#""newIntents":{"Run":{}}"#),
         "is not a valid intent name",
     );
     validate_err(
-        overlay(r#""intents":{"x":{"exampleSubcommands":[]}}"#),
+        overlay(r#""newIntents":{"x":{"exampleSubcommands":[]}}"#),
         "exampleSubcommands",
+    );
+    validate(overlay(r#""newIntents":{"x":{}}"#)).unwrap();
+    validate_err(
+        overlay(r#""intents":{"x":{}}"#),
+        "unsupported field 'entries[0].platformVariants[0].intents'",
     );
 }
 
@@ -1397,8 +1422,8 @@ fn validation_version_variants() {
     validate_err(
         vec![entry(
             "tool:a",
-            r#"{"platformVariants":[{"when":{"platform":"linux"},"intents":{"x":{}}}],
-                "versionVariants":[{"versionRange":"vers:semver/>=1.0.0","intents":{"x":{}}}]}"#,
+            r#"{"platformVariants":[{"when":{"platform":"linux"},"newIntents":{"x":{}}}],
+                "versionVariants":[{"versionRange":"vers:semver/>=1.0.0","newIntents":{"x":{}}}]}"#,
         )],
         "'tool:a' on linux/x64 (vers:semver/>=1.0.0): intent 'x' from version range 'vers:semver/>=1.0.0' is already declared by another overlay",
     );
@@ -1427,16 +1452,202 @@ fn validation_materializes_composition_limits() {
         ],
         "'tool:b' uses 'timeoutMs', which has no v1 cross-policy composition rule",
     );
+    // An overlapping catalog deny is removed during materialization, not rejected.
+    validate(vec![entry(
+        "tool:a",
+        &format!(
+            r#"{{"default":{{"sandboxPolicy":{{"version":"{V}","network":{{"egress":{{"deny":[{{"ports":[{{"port":443}}]}}]}}}}}},
+                 "intents":{{"net":{{"policyAdditions":{{"network":{{"egress":{{"allow":[{}]}}}}}}}}}}}}}}"#,
+            tcp("192.0.2.1/32", 443)
+        ),
+    )])
+    .unwrap();
     err(
-        vec![entry(
-            "tool:a",
-            &format!(
-                r#"{{"default":{{"sandboxPolicy":{{"version":"{V}","network":{{"egress":{{"deny":[{{"ports":[{{"port":22}}]}}]}}}}}},
-                     "intents":{{"net":{{"policyAdditions":{{"network":{{"egress":{{"allow":[{}]}}}}}}}}}}}}}}"#,
-                tcp("192.0.2.1/32", 443)
+        vec![
+            entry("tool:a", &dep("tool:b")),
+            entry(
+                "tool:a2",
+                &format!(
+                    r#"{{"default":{{"sandboxPolicy":{{"version":"{V}","network":{{"egress":{{"allow":[{}]}}}}}},"dependencies":[{{"entryId":"tool:b"}}]}}}}"#,
+                    tcp("192.0.2.1/32", 443)
+                ),
             ),
-        )],
-        "'tool:a' uses 'network.egress.deny', which cannot be combined with other network requirements",
+            entry(
+                "tool:b",
+                &with_default(
+                    &format!(
+                        r#"{{"version":"{V}","network":{{"ingress":{{"default":"deny"}},"egress":{{"allow":[{}]}}}}}}"#,
+                        tcp("192.0.2.2/32", 443)
+                    ),
+                    "",
+                ),
+            ),
+        ],
+        "'tool:b' uses 'network.ingress', which cannot be combined with other network requirements",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Dependency intent references and egress-deny removal
+// ---------------------------------------------------------------------------
+
+fn dep_intents(id: &str, intents: &str) -> String {
+    format!(
+        r#"{{"default":{{"sandboxPolicy":{{"version":"{V}"}},"dependencies":[{{"entryId":"{id}","intents":{intents}}}]}}}}"#
+    )
+}
+
+fn helper() -> Json {
+    entry(
+        "tool:h",
+        &format!(
+            r#"{{"default":{{"sandboxPolicy":{{"version":"{V}","filesystem":{{"readonlyPaths":["${{git_prefix}}/h"]}}}},
+                "intents":{{"store":{{"policyAdditions":{{"filesystem":{{"readwritePaths":["${{temp_dir}}/h"]}}}}}},
+                            "sync":{{"policyAdditions":{{"network":{{"egress":{{"allow":[{}]}}}}}}}}}}}},
+              "versionVariants":[{{"versionRange":"vers:semver/>=1.0.0","newIntents":{{"late":{{}}}}}}]}}"#,
+            tcp("203.0.113.0/24", 443)
+        ),
+    )
+}
+
+#[test]
+fn dependency_references_contribute_base_only_unless_they_name_intents() {
+    let catalog = catalog_for(
+        revision(vec![
+            entry("tool:a", &dep("tool:h")),
+            entry("tool:b", &dep_intents("tool:h", r#"["sync","store"]"#)),
+            helper(),
+        ]),
+        linux_x64(),
+    );
+    let ctx = weak().symbol("git_prefix", "/g").symbol("temp_dir", "/t");
+    let base_only = catalog
+        .resolve_sandbox_policy_with_diagnostics("a", &ctx)
+        .unwrap();
+    assert_eq!(
+        fs_json(&base_only.policy),
+        j(r#"{"readonlyPaths":["/g/h"]}"#)
+    );
+    assert_eq!(egress(&base_only), None);
+    let named = catalog
+        .resolve_sandbox_policy_with_diagnostics("b", &ctx)
+        .unwrap();
+    assert_eq!(
+        fs_json(&named.policy),
+        j(r#"{"readonlyPaths":["/g/h"],"readwritePaths":["/t/h"]}"#)
+    );
+    assert_eq!(
+        named.policy.as_ref().unwrap().network,
+        Some(j(&format!(
+            r#"{{"egress":{{"default":"deny","allow":[{}]}}}}"#,
+            tcp("203.0.113.0/24", 443)
+        )))
+    );
+    assert_eq!(
+        named
+            .to_json()
+            .get("diagnostics")
+            .unwrap()
+            .get("resolvedDependencies")
+            .unwrap(),
+        &j(
+            r#"[{"entryId":"tool:h","entryRevision":1,"versionSelection":{"status":"matched_default"},"intentSelection":{"mode":"named","selected":["store","sync"]}}]"#
+        )
+    );
+}
+
+#[test]
+fn dependency_intent_references_are_validated() {
+    validate(vec![
+        entry("tool:a", &dep_intents("tool:h", r#"["sync"]"#)),
+        helper(),
+    ])
+    .unwrap();
+    // Dependencies use the default only, so a version-range intent is missing.
+    validate_err(
+        vec![
+            entry("tool:a", &dep_intents("tool:h", r#"["late"]"#)),
+            helper(),
+        ],
+        "tool:a -> tool:h names intent 'late', which tool:h does not define",
+    );
+    validate_err(
+        vec![
+            entry("tool:a", &dep_intents("tool:h", r#"["nope"]"#)),
+            helper(),
+        ],
+        "names intent 'nope'",
+    );
+    validate_err(
+        vec![entry("tool:a", &dep_intents("tool:h", "[]")), helper()],
+        "intents",
+    );
+    validate_err(
+        vec![
+            entry("tool:a", &dep_intents("tool:h", r#"["sync","sync"]"#)),
+            helper(),
+        ],
+        "intents",
+    );
+    validate_err(
+        vec![
+            entry("tool:a", &dep_intents("tool:h", r#"["Sync"]"#)),
+            helper(),
+        ],
+        "intent name",
+    );
+}
+
+#[test]
+fn overlapping_catalog_egress_denies_are_removed_in_full_with_diagnostics() {
+    let deny = |rules: &str| {
+        with_default(
+            &format!(r#"{{"version":"{V}","network":{{"egress":{{"deny":[{rules}]}}}}}}"#),
+            "",
+        )
+    };
+    let catalog = catalog_for(
+        revision(vec![
+            entry(
+                "tool:n",
+                &with_default(
+                    &format!(
+                        r#"{{"version":"{V}","network":{{"egress":{{"allow":[{}]}}}}}}"#,
+                        tcp("192.0.2.10/32", 443)
+                    ),
+                    "",
+                ),
+            ),
+            entry(
+                "tool:d",
+                &deny(
+                    r#"{"to":[{"cidr":"192.0.2.0/24","except":["192.0.2.128/25"]}],"ports":[{"protocol":"tcp","port":400,"endPort":500}]},
+                       {"to":[{"cidr":"192.0.2.0/24","except":["192.0.2.0/28"]}]},
+                       {"to":[{"cidr":"2001:db8::/32"}]},
+                       {"ports":[{"protocol":"udp","port":443}]}"#,
+                ),
+            ),
+        ]),
+        linux_x64(),
+    );
+    let result = catalog
+        .resolve_sandbox_policy_with_diagnostics(vec!["n", "d"], &weak())
+        .unwrap();
+    assert_eq!(
+        result.policy.as_ref().unwrap().network,
+        Some(j(&format!(
+            r#"{{"egress":{{"default":"deny","allow":[{}],"deny":[
+                {{"to":[{{"cidr":"192.0.2.0/24","except":["192.0.2.0/28"]}}]}},
+                {{"to":[{{"cidr":"2001:db8::/32"}}]}},
+                {{"ports":[{{"protocol":"udp","port":443}}]}}]}}}}"#,
+            tcp("192.0.2.10/32", 443)
+        )))
+    );
+    assert_eq!(
+        messages(&result.diagnostics.warnings),
+        "input 0 ('n') matched tool:n only by invocation name (weak identity)\n\
+         input 1 ('d') matched tool:d only by invocation name (weak identity)\n\
+         removed catalog egress deny [192.0.2.0/24 except 192.0.2.128/25; tcp/400-500] (tool:d) because it overlaps required egress allow [192.0.2.10/32; tcp/443] (tool:n); the entire deny rule was removed, so other grants may now apply throughout [192.0.2.0/24 except 192.0.2.128/25; tcp/400-500]"
     );
 }
 

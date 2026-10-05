@@ -131,6 +131,9 @@ pub struct Dependency {
     /// A `vers` range in the target entry's scheme. It is recorded in
     /// diagnostics; it does not select a version overlay.
     pub version_range: Option<String>,
+    /// Intents of the target whose additions the reference adds to the
+    /// target's base. `None` contributes the base only.
+    pub intents: Option<Vec<String>>,
 }
 
 /// Additive policy data (`policyAdditions`): v1 allows only read-only and
@@ -165,8 +168,8 @@ pub struct Overlay {
     pub dependencies: Vec<Dependency>,
     /// Extensions of intents the default declares.
     pub intent_additions: Vec<(String, IntentDefinition)>,
-    /// New intents.
-    pub intents: Vec<(String, IntentDefinition)>,
+    /// Intents the default does not declare (`newIntents`).
+    pub new_intents: Vec<(String, IntentDefinition)>,
 }
 
 /// The unversioned default every entry has exactly once.
@@ -441,11 +444,26 @@ fn validate_network_rules(value: &Json, at: &str, deny_list: bool) -> Result<()>
                 };
                 only_fields(peer, &["cidr", "except"], &peer_at)?;
                 let cidr = non_empty_string(peer.get("cidr"), &format!("{peer_at}.cidr"))?;
+                let Some(block) = crate::netrule::parse_cidr(&cidr) else {
+                    return fail(format!("'{peer_at}.cidr' '{cidr}' is not a valid CIDR"));
+                };
                 if !deny_list && cidr.ends_with("/0") {
                     return fail(format!("'{peer_at}.cidr' is a wildcard network grant"));
                 }
                 if let Some(except) = peer.get("except") {
-                    string_array(Some(except), &format!("{peer_at}.except"), 0)?;
+                    let except_at = format!("{peer_at}.except");
+                    for (i, value) in string_array(Some(except), &except_at, 0)?
+                        .iter()
+                        .enumerate()
+                    {
+                        let inside = crate::netrule::parse_cidr(value)
+                            .is_some_and(|excluded| block.contains(excluded));
+                        if !inside {
+                            return fail(format!(
+                                "'{except_at}[{i}]' '{value}' must be a CIDR of the same family within '{cidr}'"
+                            ));
+                        }
+                    }
                 }
             }
         }
@@ -463,6 +481,11 @@ fn validate_network_rules(value: &Json, at: &str, deny_list: bool) -> Result<()>
                 if let Some(protocol) = port.get("protocol") {
                     if !matches!(protocol.as_str(), Some("tcp" | "udp" | "icmp" | "any")) {
                         return fail(format!("'{port_at}.protocol' is unsupported"));
+                    }
+                    if protocol.as_str() == Some("icmp")
+                        && (port.contains_key("port") || port.contains_key("endPort"))
+                    {
+                        return fail(format!("'{port_at}' must not set a port for icmp"));
                     }
                 }
                 for key in ["port", "endPort"] {
@@ -704,7 +727,7 @@ fn validate_dependencies(raw: Option<&Json>, at: &str) -> Result<Vec<Dependency>
         let Some(dependency) = dependency.as_object() else {
             return fail(format!("'{dep_at}' must be an object"));
         };
-        only_fields(dependency, &["entryId", "versionRange"], &dep_at)?;
+        only_fields(dependency, &["entryId", "versionRange", "intents"], &dep_at)?;
         let entry_id = non_empty_string(dependency.get("entryId"), &format!("{dep_at}.entryId"))?;
         if !seen.insert(entry_id.clone()) {
             return fail(format!("'{dep_at}.entryId' '{entry_id}' is listed twice"));
@@ -719,9 +742,28 @@ fn validate_dependencies(raw: Option<&Json>, at: &str) -> Result<Vec<Dependency>
             }
             version_range = Some(range);
         }
+        let intents = match dependency.get("intents") {
+            None => None,
+            Some(value) => {
+                let names = string_array(Some(value), &format!("{dep_at}.intents"), 1)?;
+                let mut unique = HashSet::new();
+                for name in &names {
+                    if !is_intent_name(name) {
+                        return fail(format!(
+                            "'{dep_at}.intents' entry '{name}' is not a valid intent name"
+                        ));
+                    }
+                    if !unique.insert(name.as_str()) {
+                        return fail(format!("'{dep_at}.intents' lists '{name}' twice"));
+                    }
+                }
+                Some(names)
+            }
+        };
         list.push(Dependency {
             entry_id,
             version_range,
+            intents,
         });
     }
     Ok(list)
@@ -872,15 +914,19 @@ fn validate_overlay(
     for (name, _) in &intent_additions {
         if !default_intents.iter().any(|(n, _)| n == name) {
             return fail(format!(
-                "'{at}.intentAdditions.{name}' extends an intent the default does not declare; use 'intents' to declare a new one"
+                "'{at}.intentAdditions.{name}' extends an intent the default does not declare; use 'newIntents' to declare a new one"
             ));
         }
     }
-    let intents = validate_intents(item.get("intents"), &format!("{at}.intents"), contract)?;
-    for (name, _) in &intents {
+    let new_intents = validate_intents(
+        item.get("newIntents"),
+        &format!("{at}.newIntents"),
+        contract,
+    )?;
+    for (name, _) in &new_intents {
         if default_intents.iter().any(|(n, _)| n == name) {
             return fail(format!(
-                "'{at}.intents.{name}' redeclares an inherited intent; use 'intentAdditions' to extend it"
+                "'{at}.newIntents.{name}' redeclares an inherited intent; use 'intentAdditions' to extend it"
             ));
         }
     }
@@ -895,7 +941,7 @@ fn validate_overlay(
             &format!("{at}.dependencies"),
         )?,
         intent_additions,
-        intents,
+        new_intents,
     })
 }
 
@@ -903,7 +949,7 @@ const OVERLAY_FIELDS: [&str; 4] = [
     "policyAdditions",
     "dependencies",
     "intentAdditions",
-    "intents",
+    "newIntents",
 ];
 
 fn validate_default(
@@ -1169,7 +1215,7 @@ impl CatalogEntry {
         for overlay in overlays {
             out.extend(&overlay.dependencies);
             out.extend(intents(&overlay.intent_additions));
-            out.extend(intents(&overlay.intents));
+            out.extend(intents(&overlay.new_intents));
         }
         out
     }
