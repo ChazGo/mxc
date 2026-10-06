@@ -188,6 +188,35 @@ the SDK does not create runtime containment objects or factories.
 `UiPolicy` types for cross-backend restrictions. Backend-specific settings
 remain on the selected containment configuration.
 
+## Tool requirements lookup (prototype)
+
+> **PROTOTYPE, pending API review.** Not part of MXC 1.0; names and shapes
+> may change. The result is a best-effort floor from the catalog bundled in
+> the SDK, not a guarantee, and it never grants access by itself. See
+> [`docs/policy-store/`](../../docs/policy-store/README.md).
+
+```ts
+import {
+  resolveToolRequirementsWithDiagnostics,
+  type ContainerRequest,
+} from '@microsoft/mxc-sdk/v1';
+
+const { requirements, diagnostics } = await resolveToolRequirementsWithDiagnostics(
+  { invocationName: 'git', packageUrl: 'pkg:generic/git', detectedVersion: '2.45.1', intent: 'push' },
+  { projectRoot: '/work/repo', symbols: { git_prefix: '/usr', ssh_prefix: '/usr' } },
+);
+console.log(diagnostics.tools[0].status); // 'matched_version'
+if (requirements) {
+  const request: ContainerRequest = { ...requirements, command: 'git push' };
+}
+```
+
+`resolveToolRequirements` and `resolveToolRequirementsWithDiagnostics`
+return promises and accept one tool or an array. `getCatalogInfo` and
+`listCatalogEntries` inspect the bundled catalog. Failures reject with
+`MxcError`, whose `details.reason` carries a stable reason such as
+`invalid_context`.
+
 ## Public V1 types
 
 | Purpose | TypeScript type |

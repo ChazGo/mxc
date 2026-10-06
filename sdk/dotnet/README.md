@@ -199,6 +199,36 @@ result. They accept the corresponding operation options.
 Backend/platform discovery, errors, telemetry, and helpers are also in
 `Microsoft.Mxc.Sdk.V1`; no public SDK types remain outside it.
 
+## Tool requirements lookup (prototype)
+
+> **PROTOTYPE, pending API review.** Not part of MXC 1.0; names and shapes
+> may change. The result is a best-effort floor from the catalog bundled in
+> the SDK, not a guarantee, and it never grants access by itself. See
+> [`docs/policy-store/`](../../docs/policy-store/README.md).
+
+```csharp
+using Microsoft.Mxc.Sdk.V1;
+
+var resolution = await MxcContainer.ResolveToolRequirementsWithDiagnosticsAsync(
+    new ToolCandidate("git") { PackageUrl = "pkg:generic/git", DetectedVersion = "2.45.1", Intent = "push" },
+    new ResolveContext
+    {
+        ProjectRoot = @"D:\work\repo",
+        Symbols = new Dictionary<string, string> { ["git_prefix"] = @"D:\tools\git", ["ssh_prefix"] = @"D:\tools\ssh" },
+    });
+Console.WriteLine(resolution.Diagnostics.Tools[0].Status); // matched_version
+if (resolution.Requirements is { } requirements)
+{
+    var request = ContainerRequest.FromRequirements(requirements, "git push");
+}
+```
+
+`ResolveToolRequirements` and `ResolveToolRequirementsWithDiagnostics`
+accept one tool or a list, with `Async` forms. `GetCatalogInfo` and
+`ListCatalogEntries` inspect the bundled catalog. Failures throw
+`MxcException`; `MxcException.Reason` carries a stable reason such as
+`invalid_context` and is `null` for errors outside the policy store.
+
 ## Public V1 types
 
 | Purpose | .NET type |
