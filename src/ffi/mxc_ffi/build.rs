@@ -13,12 +13,17 @@
 //! `scripts/check-dotnet-bindings-codegen.js`, which regenerates and asserts
 //! the expected entry points are produced.
 
+#[path = "../../mxc-sdk/build/build_mxc_build_common.rs"]
+mod mxc_build_common;
+
 fn main() {
+    mxc_build_common::embed_version_info("MXC native SDK library", "mxc_ffi.dll");
+
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=src/error_detail.rs");
+    println!("cargo:rerun-if-changed=src/pty.rs");
     println!("cargo:rerun-if-changed=src/streaming.rs");
     println!("cargo:rerun-if-changed=src/state_aware.rs");
-    println!("cargo:rerun-if-changed=src/policy_store.rs");
     println!("cargo:rerun-if-changed=build.rs");
 
     #[cfg(feature = "dotnetsdk")]
@@ -48,9 +53,9 @@ fn generate_csharp_bindings() {
     if let Err(e) = csbindgen::Builder::default()
         .input_extern_file("src/lib.rs")
         .input_extern_file("src/error_detail.rs")
+        .input_extern_file("src/pty.rs")
         .input_extern_file("src/streaming.rs")
         .input_extern_file("src/state_aware.rs")
-        .input_extern_file("src/policy_store.rs")
         .csharp_dll_name("mxc_ffi")
         .csharp_namespace("Microsoft.Mxc.Sdk.Native")
         .csharp_class_name("NativeMethods")
