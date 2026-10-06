@@ -6,12 +6,12 @@
 //! compiled into the native library and inherits MXC package signing
 //! (design §10).
 
-use crate::catalog::{
+use crate::policy_store::catalog::{
     compare_catalog_revisions, is_catalog_revision_id, validate_catalog_revision,
     validate_contract, CatalogContract, CatalogRevision, CATALOG_SCHEMA_VERSION,
 };
-use crate::errors::{invalid_catalog, ErrorReason, PolicyCatalogError, Result};
-use crate::json::{Json, JsonObject};
+use crate::policy_store::errors::{invalid_catalog, ErrorReason, PolicyCatalogError, Result};
+use crate::policy_store::json::{Json, JsonObject};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -335,7 +335,7 @@ pub fn load_catalog_directory(directory: impl AsRef<Path>) -> Result<CatalogStor
 }
 
 mod bundled_data {
-    include!(concat!(env!("OUT_DIR"), "/bundled_catalog.rs"));
+    include!(concat!(env!("OUT_DIR"), "/policy_store_catalog.rs"));
 }
 
 /// The directory the bundled catalog was embedded from at build time. The

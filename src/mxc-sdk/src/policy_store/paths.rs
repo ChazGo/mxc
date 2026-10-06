@@ -9,8 +9,8 @@
 //! The algorithms run over UTF-16 code units, exactly like JavaScript, so
 //! index arithmetic and slicing match Node for every input.
 
-use crate::model::Platform;
-use crate::text::js_to_lower;
+use crate::policy_store::model::Platform;
+use crate::policy_store::text::js_to_lower;
 
 const SLASH: u16 = b'/' as u16;
 const BACKSLASH: u16 = b'\\' as u16;

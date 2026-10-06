@@ -13,8 +13,8 @@
 //!   under Rosetta; the key is absent on Intel Macs), else the machine type.
 //! - Linux: the kernel machine type (`uname(2)`).
 
-use crate::errors::{ErrorReason, PolicyCatalogError, Result};
-use crate::model::{Architecture, Platform};
+use crate::policy_store::errors::{ErrorReason, PolicyCatalogError, Result};
+use crate::policy_store::model::{Architecture, Platform};
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
@@ -30,7 +30,7 @@ pub trait HostEnvironment: Send + Sync {
 
 /// Maps an OS-reported machine/architecture string to a catalog selector.
 pub fn architecture_from_machine(machine: &str) -> Option<Architecture> {
-    match crate::text::js_trim(machine).to_lowercase().as_str() {
+    match crate::policy_store::text::js_trim(machine).to_lowercase().as_str() {
         "x86_64" | "amd64" | "x64" => Some(Architecture::X64),
         "arm64" | "aarch64" => Some(Architecture::Arm64),
         _ => None,
@@ -116,15 +116,15 @@ fn parse_reg_output(output: &str) -> Option<String> {
     while let Some(found) = lower[from..].find("processor_architecture") {
         let start = from + found;
         let rest = &output[start + "processor_architecture".len()..];
-        let trimmed = rest.trim_start_matches(crate::text::js_is_space);
+        let trimmed = rest.trim_start_matches(crate::policy_store::text::js_is_space);
         if trimmed.len() < rest.len()
             && trimmed.len() >= 6
             && trimmed[..6].eq_ignore_ascii_case("reg_sz")
         {
             let after = &trimmed[6..];
-            let value = after.trim_start_matches(crate::text::js_is_space);
+            let value = after.trim_start_matches(crate::policy_store::text::js_is_space);
             if value.len() < after.len() {
-                let end = value.find(crate::text::js_is_space).unwrap_or(value.len());
+                let end = value.find(crate::policy_store::text::js_is_space).unwrap_or(value.len());
                 if end > 0 {
                     return Some(value[..end].to_string());
                 }

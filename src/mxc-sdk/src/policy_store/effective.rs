@@ -6,14 +6,14 @@
 //! dependency closure; and the build-time materialization of every effective
 //! policy the catalog can produce.
 
-use crate::catalog::{
+use crate::policy_store::catalog::{
     fail, validate_sandbox_policy, Additions, CatalogContract, CatalogEntry, Dependency,
     EntryIndex, IntentDefinition, Overlay, PlatformVariant, VersionVariant,
 };
-use crate::compose::{compose_check, compose_policy, Component};
-use crate::errors::{invalid_catalog, Result};
-use crate::json::{cmp_utf16, Json};
-use crate::model::{
+use crate::policy_store::compose::{compose_check, compose_policy, Component};
+use crate::policy_store::errors::{invalid_catalog, Result};
+use crate::policy_store::json::{cmp_utf16, Json};
+use crate::policy_store::model::{
     Architecture, DependencyRecord, IntentMode, IntentSelection, Platform, SandboxPolicy,
     VersionSelection,
 };
@@ -481,13 +481,13 @@ fn rule_keys(policy: &SandboxPolicy) -> HashSet<String> {
         .and_then(Json::as_array)
         .into_iter()
         .flatten()
-        .map(crate::json::canonical_json)
+        .map(crate::policy_store::json::canonical_json)
         .collect()
 }
 
 fn fs_paths(
     policy: &SandboxPolicy,
-    field: fn(&crate::model::FilesystemPolicy) -> &Option<Vec<String>>,
+    field: fn(&crate::policy_store::model::FilesystemPolicy) -> &Option<Vec<String>>,
 ) -> Vec<String> {
     policy
         .filesystem
@@ -504,7 +504,7 @@ fn subset_violation(
     effective_deps: &[String],
     platform: Platform,
 ) -> Option<String> {
-    use crate::paths::path_exact_segments as seg;
+    use crate::policy_store::paths::path_exact_segments as seg;
     let rw = fs_paths(effective, |f| &f.readwrite_paths);
     let ro = fs_paths(effective, |f| &f.readonly_paths);
     let within = |path: &str, list: &[String]| {

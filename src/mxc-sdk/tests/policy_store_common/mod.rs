@@ -6,8 +6,8 @@
 
 #![allow(dead_code)]
 
-use mxc_policy_store::tooling::{Json, JsonObject};
-use mxc_policy_store::{
+use mxc_sdk::__policy_store::tooling::{Json, JsonObject};
+use mxc_sdk::__policy_store::{
     Architecture, CatalogStore, ErrorReason, FixedHost, MemorySource, Platform, PolicyCatalog,
     PolicyCatalogError, ResolveContext, ToolInputs,
 };
@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub fn crate_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("policy_store")
 }
 
 pub fn read_json(path: PathBuf) -> Json {
@@ -26,7 +26,7 @@ pub fn read_json(path: PathBuf) -> Json {
 
 /// The contract shipped with the embedded catalog.
 pub fn contract() -> Json {
-    let files = mxc_policy_store::tooling::bundled_catalog_files();
+    let files = mxc_sdk::__policy_store::tooling::bundled_catalog_files();
     let text = files
         .iter()
         .find(|(name, _)| *name == "contract.v1.json")
@@ -63,7 +63,7 @@ pub fn catalog_for(revision: Json, host: Arc<FixedHost>) -> PolicyCatalog {
 }
 
 pub fn bundled_catalog(host: Arc<FixedHost>) -> PolicyCatalog {
-    PolicyCatalog::with_host(mxc_policy_store::bundled_catalog_store().unwrap(), host)
+    PolicyCatalog::with_host(mxc_sdk::__policy_store::bundled_catalog_store().unwrap(), host)
 }
 
 pub fn j(text: &str) -> Json {
@@ -113,10 +113,10 @@ pub fn reason_of<T: std::fmt::Debug>(result: Result<T, PolicyCatalogError>) -> E
 
 /// Fixture `tools` (single input or array), through the binding parser.
 pub fn tools_from(value: &Json) -> ToolInputs {
-    mxc_policy_store::request::parse_tool_inputs(value).expect("fixture tools parse")
+    mxc_sdk::__policy_store::request::parse_tool_inputs(value).expect("fixture tools parse")
 }
 
 /// Fixture `context`, through the binding parser.
 pub fn context_from(value: Option<&Json>) -> ResolveContext {
-    mxc_policy_store::request::parse_resolve_context(value).expect("fixture context parses")
+    mxc_sdk::__policy_store::request::parse_resolve_context(value).expect("fixture context parses")
 }

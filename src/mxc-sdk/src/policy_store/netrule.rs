@@ -5,7 +5,7 @@
 //! parsing and the overlap test that decides whether a catalog egress deny
 //! conflicts with a required allow rule.
 
-use crate::json::Json;
+use crate::policy_store::json::Json;
 use std::net::IpAddr;
 
 /// One parsed CIDR: the address as a 128-bit value, its family, and prefix.

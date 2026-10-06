@@ -1,4 +1,4 @@
-# mxc_policy_store — PROTOTYPE, pending API review
+# mxc-sdk policy_store — PROTOTYPE, pending API review
 
 > **Prototype.** This API is proposed and pending API review and sign-off
 > before check-in. Names, shapes, and catalog contents may change (for
@@ -10,7 +10,7 @@ The MXC policy store resolves known tools to a **best-effort floor**
 composes with its own policy. It is not a guarantee, and it is complementary
 to Learning Mode rather than a replacement for it.
 
-The V1 catalog in `catalog/` is the single source of truth. `build.rs` embeds
+The V1 catalog in `catalog/` is the single source of truth. `build/build_policy_store.rs` embeds
 it with `include_str!`; nothing is downloaded. Each entry has one unversioned
 default plus additive platform, version (purl `vers` ranges in the entry's
 `versionScheme`), and intent overlays. A lookup takes tool candidates with an
@@ -48,7 +48,7 @@ cargo test -p mxc_policy_store
 cargo clippy -p mxc_policy_store --all-targets -- -D warnings
 ```
 
-`tests/catalog_validation.rs` is the contribution gate: contract,
+`tests/policy_store_catalog_validation.rs` is the contribution gate: contract,
 entry-revision history, every materialized effective policy, deterministic
 resolution, conformance coverage, and a current reviewer view
 (`MXC_POLICY_STORE_UPDATE_VIEWS=1` regenerates `catalog/views/`).

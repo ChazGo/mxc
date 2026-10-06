@@ -6,8 +6,8 @@
 //! SDK bindings and conformance vectors rely on (`to_json`), with absent optional fields
 //! omitted rather than written as `null`.
 
-use crate::json::{Json, JsonObject};
-use crate::vers::VersionScheme;
+use crate::policy_store::json::{Json, JsonObject};
+use crate::policy_store::vers::VersionScheme;
 use std::fmt;
 
 /// Catalog platform selector (design §4.4).

@@ -18,13 +18,14 @@
 //! The JSON Schemas in `schema/` document the same shape for editors. The
 //! semantic validation exercised here is a superset of them.
 
+#[path = "policy_store_common/mod.rs"]
 mod common;
 
 use common::{crate_dir, read_json};
-use mxc_policy_store::tooling::{
+use mxc_sdk::__policy_store::tooling::{
     render_reviewer_view, validate_bundled_catalog, IdentityPredicate, Json,
 };
-use mxc_policy_store::{
+use mxc_sdk::__policy_store::{
     bundled_catalog_store, Architecture, FixedHost, Platform, PolicyCatalog, ResolveContext,
     ToolCandidate,
 };
@@ -63,7 +64,7 @@ fn every_revision_file_is_listed_in_the_manifest() {
 }
 
 fn context_for(
-    store: &mxc_policy_store::CatalogStore,
+    store: &mxc_sdk::__policy_store::CatalogStore,
     platform: Platform,
     revision: &str,
 ) -> ResolveContext {
@@ -78,7 +79,7 @@ fn context_for(
     for (name, definition) in store.contract().symbols() {
         if !matches!(
             definition.source,
-            mxc_policy_store::tooling::SymbolSource::Context
+            mxc_sdk::__policy_store::tooling::SymbolSource::Context
         ) {
             ctx = ctx.symbol(name, format!("{base}{sep}{name}"));
         }

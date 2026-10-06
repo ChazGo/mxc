@@ -11,13 +11,12 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn main() {
+pub fn run() {
     let manifest_dir =
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let source = manifest_dir.join("catalog");
+    let source = manifest_dir.join("policy_store").join("catalog");
 
-    println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed={}", source.display());
+        println!("cargo:rerun-if-changed={}", source.display());
 
     assert!(
         source.join("manifest.json").is_file(),
@@ -73,8 +72,8 @@ fn main() {
     }
     writeln!(code, "];").unwrap();
 
-    let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("bundled_catalog.rs");
-    fs::write(out, code).expect("write bundled_catalog.rs");
+    let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("policy_store_catalog.rs");
+    fs::write(out, code).expect("write policy_store_catalog.rs");
 }
 
 fn strip_verbatim(path: &Path) -> String {

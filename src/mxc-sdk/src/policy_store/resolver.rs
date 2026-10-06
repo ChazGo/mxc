@@ -5,18 +5,18 @@
 //! entry, select its version and intent, and compose every contributing
 //! (tool, intent) pair and its dependencies into one candidate floor.
 
-use crate::catalog::{
+use crate::policy_store::catalog::{
     entry_index, CatalogEntry, Dependency, IdentityPredicate, IntentDefinition, Overlay,
     SymbolSource,
 };
-use crate::compose::{component_symbols, compose_check, compose_policy, Component};
-use crate::effective::{
+use crate::policy_store::compose::{component_symbols, compose_check, compose_policy, Component};
+use crate::policy_store::effective::{
     has_arch_specific, materialize, select_platform_variant, Closure, IntentChoice, Node,
 };
-use crate::errors::{invalid_catalog, invalid_context, ErrorReason, PolicyCatalogError, Result};
-use crate::host::{HostEnvironment, SystemHost};
-use crate::json::cmp_utf16;
-use crate::model::{
+use crate::policy_store::errors::{invalid_catalog, invalid_context, ErrorReason, PolicyCatalogError, Result};
+use crate::policy_store::host::{HostEnvironment, SystemHost};
+use crate::policy_store::json::cmp_utf16;
+use crate::policy_store::model::{
     Architecture, CatalogAdditionsMetadata, CatalogEntryMetadata, CatalogIdentityMetadata,
     CatalogInfo, CatalogIntentMetadata, DefaultMetadata, Diagnostics, EntryMatchRecord, IntentMode,
     IntentSelection, MatchedIdentity, Platform, PlatformVariantMetadata, Provenance,
@@ -24,10 +24,10 @@ use crate::model::{
     ToolResolutionStatus, ToolResolutionWarning, ToolWarningCode, VersionSelection, VersionStatus,
     VersionVariantMetadata, Warning,
 };
-use crate::paths::{case_key, is_absolute_path};
-use crate::purl::{parse_purl, ParsedPurl};
-use crate::store::{bundled_catalog_store, CatalogStore};
-use crate::text::replace_symbols;
+use crate::policy_store::paths::{case_key, is_absolute_path};
+use crate::policy_store::purl::{parse_purl, ParsedPurl};
+use crate::policy_store::store::{bundled_catalog_store, CatalogStore};
+use crate::policy_store::text::replace_symbols;
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};

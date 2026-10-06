@@ -10,11 +10,12 @@
 //! asserting, so a catalog or resolver change can be reviewed and merged into
 //! the fixtures by hand.
 
+#[path = "policy_store_common/mod.rs"]
 mod common;
 
 use common::*;
-use mxc_policy_store::tooling::{Json, JsonObject};
-use mxc_policy_store::{Architecture, Platform, PolicyCatalogError};
+use mxc_sdk::__policy_store::tooling::{Json, JsonObject};
+use mxc_sdk::__policy_store::{Architecture, Platform, PolicyCatalogError};
 
 fn failure<T>(result: Result<T, PolicyCatalogError>) -> Option<(String, String)> {
     result.err().map(|e| {

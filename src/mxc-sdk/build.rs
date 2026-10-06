@@ -10,6 +10,8 @@ mod build_mxc_build_common;
 mod build_mxc_common;
 #[path = "build/build_mxc_telemetry.rs"]
 mod build_mxc_telemetry;
+#[path = "build/build_policy_store.rs"]
+mod build_policy_store;
 #[path = "build/build_nanvix_binaries.rs"]
 mod build_nanvix_binaries;
 #[cfg(feature = "link-wslcsdk")]
@@ -29,6 +31,7 @@ mod nanvix_common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     build_isolation_session_bindings::run();
     build_mxc_telemetry::run();
+    build_policy_store::run();
     if let Some((bin_dir, use_prefetched_binaries)) = build_nanvix_binaries::run() {
         nanvix_build_common::stage_artifacts_next_to_exe(&bin_dir, !use_prefetched_binaries);
     }

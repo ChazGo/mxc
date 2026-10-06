@@ -5,14 +5,15 @@
 //! Store design: one unversioned default per entry, additive platform and
 //! version overlays, and intent selection.
 
+#[path = "policy_store_common/mod.rs"]
 mod common;
 
 use common::*;
-use mxc_policy_store::tooling::{
+use mxc_sdk::__policy_store::tooling::{
     canonical_json, check_entry_revisions, check_published_immutability, check_store_history,
     validate_catalog_revision, validate_contract, Json, PublishedRevision, PublishedState,
 };
-use mxc_policy_store::{
+use mxc_sdk::__policy_store::{
     get_catalog_info, list_catalog_entries, resolve_sandbox_policy,
     resolve_sandbox_policy_with_diagnostics, Architecture, ErrorReason, FixedHost, HostEnvironment,
     IntentMode, Platform, PolicyCatalog, PolicyCatalogError, ResolveContext,
@@ -48,7 +49,7 @@ fn with_default(policy: &str, extra: &str) -> String {
     format!(r#"{{"default":{{"sandboxPolicy":{policy}}}{extra}}}"#)
 }
 
-fn fs_json(policy: &Option<mxc_policy_store::SandboxPolicy>) -> Json {
+fn fs_json(policy: &Option<mxc_sdk::__policy_store::SandboxPolicy>) -> Json {
     policy
         .as_ref()
         .expect("a policy")
@@ -1657,7 +1658,7 @@ fn overlapping_catalog_egress_denies_are_removed_in_full_with_diagnostics() {
 
 #[test]
 fn bundled_store_verifies_and_canonical_json_ignores_formatting() {
-    let store = mxc_policy_store::bundled_catalog_store().unwrap();
+    let store = mxc_sdk::__policy_store::bundled_catalog_store().unwrap();
     assert!(check_store_history(&store).is_empty());
     assert_eq!(
         store.revision(None).unwrap().catalog_revision,
@@ -1675,15 +1676,15 @@ fn bundled_store_verifies_and_canonical_json_ignores_formatting() {
 
 #[test]
 fn unreadable_revision_is_an_integrity_error_everywhere() {
-    let source = mxc_policy_store::MemorySource {
+    let source = mxc_sdk::__policy_store::MemorySource {
         files: HashMap::new(),
-        ..mxc_policy_store::MemorySource::publishing(
+        ..mxc_sdk::__policy_store::MemorySource::publishing(
             contract(),
             &[revision(vec![entry("tool:a", "")])],
             None,
         )
     };
-    let store = Arc::new(mxc_policy_store::CatalogStore::new(source).unwrap());
+    let store = Arc::new(mxc_sdk::__policy_store::CatalogStore::new(source).unwrap());
     assert_eq!(reason_of(store.revision(None)), ErrorReason::Integrity);
     let catalog = PolicyCatalog::with_host(store, linux_x64());
     assert_eq!(
@@ -1712,11 +1713,11 @@ fn revision_id_mismatch_and_invalid_manifest() {
         o.insert("catalogRevision", "2000-01-01.1".into());
     }
     // A file that declares another revision id → integrity.
-    let source = mxc_policy_store::MemorySource {
+    let source = mxc_sdk::__policy_store::MemorySource {
         files: HashMap::from([("revisions/2000-01-01.1.json".to_string(), other.clone())]),
-        ..mxc_policy_store::MemorySource::publishing(contract(), &[relabeled], None)
+        ..mxc_sdk::__policy_store::MemorySource::publishing(contract(), &[relabeled], None)
     };
-    let error = mxc_policy_store::CatalogStore::new(source)
+    let error = mxc_sdk::__policy_store::CatalogStore::new(source)
         .unwrap()
         .revision(None)
         .unwrap_err();

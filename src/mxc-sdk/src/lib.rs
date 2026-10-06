@@ -202,6 +202,7 @@ pub use core_modules::process_security_environment_spec;
 mod configs;
 mod options;
 mod policy;
+mod policy_store;
 mod sandbox;
 mod state_aware_sdk;
 
@@ -372,6 +373,13 @@ pub mod v1 {
             assert!(output.error.is_some() || output.tier.is_some());
         }
     }
+}
+
+/// **Prototype, pending API review.** Internal policy-store surface for the C
+/// ABI and the catalog contribution tests; not an SDK authoring API.
+#[doc(hidden)]
+pub mod __policy_store {
+    pub use crate::policy_store::*;
 }
 
 /// Internal adapters for the C ABI and native contract tests, not SDK authoring APIs.

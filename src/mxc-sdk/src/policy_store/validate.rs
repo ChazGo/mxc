@@ -5,14 +5,14 @@
 //! immutability check Tooling only: the
 //! runtime lookup path never runs git.
 
-use crate::errors::{invalid_catalog, PolicyCatalogError};
-use crate::history::{
+use crate::policy_store::errors::{invalid_catalog, PolicyCatalogError};
+use crate::policy_store::history::{
     check_published_immutability, check_store_history, PublishedRevision, PublishedState,
 };
-use crate::json::{Json, JsonObject};
-use crate::model::Platform;
-use crate::paths::{is_absolute_path, normalize_path};
-use crate::store::{read_text, CatalogManifest, CatalogStore, DirectorySource};
+use crate::policy_store::json::{Json, JsonObject};
+use crate::policy_store::model::Platform;
+use crate::policy_store::paths::{is_absolute_path, normalize_path};
+use crate::policy_store::store::{read_text, CatalogManifest, CatalogStore, DirectorySource};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -172,7 +172,7 @@ pub fn read_published_state_at_ref(
         || base_ref.starts_with('-')
         || base_ref
             .chars()
-            .any(|c| c == '\0' || crate::text::js_is_space(c))
+            .any(|c| c == '\0' || crate::policy_store::text::js_is_space(c))
     {
         return Err(validation_error(format!(
             "base-ref check: '{base_ref}' is not a valid git ref"
@@ -216,7 +216,7 @@ pub fn read_published_state_at_ref(
     for revision in &revisions {
         let file = match &revision.file {
             Some(Json::String(s)) => s.clone(),
-            Some(other) => crate::json::js_to_string(other),
+            Some(other) => crate::policy_store::json::js_to_string(other),
             None => "undefined".to_string(),
         };
         if git_succeeds(&["cat-file", "-e", &at(&file)], &top) {
@@ -308,7 +308,7 @@ pub fn validate_catalog_directory(
 /// Validates the catalog embedded in this crate. `catalogDir` in the report
 /// (and the base for `--base-ref`) is the directory it was embedded from.
 pub fn validate_bundled_catalog(base_ref: Option<&str>) -> CatalogValidationReport {
-    let dir = resolve_path(crate::store::bundled_catalog_source_dir());
-    let store = crate::store::bundled_catalog_source().and_then(CatalogStore::new);
+    let dir = resolve_path(crate::policy_store::store::bundled_catalog_source_dir());
+    let store = crate::policy_store::store::bundled_catalog_source().and_then(CatalogStore::new);
     run_checks(store, dir.clone(), &dir, base_ref)
 }

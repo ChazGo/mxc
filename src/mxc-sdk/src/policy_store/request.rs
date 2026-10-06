@@ -10,9 +10,9 @@
 //! as an omitted optional field. Unknown keys and wrongly typed values are
 //! `malformed_request` (`invalid_context`) failures.
 
-use crate::errors::{invalid_context, Result};
-use crate::json::{Json, JsonObject};
-use crate::model::{ResolveContext, SymbolMap, ToolCandidate, ToolInput, ToolInputs};
+use crate::policy_store::errors::{invalid_context, Result};
+use crate::policy_store::json::{Json, JsonObject};
+use crate::policy_store::model::{ResolveContext, SymbolMap, ToolCandidate, ToolInput, ToolInputs};
 
 fn only_keys(object: &JsonObject, allowed: &[&str], at: &str) -> Result<()> {
     match object.keys().find(|key| !allowed.contains(key)) {
@@ -145,7 +145,7 @@ pub fn parse_resolve_request(text: &str) -> Result<(ToolInputs, ResolveContext)>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::errors::ErrorReason;
+    use crate::policy_store::errors::ErrorReason;
 
     #[test]
     fn parses_a_full_request() {

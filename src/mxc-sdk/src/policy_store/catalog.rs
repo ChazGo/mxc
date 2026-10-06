@@ -3,14 +3,14 @@
 
 //! Catalog contract, entry model (one unversioned default plus additive
 //! platform and version overlays), and contract/revision validation. The
-//! effective-policy materialization lives in [`crate::effective`].
+//! effective-policy materialization lives in [`crate::policy_store::effective`].
 
-use crate::errors::{invalid_catalog, Result};
-use crate::json::{js_number_to_string, js_to_string, Json, JsonObject};
-use crate::model::{Architecture, IdentityStrength, Platform};
-use crate::purl::parse_purl;
-use crate::text::{is_symbol_name, js_to_lower, replace_symbols, symbol_matches};
-use crate::vers::{VersRange, VersionScheme};
+use crate::policy_store::errors::{invalid_catalog, Result};
+use crate::policy_store::json::{js_number_to_string, js_to_string, Json, JsonObject};
+use crate::policy_store::model::{Architecture, IdentityStrength, Platform};
+use crate::policy_store::purl::parse_purl;
+use crate::policy_store::text::{is_symbol_name, js_to_lower, replace_symbols, symbol_matches};
+use crate::policy_store::vers::{VersRange, VersionScheme};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
@@ -444,7 +444,7 @@ fn validate_network_rules(value: &Json, at: &str, deny_list: bool) -> Result<()>
                 };
                 only_fields(peer, &["cidr", "except"], &peer_at)?;
                 let cidr = non_empty_string(peer.get("cidr"), &format!("{peer_at}.cidr"))?;
-                let Some(block) = crate::netrule::parse_cidr(&cidr) else {
+                let Some(block) = crate::policy_store::netrule::parse_cidr(&cidr) else {
                     return fail(format!("'{peer_at}.cidr' '{cidr}' is not a valid CIDR"));
                 };
                 if !deny_list && cidr.ends_with("/0") {
@@ -456,7 +456,7 @@ fn validate_network_rules(value: &Json, at: &str, deny_list: bool) -> Result<()>
                         .iter()
                         .enumerate()
                     {
-                        let inside = crate::netrule::parse_cidr(value)
+                        let inside = crate::policy_store::netrule::parse_cidr(value)
                             .is_some_and(|excluded| block.contains(excluded));
                         if !inside {
                             return fail(format!(
@@ -1299,7 +1299,7 @@ pub fn validate_catalog_revision(
         }
     }
 
-    crate::effective::validate_materializations(&entries, &by_id, contract)?;
+    crate::policy_store::effective::validate_materializations(&entries, &by_id, contract)?;
 
     Ok(CatalogRevision {
         catalog_schema_version: contract.catalog_schema_version.clone(),
@@ -1314,7 +1314,7 @@ pub(crate) fn entry_semantic_key(entry: &CatalogEntry) -> String {
     if let Json::Object(object) = &mut raw {
         object.remove("entryRevision");
     }
-    crate::json::canonical_json(&raw)
+    crate::policy_store::json::canonical_json(&raw)
 }
 
 /// Formats an entry revision number as TypeScript would interpolate it.

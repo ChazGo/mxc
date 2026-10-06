@@ -5,12 +5,12 @@
 //! base, its selected additions, and its dependencies combine into one
 //! `SandboxPolicy` that preserves the access each requested pair needs.
 
-use crate::catalog::{Additions, CatalogPolicy};
-use crate::json::{canonical_json, cmp_utf16, Json, JsonObject};
-use crate::model::{FilesystemPolicy, Platform, SandboxPolicy};
-use crate::netrule::{describe_rule, rules_overlap};
-use crate::paths::{normalize_path, path_exact_segments, path_key_segments};
-use crate::text::symbol_matches;
+use crate::policy_store::catalog::{Additions, CatalogPolicy};
+use crate::policy_store::json::{canonical_json, cmp_utf16, Json, JsonObject};
+use crate::policy_store::model::{FilesystemPolicy, Platform, SandboxPolicy};
+use crate::policy_store::netrule::{describe_rule, rules_overlap};
+use crate::policy_store::paths::{normalize_path, path_exact_segments, path_key_segments};
+use crate::policy_store::text::symbol_matches;
 
 /// One selected (entry, base, additions) contribution.
 #[derive(Clone, Debug)]

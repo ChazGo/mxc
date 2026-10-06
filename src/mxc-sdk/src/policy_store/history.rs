@@ -3,11 +3,11 @@
 
 //! Entry-revision monotonicity and published-revision immutability
 
-use crate::catalog::{
+use crate::policy_store::catalog::{
     compare_catalog_revisions, entry_semantic_key, revision_number, CatalogRevision,
 };
-use crate::json::{canonical_json, Json};
-use crate::store::CatalogStore;
+use crate::policy_store::json::{canonical_json, Json};
+use crate::policy_store::store::CatalogStore;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
@@ -115,7 +115,7 @@ fn file_key(value: &Json) -> String {
 fn describe_js(value: &Option<Json>) -> String {
     match value {
         None => "undefined".to_string(),
-        Some(v) => crate::json::js_to_string(v),
+        Some(v) => crate::policy_store::json::js_to_string(v),
     }
 }
 

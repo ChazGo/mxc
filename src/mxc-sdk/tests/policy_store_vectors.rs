@@ -4,14 +4,15 @@
 //! Frozen vectors in `../conformance/vectors/`. They were generated from the
 //! original TypeScript prototype and are now maintained by hand.
 
+#[path = "policy_store_common/mod.rs"]
 mod common;
 
 use common::*;
-use mxc_policy_store::tooling::{
+use mxc_sdk::__policy_store::tooling::{
     canonical_json, is_absolute_path, normalize_path, parse_purl, path_key_segments, Json,
     ParsedPurl,
 };
-use mxc_policy_store::Platform;
+use mxc_sdk::__policy_store::Platform;
 
 #[test]
 fn canonical_json_vectors() {
@@ -95,7 +96,7 @@ fn malformed_percent_encoding_is_an_invalid_purl() {
 #[test]
 fn embedded_catalog_matches_repository_catalog() {
     let dir = crate_dir().join("catalog");
-    let embedded = mxc_policy_store::tooling::bundled_catalog_files();
+    let embedded = mxc_sdk::__policy_store::tooling::bundled_catalog_files();
     let mut on_disk = vec!["contract.v1.json".to_string(), "manifest.json".to_string()];
     let mut revisions: Vec<String> = std::fs::read_dir(dir.join("revisions"))
         .unwrap()

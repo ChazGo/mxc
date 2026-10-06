@@ -3,7 +3,7 @@
 
 //! **PROTOTYPE, pending API review.** The MXC policy store: resolves known
 //! tools to a candidate floor [`SandboxPolicy`] from a policy catalog that is
-//! bundled statically in this crate.
+//! bundled statically in `mxc-sdk`.
 //!
 //! The API names, shapes, and catalog contents are proposed and may change
 //! before sign-off (for example, the names may drop "Sandbox"). The feature
@@ -18,10 +18,9 @@
 //! contacts a network service, or writes consumer state. The V1 catalog is
 //! compiled in and validated on first use; nothing is downloaded.
 //!
-//! Most callers reach this crate through an MXC SDK: `mxc_sdk::policy_store`
-//! in Rust, and the Node and C# SDKs through `mxc_ffi`. [`tooling`] exposes
-//! the catalog contribution rules (validation, history, canonical JSON,
-//! paths) that the crate's own tests enforce.
+//! This is an internal `mxc-sdk` module. The Node and C# SDKs reach it through
+//! `mxc_ffi`. [`tooling`] exposes the catalog contribution rules (validation,
+//! history, canonical JSON, paths) that the `policy_store_*` tests enforce.
 
 pub mod catalog;
 pub mod compose;
@@ -64,32 +63,32 @@ pub use store::{
 
 /// Contribution and CI tooling (not part of the runtime lookup API).
 pub mod tooling {
-    pub use crate::catalog::{
+    pub use crate::policy_store::catalog::{
         compare_catalog_revisions, validate_catalog_revision, validate_contract, Additions,
         CatalogContract, CatalogEntry, CatalogRevision, Dependency, EntryDefault,
         IdentityPredicate, IntentDefinition, Overlay, PlatformVariant, SymbolSource,
         VersionVariant,
     };
-    pub use crate::effective::{
+    pub use crate::policy_store::effective::{
         materialize, materialize_entry, select_platform_variant, Effective, IntentChoice,
         Materialized, PlatformSelection,
     };
-    pub use crate::history::{
+    pub use crate::policy_store::history::{
         check_entry_revisions, check_published_immutability, check_store_history,
         PublishedRevision, PublishedState,
     };
-    pub use crate::host::architecture_from_machine;
-    pub use crate::json::{canonical_json, js_number_to_string, Json, JsonObject};
-    pub use crate::paths::{
+    pub use crate::policy_store::host::architecture_from_machine;
+    pub use crate::policy_store::json::{canonical_json, js_number_to_string, Json, JsonObject};
+    pub use crate::policy_store::paths::{
         case_key, folds_case, is_absolute_path, normalize_path, path_key_segments,
     };
-    pub use crate::purl::{parse_purl, ParsedPurl};
-    pub use crate::store::{bundled_catalog_files, bundled_catalog_source, validate_manifest};
-    pub use crate::validate::{
+    pub use crate::policy_store::purl::{parse_purl, ParsedPurl};
+    pub use crate::policy_store::store::{bundled_catalog_files, bundled_catalog_source, validate_manifest};
+    pub use crate::policy_store::validate::{
         check_against_base_ref, read_published_state_at_ref, validate_bundled_catalog,
         validate_catalog_directory, CatalogValidationReport,
     };
-    pub use crate::view::render_reviewer_view;
+    pub use crate::policy_store::view::render_reviewer_view;
 }
 
 pub use vers::{VersRange, Version, VersionScheme};
