@@ -79,3 +79,56 @@ pub fn list_catalog_entries() -> Result<Vec<CatalogEntryMetadata>, Error> {
 pub fn get_catalog_info() -> Result<CatalogInfo, Error> {
     resolver::get_catalog_info().map_err(to_error)
 }
+
+/// JSON entry points for the Node and C# SDKs, which reach the store through
+/// `mxc_ffi`. Not a stable API; the C ABI and its bindings are co-versioned.
+/// Failures keep the store's `details.reason`.
+#[doc(hidden)]
+pub mod binding {
+    use crate::policy_store::errors::{ErrorReason, PolicyCatalogError, Result};
+    use crate::policy_store::exact::to_container_requirements;
+    use crate::policy_store::json::{Json, JsonObject};
+    use crate::policy_store::model::Requirements;
+    use crate::policy_store::request::parse_resolve_request;
+    use crate::policy_store::resolver;
+
+    /// Proves the composed value converts to the typed v1 sections before it
+    /// crosses the boundary, as the Rust surface does.
+    fn checked(requirements: &Requirements) -> Result<Json> {
+        to_container_requirements(requirements)
+            .map_err(|problem| PolicyCatalogError::new(ErrorReason::InvalidCatalog, problem))?;
+        Ok(requirements.to_json())
+    }
+
+    /// `{"tools", "context"?}` → `{"requirements"?}`; `requirements` is
+    /// omitted when nothing resolves, so absence survives the boundary.
+    pub fn resolve_tool_requirements_json(request: &str) -> Result<String> {
+        let (tools, context) = parse_resolve_request(request)?;
+        let mut out = JsonObject::new();
+        if let Some(requirements) = resolver::resolve_requirements(tools, &context)? {
+            out.insert("requirements", checked(&requirements)?);
+        }
+        Ok(Json::Object(out).to_compact_string())
+    }
+
+    /// `{"tools", "context"?}` → `{"requirements"?, "diagnostics"}`.
+    pub fn resolve_tool_requirements_with_diagnostics_json(request: &str) -> Result<String> {
+        let (tools, context) = parse_resolve_request(request)?;
+        let resolution = resolver::resolve_requirements_with_diagnostics(tools, &context)?;
+        if let Some(requirements) = &resolution.requirements {
+            checked(requirements)?;
+        }
+        Ok(resolution.to_json().to_compact_string())
+    }
+
+    /// `{"catalogSchemaVersion", "catalogRevision", "sdkContractVersion"}`.
+    pub fn catalog_info_json() -> Result<String> {
+        Ok(resolver::get_catalog_info()?.to_json().to_compact_string())
+    }
+
+    /// An array of entry metadata objects.
+    pub fn list_catalog_entries_json() -> Result<String> {
+        let entries = resolver::list_catalog_entries()?;
+        Ok(Json::Array(entries.iter().map(|e| e.to_json()).collect()).to_compact_string())
+    }
+}
