@@ -1386,7 +1386,7 @@ checksum = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a"
 
 [[package]]
 name = "lxc"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "cc",
@@ -1481,7 +1481,7 @@ dependencies = [
 
 [[package]]
 name = "mxc-sdk"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1525,7 +1525,7 @@ dependencies = [
 
 [[package]]
 name = "mxc_darwin"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "cc",
  "clap",
@@ -1535,7 +1535,7 @@ dependencies = [
 
 [[package]]
 name = "mxc_diagnostic_console"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "cc",
  "clap",
@@ -1549,19 +1549,21 @@ dependencies = [
 
 [[package]]
 name = "mxc_ffi"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
+ "cc",
  "csbindgen",
  "mxc-sdk",
  "serde",
  "serde_ignored",
  "serde_json",
  "tempfile",
+ "winresource",
 ]
 
 [[package]]
 name = "mxc_schema_gen"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "clap",
  "mxc-sdk",
@@ -3072,7 +3074,7 @@ checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
 
 [[package]]
 name = "wxc"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "cc",
@@ -3087,7 +3089,7 @@ dependencies = [
 
 [[package]]
 name = "wxc_host_prep"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "cc",
  "clap",
@@ -3104,7 +3106,7 @@ dependencies = [
 
 [[package]]
 name = "wxc_test_driver"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "cc",
@@ -3114,7 +3116,7 @@ dependencies = [
 
 [[package]]
 name = "wxc_test_proxy"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "bytes",
  "cc",
@@ -3133,7 +3135,7 @@ version = "0.1.0"
 
 [[package]]
 name = "wxc_winhttp_proxy_shim"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "cc",
  "clap",
