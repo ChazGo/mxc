@@ -69,7 +69,7 @@
       </div>
       <ol class="criteria-grid">
         <li><span>1</span><p>Supports the Windows/OpenClaw pilot and has a concrete executable or plugin identity.</p></li>
-        <li><span>2</span><p>Has observed requirements that an MXC <code>SandboxPolicy</code> floor can express.</p></li>
+        <li><span>2</span><p>Has observed requirements that an MXC <code>ContainerRequirements</code> floor can express.</p></li>
         <li><span>3</span><p>Has a Windows installation and execution path, not a macOS-only dependency.</p></li>
         <li><span>4</span><p>Is a priority scenario, an existing prototype entry, or a distinct contract test case.</p></li>
         <li><span>5</span><p>Has enough ownership and requirement evidence for an initial review.</p></li>
@@ -82,7 +82,7 @@
           <span class="kicker">Recommended initial set</span>
           <h2>Ten catalog entries</h2>
         </div>
-        <p>Capabilities summarize observed needs, not finished entries. Each entry embeds an existing <code>SandboxPolicy</code>; the consuming agent still decides whether to authorize it.</p>
+        <p>Capabilities summarize observed needs, not finished entries. Each entry authors access-only <code>default.requirements</code> using v1 <code>ContainerRequest</code> fields, with no command or wire version; the consuming agent still decides whether to authorize it.</p>
       </div>
 
       <div class="scope-tabs" role="tablist" aria-label="Tool categories">
@@ -285,7 +285,7 @@
       <div class="source-list">
         <article class="source-summary"><span>Private evidence</span><strong>Internal tool inventory</strong><small>Tool requirements, validation status, blockers, and Windows compatibility evidence.</small></article>
         <article class="source-summary"><span>Private evidence</span><strong>Internal pilot prioritization</strong><small>Initial first-party scenarios and high-priority bundled tools.</small></article>
-        <a href="https://github.com/ChazGo/mxc/blob/ed8a75c01f9c69f0a55fe9d7cdc2af39a764b42f/docs/mxc-policy-store.md"><span>Feature spec</span><strong>microsoft/mxc#1309 - Known-tool policy floors</strong><small>Earlier contract draft for entry shape, composition limits, and review requirements (revision ed8a75c).</small></a>
+        <a href="https://github.com/ChazGo/mxc/blob/f7a450c04a28a5346d67e8aa6ae538a91b74665a/docs/mxc-policy-store.md"><span>Feature spec</span><strong>microsoft/mxc#1309 - Known-tool policy floors</strong><small>Entry shape, composition limits, and review requirements, pinned to revision f7a450c (MXC 1.0 alignment).</small></a>
         <a href="https://github.com/microsoft/mxc/pull/779"><span>Public proposal</span><strong>microsoft/mxc#779 - Sandbox config floors</strong><small>Selection rule, identity/dependency model, symbolic paths, and contract questions.</small></a>
         <a href="https://github.com/ChazGo/mxc/pull/1"><span>Public prototype</span><strong>ChazGo/mxc#1 - Draft resolver catalog</strong><small>Concrete Git, Node.js, and npm entries used to validate the resolver seam.</small></a>
       </div>

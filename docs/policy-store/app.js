@@ -5,11 +5,12 @@ const details = {
     heading: "Tool invocation",
     summary:
       "The consumer starts with one tool or an array and request-local context such as the project root or explicit symbol overrides. Each candidate can include strong package identity, a fallback invocation name, a detected version, and an operation intent.",
-    code: 'resolveSandboxPolicy({ invocationName: "git", intent: "push" }, ctx)',
+    code: 'await resolveToolRequirements({ invocationName: "git", intent: "push" }, ctx)',
     items: [
       "packageUrl is the strong match; invocationName is the explicitly enabled fallback",
       "Invocation-name matching ignores case on Windows and macOS and is exact on Linux",
       "An object input can add intent and detectedVersion; the caller verifies all supplied identity",
+      "No command is passed: lookup is command-free and the caller adds its command later",
       "Project context lets symbols such as ${project_root} resolve correctly",
     ],
   },
@@ -45,8 +46,8 @@ const details = {
     owner: "Consumer owned",
     heading: "Keep restrictive baseline",
     summary:
-      "When lookup is disabled, or the SDK returns undefined because nothing matched or a required symbol could not be resolved, the consumer's restrictive baseline remains unchanged. Absence is never treated as an empty policy or a reason to run uncontained.",
-    code: "policy === undefined → baseline unchanged",
+      "When lookup is disabled, or the SDK returns undefined because nothing matched or a required symbol could not be resolved, the consumer's restrictive baseline remains unchanged. Absence is never treated as empty requirements or a reason to run uncontained.",
+    code: "requirements === undefined → baseline unchanged",
     items: [
       "The baseline is the consumer's choice, not catalog data",
       "The baseline is not stored as the tool's floor",
@@ -69,25 +70,25 @@ const details = {
   api: {
     number: "LIB",
     owner: "MXC SDK",
-    heading: "resolveSandboxPolicy",
+    heading: "resolveToolRequirements",
     summary:
-      "Proposed TypeScript, Rust, and .NET MXC SDK APIs resolve one tool or an array into one composed SandboxPolicy. The Rust mxc_policy_store core serves every SDK; Node and .NET wrap it through mxc_ffi. The APIs are pending sign-off, target a later release, and are not part of MXC 1.0.",
-    code: "resolveSandboxPolicy(tool, ctx)",
+      "Proposed TypeScript, Rust, and .NET MXC SDK APIs resolve one tool or an array into one composed, command-free ContainerRequirements value: the filesystem, network, ui, and timeoutMs fields of the v1 ContainerRequest. An internal policy_store module in mxc-sdk serves every SDK; Node and .NET call it through panic-contained mxc_ffi exports. The APIs are pending sign-off and are not part of MXC 1.0; no later release is committed.",
+    code: "await resolveToolRequirements(tool, ctx)",
     items: [
-      "resolveSandboxPolicyWithDiagnostics returns the same policy plus attribution and warnings",
-      "The proposed names may change during API review, including removal of Sandbox",
+      "resolveToolRequirementsWithDiagnostics returns the same requirements plus attribution and typed warnings",
+      "Node returns Promises; Rust returns Result<Option<ContainerRequirements>, Error>; .NET adds Async Task forms",
       "Omitted context uses host platform, native architecture, and the installed catalog revision",
       "ctx.projectRoot and ctx.symbols override discovery and documented defaults",
-      "Returns undefined when no pair contributes; .NET failures throw MxcException with Reason",
+      "Returns undefined when no pair contributes; failures use existing MXC error codes with optional details.reason",
     ],
   },
   floor: {
     number: "03",
     owner: "SDK output",
-    heading: "Policy floor",
+    heading: "Requirements floor",
     summary:
-      "The returned floor is a candidate SandboxPolicy combining the known minimum requirements of every contributing tool-plus-intent pair and dependency. It is compatibility input, not authorization or a guarantee of workflow success.",
-    code: "SandboxPolicy | undefined",
+      "The returned floor is a candidate ContainerRequirements value combining the known minimum requirements of every contributing tool-plus-intent pair and dependency. It carries access fields only, no command or execution settings. It is compatibility input, not authorization or a guarantee of workflow success.",
+    code: "ContainerRequirements | undefined",
     items: [
       "Filesystem and scoped network requirements combine to satisfy every contributing pair",
       "Unmatched tools and unsupported intents contribute nothing while other inputs still resolve",
@@ -99,10 +100,11 @@ const details = {
     owner: "MXC SDK",
     heading: "Read reviewed floor",
     summary:
-      "The SDK reads a local, immutable catalog revision bundled statically with that SDK release. Its content, including shared symbol defaults, is checked against the packaged digest on load. Lookup never downloads updates or contacts a service.",
+      "The SDK reads a local, immutable catalog revision embedded in the native library at build time, inheriting MXC package signing. Entries author access fields only under default.requirements, revalidated against the SDK's exact v1 target at build. Lookup never downloads updates or contacts a service.",
     code: "ctx.catalogRevision ?? installed default",
     items: [
       "Overlays use policyAdditions, intentAdditions for default intents, and newIntents for new names",
+      "Commands, wire versions, backend settings, and unknown fields are rejected as catalog data",
       "Every entry declares one of five version schemes: npm, semver, pypi, nuget, or intdot",
       "A requested revision that is unavailable is an error, not a substitution",
       "Consumers cannot write approvals or learned changes into the catalog",
@@ -114,12 +116,13 @@ const details = {
     heading: "Resolve requirement",
     summary:
       "For each input, the resolver selects one identity match, starts with its conservative default, applies at most one add-only platform/architecture overlay and one non-overlapping version overlay, then selects intent. It never runs the candidate tool.",
-    code: "return SandboxPolicy | undefined",
+    code: "return ContainerRequirements | undefined",
     items: [
       "Valid uncovered versions use the default with version_out_of_range; unparseable versions contribute nothing",
       "An unsupported named intent contributes nothing instead of falling back to base or every intent",
       "Dependencies contribute default and platform base only unless their reference names intents",
       "Overlapping catalog filesystem and egress denies are removed in full and diagnosed",
+      "Unestablished filesystem object identity fails closed for the affected pair only",
       "Unsupported compositions fail rather than approximating broader access",
     ],
   },
@@ -128,7 +131,7 @@ const details = {
     owner: "Consumer owned",
     heading: "Store accepted floor",
     summary:
-      "If the consumer accepts a returned SandboxPolicy, it can store it under the tool's record with the catalog revision and contributing entry revisions from diagnostics. Undefined never enters this path.",
+      "If the consumer accepts returned ContainerRequirements, it can store it under the tool's record with the catalog revision and contributing entry revisions from diagnostics. Undefined never enters this path.",
     code: "policyStore.set(toolId, acceptedFloor, revisions)",
     items: [
       "Catalog-derived requirements stay in a layer separate from user and learned policy",
@@ -141,10 +144,10 @@ const details = {
     owner: "Consumer owned",
     heading: "Floor returned?",
     summary:
-      "The consumer branches on the SDK result. A SandboxPolicy can be reviewed and stored. Undefined means no policy was resolved, so the restrictive baseline stays in effect.",
+      "The consumer branches on the SDK result. ContainerRequirements can be reviewed and stored. Undefined means no requirements were resolved, so the restrictive baseline stays in effect.",
     code: "result === undefined ? baseline : review(result)",
     items: [
-      "SandboxPolicy flows to review and per-tool storage",
+      "ContainerRequirements flow to review and per-tool storage",
       "Undefined flows to the unchanged restrictive baseline",
       "Both branches converge at effective-policy composition",
     ],
@@ -182,12 +185,12 @@ const details = {
     owner: "Execution result",
     heading: "Final MXC sandbox",
     summary:
-      "The consumer passes its final, authorized policy through the MXC SDK after the proposed lookup API resolves the SDK's bundled catalog.",
-    code: "createConfigFromPolicy(effectivePolicy)",
+      "The consumer spreads its approved requirements into a v1 ContainerRequest, adds its command and execution settings, and calls run or spawn. The SDK owns the wire version.",
+    code: "await run({ ...approvedRequirements, command })",
     items: [
-      "The existing MXC configuration path remains unchanged",
-      "The catalog schema stays compatible within MXC 1.x",
-      "Contained execution receives only the effective composed policy",
+      "The existing v1 run/spawn path remains unchanged",
+      "No nested-type conversion: requirements use the v1 section types",
+      "Contained execution receives only the effective composed request",
       "The consumer records revisions, matches, warnings, and approvals in its own audit trail",
     ],
   },

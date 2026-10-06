@@ -984,6 +984,14 @@ h3 {
   font-size: 1.08rem;
 }
 
+.question-grid.single {
+  grid-template-columns: 1fr;
+}
+
+.question-grid.single article {
+  min-height: 0;
+}
+
 .source-list {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
