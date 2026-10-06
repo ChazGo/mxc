@@ -15,7 +15,55 @@ mod common;
 
 use common::*;
 use mxc_sdk::__policy_store::tooling::{Json, JsonObject};
-use mxc_sdk::__policy_store::{Architecture, Platform, PolicyCatalogError};
+use mxc_sdk::__policy_store::{Architecture, FixedHost, Platform, PolicyCatalogError};
+use std::sync::Arc;
+
+/// The fixed host a case describes: symbols, discovery results, object
+/// aliases, and paths whose identity cannot be established.
+fn host_from(
+    host: Option<&Json>,
+    platform: Platform,
+    architecture: Architecture,
+) -> Arc<FixedHost> {
+    let mut fixed = FixedHost::new(platform, architecture);
+    let Some(host) = host else {
+        return Arc::new(fixed);
+    };
+    let pairs = |key: &str| -> Vec<(String, String)> {
+        host.get(key)
+            .and_then(Json::as_object)
+            .map(|o| {
+                o.iter()
+                    .map(|(k, v)| (k.to_string(), v.as_str().unwrap().to_string()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    for (name, value) in pairs("symbols") {
+        fixed = fixed.with_symbol(name, value);
+    }
+    for (name, value) in pairs("discovered") {
+        fixed = fixed.with_discovered(name, value);
+    }
+    for alias in host
+        .get("aliases")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let alias = alias.as_array().unwrap();
+        fixed = fixed.with_alias(alias[0].as_str().unwrap(), alias[1].as_str().unwrap());
+    }
+    for path in host
+        .get("unknownPaths")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+    {
+        fixed = fixed.with_unknown_path(path.as_str().unwrap());
+    }
+    Arc::new(fixed)
+}
 
 fn failure<T>(result: Result<T, PolicyCatalogError>) -> Option<(String, String)> {
     result.err().map(|e| {
@@ -48,9 +96,12 @@ fn all_conformance_fixtures() {
                 "{name}: {}",
                 case.get("name").and_then(Json::as_str).unwrap()
             );
+            // Object identity is examined only on the target's own host, so
+            // the fixed host defaults to the requested platform.
             let host_platform = case
                 .get("host")
                 .and_then(|h| h.get("platform"))
+                .or_else(|| case.get("context").and_then(|c| c.get("platform")))
                 .and_then(Json::as_str)
                 .map_or(Platform::Linux, |p| Platform::parse(p).unwrap());
             let host_arch = case
@@ -58,7 +109,7 @@ fn all_conformance_fixtures() {
                 .and_then(|h| h.get("nativeArchitecture"))
                 .and_then(Json::as_str)
                 .map_or(Architecture::X64, |a| Architecture::parse(a).unwrap());
-            let host = fixed_host(host_platform, host_arch);
+            let host = host_from(case.get("host"), host_platform, host_arch);
             let catalog = match fixture.get("catalog") {
                 Some(Json::String(s)) if s == "bundled" => bundled_catalog(host),
                 Some(revision) => catalog_for(revision.clone(), host),
@@ -70,7 +121,7 @@ fn all_conformance_fixtures() {
             if update_dir.is_some() {
                 let mut outcome = JsonObject::new();
                 outcome.insert("name", case.get("name").unwrap().clone());
-                match catalog.resolve_sandbox_policy_with_diagnostics(tools, &ctx) {
+                match catalog.resolve_requirements_with_diagnostics(tools, &ctx) {
                     Ok(result) => outcome.insert("expect", result.to_json()),
                     Err(error) => {
                         let mut e = JsonObject::new();
@@ -96,12 +147,12 @@ fn all_conformance_fixtures() {
                         .to_string(),
                 ));
                 assert_eq!(
-                    failure(catalog.resolve_sandbox_policy_with_diagnostics(tools.clone(), &ctx)),
+                    failure(catalog.resolve_requirements_with_diagnostics(tools.clone(), &ctx)),
                     expected,
                     "{case_name}"
                 );
                 assert_eq!(
-                    failure(catalog.resolve_sandbox_policy(tools, &ctx)),
+                    failure(catalog.resolve_requirements(tools, &ctx)),
                     expected,
                     "{case_name}"
                 );
@@ -110,15 +161,16 @@ fn all_conformance_fixtures() {
             }
             let expect = case.get("expect").unwrap();
             let mut expected = JsonObject::new();
-            let expected_policy = expect.get("policy").filter(|p| !p.is_null()).cloned();
-            if let Some(policy) = &expected_policy {
-                expected.insert("policy", policy.clone());
+            let expected_requirements =
+                expect.get("requirements").filter(|p| !p.is_null()).cloned();
+            if let Some(requirements) = &expected_requirements {
+                expected.insert("requirements", requirements.clone());
             }
             expected.insert("diagnostics", expect.get("diagnostics").unwrap().clone());
             let expected = Json::Object(expected);
 
             let actual = catalog
-                .resolve_sandbox_policy_with_diagnostics(tools.clone(), &ctx)
+                .resolve_requirements_with_diagnostics(tools.clone(), &ctx)
                 .unwrap();
             assert_eq!(
                 actual.to_json(),
@@ -126,12 +178,16 @@ fn all_conformance_fixtures() {
                 "{case_name}\nactual: {}",
                 actual.to_json()
             );
-            let policy = catalog.resolve_sandbox_policy(tools.clone(), &ctx).unwrap();
-            assert_eq!(policy.map(|p| p.to_json()), expected_policy, "{case_name}");
+            let requirements = catalog.resolve_requirements(tools.clone(), &ctx).unwrap();
+            assert_eq!(
+                requirements.map(|p| p.to_json()),
+                expected_requirements,
+                "{case_name}"
+            );
             if !matches!(raw_tools, Json::Array(_)) {
                 let as_array = tools_from(&Json::Array(vec![raw_tools.clone()]));
                 let again = catalog
-                    .resolve_sandbox_policy_with_diagnostics(as_array, &ctx)
+                    .resolve_requirements_with_diagnostics(as_array, &ctx)
                     .unwrap();
                 assert_eq!(
                     again, actual,

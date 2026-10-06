@@ -1,93 +1,134 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Floor composition of selected components (design §4.5): every selected
-//! base, its selected additions, and its dependencies combine into one
-//! `SandboxPolicy` that preserves the access each requested pair needs.
+//! Floor composition of selected layers (design §4.5): every selected base,
+//! its selected additions, and its dependencies combine into one
+//! `ContainerRequirements` that preserves the access each requested pair
+//! needs.
 
 use crate::policy_store::catalog::{Additions, CatalogPolicy};
+use crate::policy_store::effective::LayerBody;
+use crate::policy_store::host::ObjectRelation;
 use crate::policy_store::json::{canonical_json, cmp_utf16, Json, JsonObject};
-use crate::policy_store::model::{FilesystemPolicy, Platform, SandboxPolicy};
+use crate::policy_store::model::{
+    DetailWarningKind, FilesystemRequirements, NetworkRequirement, PathAccess, PathRequirement,
+    Platform, Requirements, ResolutionDetailWarning, Warning,
+};
 use crate::policy_store::netrule::{describe_rule, rules_overlap};
 use crate::policy_store::paths::{normalize_path, path_exact_segments, path_key_segments};
 use crate::policy_store::text::symbol_matches;
 
-/// One selected (entry, base, additions) contribution.
+/// One selected layer and the input indexes that require it.
 #[derive(Clone, Debug)]
-pub struct Component<'a> {
+pub struct Contribution<'a> {
     pub entry_id: &'a str,
-    pub base: &'a CatalogPolicy,
-    pub additions: Vec<&'a Additions>,
+    pub body: LayerBody<'a>,
+    pub owners: Vec<usize>,
 }
 
-impl Component<'_> {
+impl Contribution<'_> {
+    fn paths(&self, class: PathAccess) -> Vec<&str> {
+        match self.body {
+            LayerBody::Base(base) => base.filesystem_field(field(class)),
+            LayerBody::Additions(additions) => match class {
+                PathAccess::Denied => Vec::new(),
+                PathAccess::Readonly => additions
+                    .readonly_paths
+                    .iter()
+                    .map(String::as_str)
+                    .collect(),
+                PathAccess::Readwrite => additions
+                    .readwrite_paths
+                    .iter()
+                    .map(String::as_str)
+                    .collect(),
+            },
+        }
+    }
+}
+
+fn field(class: PathAccess) -> &'static str {
+    match class {
+        PathAccess::Denied => "deniedPaths",
+        PathAccess::Readonly => "readonlyPaths",
+        PathAccess::Readwrite => "readwritePaths",
+    }
+}
+
+fn label(class: PathAccess) -> &'static str {
+    match class {
+        PathAccess::Denied => "denied",
+        PathAccess::Readonly => "read-only",
+        PathAccess::Readwrite => "read-write",
+    }
+}
+
+const CLASSES: [PathAccess; 3] = [
+    PathAccess::Denied,
+    PathAccess::Readonly,
+    PathAccess::Readwrite,
+];
+
+/// The contributions of one entry.
+struct Group<'a> {
+    entry_id: &'a str,
+    base: Option<&'a CatalogPolicy>,
+    additions: Vec<&'a Additions>,
+}
+
+impl Group<'_> {
     fn has_additions(&self) -> bool {
         self.additions.iter().any(|a| !a.is_empty())
     }
 
     fn needs_network(&self) -> bool {
-        self.base.field("network").is_some()
+        self.base.is_some_and(|b| b.field("network").is_some())
             || self.additions.iter().any(|a| !a.egress_allow.is_empty())
     }
-
-    /// Path templates of one access class, base first, then additions.
-    fn paths(&self, class: Class) -> Vec<&str> {
-        let mut out = self.base.filesystem_field(class.field());
-        for additions in &self.additions {
-            let extra = match class {
-                Class::Denied => &[][..],
-                Class::Readonly => &additions.readonly_paths[..],
-                Class::Readwrite => &additions.readwrite_paths[..],
-            };
-            out.extend(extra.iter().map(String::as_str));
-        }
-        out
-    }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Class {
-    Denied,
-    Readonly,
-    Readwrite,
-}
-
-impl Class {
-    const ALL: [Class; 3] = [Class::Denied, Class::Readonly, Class::Readwrite];
-
-    fn field(self) -> &'static str {
-        match self {
-            Class::Denied => "deniedPaths",
-            Class::Readonly => "readonlyPaths",
-            Class::Readwrite => "readwritePaths",
+fn groups<'a>(contributions: &[Contribution<'a>]) -> Vec<Group<'a>> {
+    let mut out: Vec<Group<'a>> = Vec::new();
+    for contribution in contributions {
+        let index = match out.iter().position(|g| g.entry_id == contribution.entry_id) {
+            Some(index) => index,
+            None => {
+                out.push(Group {
+                    entry_id: contribution.entry_id,
+                    base: None,
+                    additions: Vec::new(),
+                });
+                out.len() - 1
+            }
+        };
+        match contribution.body {
+            LayerBody::Base(base) => out[index].base = Some(base),
+            LayerBody::Additions(additions) => out[index].additions.push(additions),
         }
     }
-
-    fn label(self) -> &'static str {
-        match self {
-            Class::Denied => "denied",
-            Class::Readonly => "read-only",
-            Class::Readwrite => "read-write",
-        }
-    }
+    out
 }
 
-/// The symbols the components reference, first-seen order, with the entries
-/// that need each.
-pub fn component_symbols(components: &[Component<'_>]) -> Vec<(String, Vec<String>)> {
-    let mut out: Vec<(String, Vec<String>)> = Vec::new();
-    for component in components {
-        for class in Class::ALL {
-            for template in component.paths(class) {
+/// The symbols the contributions reference, first-seen order, with the
+/// entries and input indexes that need each.
+pub fn contribution_symbols(
+    contributions: &[Contribution<'_>],
+) -> Vec<(String, Vec<String>, Vec<usize>)> {
+    let mut out: Vec<(String, Vec<String>, Vec<usize>)> = Vec::new();
+    for contribution in contributions {
+        for class in CLASSES {
+            for template in contribution.paths(class) {
                 for (_, _, name) in symbol_matches(template) {
-                    match out.iter_mut().find(|(n, _)| n == name) {
-                        Some((_, ids)) => {
-                            if !ids.iter().any(|id| id == component.entry_id) {
-                                ids.push(component.entry_id.to_string());
-                            }
+                    let index = match out.iter().position(|(n, _, _)| n == name) {
+                        Some(index) => index,
+                        None => {
+                            out.push((name.to_string(), Vec::new(), Vec::new()));
+                            out.len() - 1
                         }
-                        None => out.push((name.to_string(), vec![component.entry_id.to_string()])),
-                    }
+                    };
+                    let (_, ids, owners) = &mut out[index];
+                    add_id(ids, contribution.entry_id);
+                    add_owners(owners, &contribution.owners);
                 }
             }
         }
@@ -95,55 +136,59 @@ pub fn component_symbols(components: &[Component<'_>]) -> Vec<(String, Vec<Strin
     out
 }
 
+fn add_id(ids: &mut Vec<String>, id: &str) {
+    if !ids.iter().any(|x| x == id) {
+        ids.push(id.to_string());
+        ids.sort_by(|a, b| cmp_utf16(a, b));
+    }
+}
+
+fn add_owners(owners: &mut Vec<usize>, extra: &[usize]) {
+    owners.extend_from_slice(extra);
+    owners.sort_unstable();
+    owners.dedup();
+}
+
 /// Rejects combinations the v1 composition rules cannot express (design
 /// §4.5), rather than approximating them with broader access.
-pub fn compose_check(components: &[Component<'_>]) -> Result<(), String> {
-    let mut versions: Vec<&str> = Vec::new();
-    for component in components {
-        let version = component.base.version();
-        if !versions.contains(&version) {
-            versions.push(version);
-        }
-    }
-    if versions.len() > 1 {
-        versions.sort_by(|a, b| cmp_utf16(a, b));
-        return Err(format!(
-            "mixed sandboxPolicy.version values ({})",
-            versions.join(", ")
-        ));
-    }
-    if is_passthrough(components) {
+pub fn compose_check(contributions: &[Contribution<'_>]) -> Result<(), String> {
+    let groups = groups(contributions);
+    if is_passthrough(&groups) {
         return Ok(());
     }
-    for component in components {
-        for key in component.base.raw().keys() {
-            if !matches!(key, "version" | "filesystem" | "network") {
+    for group in &groups {
+        for key in group.base.into_iter().flat_map(|b| b.raw().keys()) {
+            if !matches!(key, "filesystem" | "network") {
                 return Err(format!(
                     "'{}' uses '{key}', which has no v1 cross-policy composition rule",
-                    component.entry_id
+                    group.entry_id
                 ));
             }
         }
     }
-    if components.iter().filter(|c| c.needs_network()).count() <= 1 {
+    if groups.iter().filter(|g| g.needs_network()).count() <= 1 {
         return Ok(());
     }
-    for component in components {
-        let Some(network) = component.base.field("network").and_then(Json::as_object) else {
+    for group in &groups {
+        let Some(network) = group
+            .base
+            .and_then(|b| b.field("network"))
+            .and_then(Json::as_object)
+        else {
             continue;
         };
         for (key, value) in network.iter() {
             if key != "egress" {
                 return Err(format!(
                     "'{}' uses 'network.{key}', which cannot be combined with other network requirements",
-                    component.entry_id
+                    group.entry_id
                 ));
             }
             for (field, _) in value.as_object().into_iter().flat_map(|o| o.iter()) {
                 if !matches!(field, "default" | "allow" | "deny") {
                     return Err(format!(
                         "'{}' uses 'network.egress.{field}', which cannot be combined with other network requirements",
-                        component.entry_id
+                        group.entry_id
                     ));
                 }
             }
@@ -154,22 +199,61 @@ pub fn compose_check(components: &[Component<'_>]) -> Result<(), String> {
 
 /// A single selected policy without additions or dependencies keeps every
 /// catalog-supported field without cross-policy composition.
-fn is_passthrough(components: &[Component<'_>]) -> bool {
-    components.len() == 1 && !components[0].has_additions()
+fn is_passthrough(groups: &[Group<'_>]) -> bool {
+    groups.len() == 1 && !groups[0].has_additions()
 }
 
-/// The composed policy and the composition diagnostics.
+/// Filesystem object identity used during composition.
+pub trait IdentityOracle {
+    /// Whether `inner` names `outer`'s object or an object beneath it.
+    fn within(&self, inner: &str, outer: &str) -> ObjectRelation;
+}
+
+/// Lexical rules only (symbolic catalog validation and the reviewer view):
+/// paths that are not lexically related are treated as distinct objects.
+pub struct LexicalIdentity;
+
+impl IdentityOracle for LexicalIdentity {
+    fn within(&self, _inner: &str, _outer: &str) -> ObjectRelation {
+        ObjectRelation::NotWithin
+    }
+}
+
+/// An access relationship whose object identity could not be established.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IdentityFailure {
+    pub paths: Vec<String>,
+    pub owners: Vec<usize>,
+    pub entry_ids: Vec<String>,
+}
+
+/// The composed requirements, composition diagnostics, and any relation
+/// whose identity is unknown. When `identity_failures` is non-empty the
+/// caller drops their owners and composes again.
 #[derive(Clone, Debug)]
 pub struct Composed {
-    pub policy: SandboxPolicy,
-    pub warnings: Vec<String>,
+    pub requirements: Requirements,
+    pub warnings: Vec<Warning>,
+    pub identity_failures: Vec<IdentityFailure>,
 }
 
+#[derive(Clone, Debug)]
 struct PathItem {
     path: String,
     exact: Vec<String>,
     folded: Vec<String>,
     entry_ids: Vec<String>,
+    owners: Vec<usize>,
+}
+
+impl PathItem {
+    fn requirement(&self, access: PathAccess) -> PathRequirement {
+        PathRequirement {
+            path: self.path.clone(),
+            access,
+            entry_ids: self.entry_ids.clone(),
+        }
+    }
 }
 
 fn is_same_or_nested(left: &[String], right: &[String]) -> bool {
@@ -190,34 +274,76 @@ fn ids(item: &PathItem) -> String {
     item.entry_ids.join(", ")
 }
 
-/// Composes components that passed [`compose_check`]. `resolve` maps a path
-/// template to its substituted value (identity for symbolic validation).
-pub fn compose_policy(
-    components: &[Component<'_>],
+fn detail(
+    owners: &[&[usize]],
+    entry_ids: &[&[String]],
+    kind: DetailWarningKind,
+    message: String,
+) -> Warning {
+    let mut input_indexes = Vec::new();
+    for o in owners {
+        add_owners(&mut input_indexes, o);
+    }
+    let mut all_ids = Vec::new();
+    for list in entry_ids {
+        for id in list.iter() {
+            add_id(&mut all_ids, id);
+        }
+    }
+    Warning::Detail(ResolutionDetailWarning {
+        input_indexes,
+        entry_ids: all_ids,
+        kind,
+        message,
+    })
+}
+
+fn failure(a: &PathItem, b: &PathItem) -> IdentityFailure {
+    let mut owners = a.owners.clone();
+    add_owners(&mut owners, &b.owners);
+    let mut entry_ids = a.entry_ids.clone();
+    for id in &b.entry_ids {
+        add_id(&mut entry_ids, id);
+    }
+    IdentityFailure {
+        paths: vec![a.path.clone(), b.path.clone()],
+        owners,
+        entry_ids,
+    }
+}
+
+/// Composes contributions that passed [`compose_check`]. `resolve` maps a
+/// path template to its substituted value (identity for symbolic validation).
+pub fn compose(
+    contributions: &[Contribution<'_>],
     resolve: &dyn Fn(&str) -> String,
     platform: Platform,
+    identity: &dyn IdentityOracle,
 ) -> Composed {
     let mut warnings = Vec::new();
+    let mut failures = Vec::new();
     let mut classes: Vec<Vec<PathItem>> = Vec::new();
-    for class in Class::ALL {
+    for class in CLASSES {
         let mut items: Vec<PathItem> = Vec::new();
-        for component in components {
-            for template in component.paths(class) {
+        for contribution in contributions {
+            for template in contribution.paths(class) {
                 let path = normalize_path(&resolve(template), platform);
                 let exact = path_exact_segments(&path, platform);
-                match items.iter_mut().find(|i| i.exact == exact) {
-                    Some(item) => {
-                        if !item.entry_ids.iter().any(|id| id == component.entry_id) {
-                            item.entry_ids.push(component.entry_id.to_string());
-                        }
+                let index = match items.iter().position(|i| i.exact == exact) {
+                    Some(index) => index,
+                    None => {
+                        items.push(PathItem {
+                            folded: path_key_segments(&path, Platform::Windows),
+                            path,
+                            exact,
+                            entry_ids: Vec::new(),
+                            owners: Vec::new(),
+                        });
+                        items.len() - 1
                     }
-                    None => items.push(PathItem {
-                        folded: path_key_segments(&path, Platform::Windows),
-                        path,
-                        exact,
-                        entry_ids: vec![component.entry_id.to_string()],
-                    }),
-                }
+                };
+                add_id(&mut items[index].entry_ids, contribution.entry_id);
+                add_owners(&mut items[index].owners, &contribution.owners);
             }
         }
         classes.push(items);
@@ -225,7 +351,7 @@ pub fn compose_policy(
 
     // Case sensitivity of the target filesystem is not determined, so paths
     // compare case-sensitively; report pairs that differ only by case.
-    let all: Vec<(Class, &PathItem)> = Class::ALL
+    let all: Vec<(PathAccess, &PathItem)> = CLASSES
         .iter()
         .zip(&classes)
         .flat_map(|(class, items)| items.iter().map(move |i| (*class, i)))
@@ -235,121 +361,247 @@ pub fn compose_policy(
             if is_same_or_nested(&left.folded, &right.folded)
                 && !is_same_or_nested(&left.exact, &right.exact)
             {
-                warnings.push(format!(
-                    "{} '{}' ({}) and {} '{}' ({}) differ only by case; filesystem case sensitivity was not determined, so they were compared case-sensitively and kept distinct",
-                    left_class.label(),
-                    left.path,
-                    ids(left),
-                    right_class.label(),
-                    right.path,
-                    ids(right)
+                warnings.push(detail(
+                    &[&left.owners, &right.owners],
+                    &[&left.entry_ids, &right.entry_ids],
+                    DetailWarningKind::FilesystemCaseAssumed {
+                        paths: vec![left.path.clone(), right.path.clone()],
+                    },
+                    format!(
+                        "{} '{}' ({}) and {} '{}' ({}) differ only by case; filesystem case sensitivity was not determined, so they were compared case-sensitively and kept distinct",
+                        label(*left_class),
+                        left.path,
+                        ids(left),
+                        label(*right_class),
+                        right.path,
+                        ids(right)
+                    ),
                 ));
             }
         }
     }
 
-    let [denied, readonly, readwrite] = <[Vec<PathItem>; 3]>::try_from(classes)
+    let [denied, readonly, mut readwrite] = <[Vec<PathItem>; 3]>::try_from(classes)
         .unwrap_or_else(|_| unreachable!("three access classes"));
 
-    let readonly: Vec<PathItem> = readonly
-        .into_iter()
-        .filter(|ro| match readwrite.iter().find(|rw| is_within(&ro.exact, &rw.exact)) {
-            Some(rw) => {
-                warnings.push(format!(
+    // Read-only requirements equal to or within a read-write subtree are
+    // satisfied by it. A read-only alias of a read-write object keeps its
+    // pathname with read-write access.
+    let mut kept_readonly = Vec::new();
+    let mut promoted = Vec::new();
+    for ro in readonly {
+        let covering: Vec<&PathItem> = readwrite
+            .iter()
+            .filter(|rw| is_within(&ro.exact, &rw.exact))
+            .collect();
+        if !covering.is_empty() {
+            let owners: Vec<&[usize]> = std::iter::once(ro.owners.as_slice())
+                .chain(covering.iter().map(|rw| rw.owners.as_slice()))
+                .collect();
+            let entry_ids: Vec<&[String]> = std::iter::once(ro.entry_ids.as_slice())
+                .chain(covering.iter().map(|rw| rw.entry_ids.as_slice()))
+                .collect();
+            warnings.push(detail(
+                &owners,
+                &entry_ids,
+                DetailWarningKind::ReadonlySuperseded {
+                    removed: ro.requirement(PathAccess::Readonly),
+                    required_by: covering
+                        .iter()
+                        .map(|rw| rw.requirement(PathAccess::Readwrite))
+                        .collect(),
+                },
+                format!(
                     "read-only '{}' ({}) is covered by read-write '{}' ({}); the read-only entry was omitted",
                     ro.path,
-                    ids(ro),
-                    rw.path,
-                    ids(rw)
-                ));
-                false
+                    ids(&ro),
+                    covering[0].path,
+                    ids(covering[0])
+                ),
+            ));
+            continue;
+        }
+        let mut aliases: Vec<&PathItem> = Vec::new();
+        for rw in &readwrite {
+            match identity.within(&ro.path, &rw.path) {
+                ObjectRelation::Within => aliases.push(rw),
+                ObjectRelation::Unknown => failures.push(failure(&ro, rw)),
+                ObjectRelation::NotWithin => {}
             }
-            None => true,
-        })
-        .collect();
+        }
+        if aliases.is_empty() {
+            kept_readonly.push(ro);
+            continue;
+        }
+        let owners: Vec<&[usize]> = std::iter::once(ro.owners.as_slice())
+            .chain(aliases.iter().map(|rw| rw.owners.as_slice()))
+            .collect();
+        let entry_ids: Vec<&[String]> = std::iter::once(ro.entry_ids.as_slice())
+            .chain(aliases.iter().map(|rw| rw.entry_ids.as_slice()))
+            .collect();
+        warnings.push(detail(
+            &owners,
+            &entry_ids,
+            DetailWarningKind::ReadonlySuperseded {
+                removed: ro.requirement(PathAccess::Readonly),
+                required_by: aliases
+                    .iter()
+                    .map(|rw| rw.requirement(PathAccess::Readwrite))
+                    .collect(),
+            },
+            format!(
+                "read-only '{}' ({}) names the same filesystem object as read-write '{}' ({}) or one beneath it; the alias pathname was retained with read-write access",
+                ro.path,
+                ids(&ro),
+                aliases[0].path,
+                ids(aliases[0])
+            ),
+        ));
+        promoted.push(ro);
+    }
+    readwrite.extend(promoted);
+    let readonly = kept_readonly;
 
-    let denied: Vec<PathItem> = denied
-        .into_iter()
-        .filter(|deny| {
-            let grant = readwrite
-                .iter()
-                .map(|g| (Class::Readwrite, g))
-                .chain(readonly.iter().map(|g| (Class::Readonly, g)))
-                .find(|(_, g)| is_same_or_nested(&deny.exact, &g.exact));
-            match grant {
-                Some((class, g)) => {
-                    warnings.push(format!(
-                        "removed catalog deny '{}' ({}) because it overlaps required {} '{}' ({}); the entire deny scope '{}' was removed, so other grants may now apply throughout it",
-                        deny.path,
-                        ids(deny),
-                        class.label(),
-                        g.path,
-                        ids(g),
-                        deny.path
-                    ));
-                    false
+    // A catalog deny overlapping any required read-only or read-write path is
+    // removed in full.
+    let mut kept_denied = Vec::new();
+    for deny in denied {
+        let grants: Vec<(PathAccess, &PathItem)> = readwrite
+            .iter()
+            .map(|g| (PathAccess::Readwrite, g))
+            .chain(readonly.iter().map(|g| (PathAccess::Readonly, g)))
+            .collect();
+        let mut overlapping: Vec<(PathAccess, &PathItem)> = grants
+            .iter()
+            .filter(|(_, g)| is_same_or_nested(&deny.exact, &g.exact))
+            .copied()
+            .collect();
+        if overlapping.is_empty() {
+            for (access, grant) in &grants {
+                let forward = identity.within(&deny.path, &grant.path);
+                let backward = identity.within(&grant.path, &deny.path);
+                if forward == ObjectRelation::Within || backward == ObjectRelation::Within {
+                    overlapping.push((*access, grant));
+                } else if forward == ObjectRelation::Unknown || backward == ObjectRelation::Unknown
+                {
+                    failures.push(failure(&deny, grant));
                 }
-                None => true,
             }
-        })
-        .collect();
+        }
+        if overlapping.is_empty() {
+            kept_denied.push(deny);
+            continue;
+        }
+        let owners: Vec<&[usize]> = std::iter::once(deny.owners.as_slice())
+            .chain(overlapping.iter().map(|(_, g)| g.owners.as_slice()))
+            .collect();
+        let entry_ids: Vec<&[String]> = std::iter::once(deny.entry_ids.as_slice())
+            .chain(overlapping.iter().map(|(_, g)| g.entry_ids.as_slice()))
+            .collect();
+        let (first_access, first) = overlapping[0];
+        warnings.push(detail(
+            &owners,
+            &entry_ids,
+            DetailWarningKind::FilesystemDenyRemoved {
+                removed: deny.requirement(PathAccess::Denied),
+                required_by: overlapping
+                    .iter()
+                    .map(|(access, g)| g.requirement(*access))
+                    .collect(),
+            },
+            format!(
+                "removed catalog deny '{}' ({}) because it overlaps required {} '{}' ({}); the entire deny scope '{}' was removed, so other grants may now apply throughout it",
+                deny.path,
+                ids(&deny),
+                label(first_access),
+                first.path,
+                ids(first),
+                deny.path
+            ),
+        ));
+    }
 
-    let has_filesystem = components.iter().any(|c| {
-        c.base.has_filesystem()
-            || c.additions
-                .iter()
-                .any(|a| !a.readonly_paths.is_empty() || !a.readwrite_paths.is_empty())
+    let has_filesystem = contributions.iter().any(|c| match c.body {
+        LayerBody::Base(base) => base.has_filesystem(),
+        LayerBody::Additions(a) => !a.readonly_paths.is_empty() || !a.readwrite_paths.is_empty(),
     });
     let pick = |items: Vec<PathItem>| {
         Some(items.into_iter().map(|i| i.path).collect::<Vec<_>>()).filter(|v| !v.is_empty())
     };
-    let filesystem = has_filesystem.then(|| FilesystemPolicy {
-        denied_paths: pick(denied),
+    let filesystem = has_filesystem.then(|| FilesystemRequirements {
+        denied_paths: pick(kept_denied),
         readonly_paths: pick(readonly),
         readwrite_paths: pick(readwrite),
     });
 
-    let root = components[0].base;
-    let passthrough = is_passthrough(components);
-    let network = compose_network(components, &mut warnings);
+    let groups = groups(contributions);
+    let passthrough = is_passthrough(&groups);
+    let root = groups.first().and_then(|g| g.base);
+    let network = compose_network(contributions, &groups, &mut warnings);
     Composed {
-        policy: SandboxPolicy {
-            version: root.version().to_string(),
+        requirements: Requirements {
             filesystem,
             network,
-            ui: passthrough.then(|| root.field("ui").cloned()).flatten(),
+            ui: passthrough
+                .then(|| root.and_then(|r| r.field("ui").cloned()))
+                .flatten(),
             timeout_ms: passthrough
-                .then(|| root.field("timeoutMs").and_then(Json::as_f64))
+                .then(|| {
+                    root.and_then(|r| r.field("timeoutMs"))
+                        .and_then(Json::as_f64)
+                        .map(|n| n as u32)
+                })
                 .flatten(),
         },
         warnings,
+        identity_failures: failures,
     }
 }
 
-/// Outbound rules keyed by canonical JSON, with the entries contributing each.
+/// Outbound rules keyed by canonical JSON, with their contributors.
 #[derive(Default)]
 struct Rules {
-    items: Vec<(String, Json, Vec<String>)>,
+    items: Vec<RuleItem>,
+}
+
+struct RuleItem {
+    key: String,
+    rule: Json,
+    entry_ids: Vec<String>,
+    owners: Vec<usize>,
+}
+
+impl RuleItem {
+    fn requirement(&self) -> NetworkRequirement {
+        NetworkRequirement {
+            rule: self.rule.clone(),
+            entry_ids: self.entry_ids.clone(),
+        }
+    }
 }
 
 impl Rules {
-    fn add(&mut self, rule: &Json, entry_id: &str) {
+    fn add(&mut self, rule: &Json, contribution: &Contribution<'_>) {
         let key = canonical_json(rule);
-        match self.items.iter_mut().find(|(k, _, _)| *k == key) {
-            Some((_, _, ids)) => {
-                if !ids.iter().any(|id| id == entry_id) {
-                    ids.push(entry_id.to_string());
-                }
+        let index = match self.items.iter().position(|i| i.key == key) {
+            Some(index) => index,
+            None => {
+                self.items.push(RuleItem {
+                    key,
+                    rule: rule.clone(),
+                    entry_ids: Vec::new(),
+                    owners: Vec::new(),
+                });
+                self.items.len() - 1
             }
-            None => self
-                .items
-                .push((key, rule.clone(), vec![entry_id.to_string()])),
-        }
+        };
+        add_id(&mut self.items[index].entry_ids, contribution.entry_id);
+        add_owners(&mut self.items[index].owners, &contribution.owners);
     }
 
     fn json(&self) -> Option<Json> {
         (!self.items.is_empty())
-            .then(|| Json::Array(self.items.iter().map(|(_, rule, _)| rule.clone()).collect()))
+            .then(|| Json::Array(self.items.iter().map(|i| i.rule.clone()).collect()))
     }
 }
 
@@ -362,53 +614,79 @@ fn egress_rules<'j>(network: Option<&'j Json>, field: &str) -> impl Iterator<Ite
         .flatten()
 }
 
-/// Composes network requirements (design §4.5). A single component needing
-/// network keeps its own network section, plus its outbound additions. Several
-/// such components union their outbound allow rules and catalog egress denies
-/// under a deny-by-default egress. Either way, a catalog deny overlapping any
-/// required allow rule is removed in full, with a warning.
-fn compose_network(components: &[Component<'_>], warnings: &mut Vec<String>) -> Option<Json> {
-    let needing: Vec<&Component<'_>> = components.iter().filter(|c| c.needs_network()).collect();
+/// Composes network requirements (design §4.5). A single entry needing
+/// network keeps its own network section, plus its outbound additions.
+/// Several such entries union their outbound allow rules and catalog egress
+/// denies under a deny-by-default egress. Either way, a catalog deny
+/// overlapping any required allow rule is removed in full, with a warning.
+fn compose_network(
+    contributions: &[Contribution<'_>],
+    groups: &[Group<'_>],
+    warnings: &mut Vec<Warning>,
+) -> Option<Json> {
+    let needing: Vec<&Group<'_>> = groups.iter().filter(|g| g.needs_network()).collect();
     if needing.is_empty() {
         return None;
     }
     let mut allow = Rules::default();
     let mut deny = Rules::default();
-    for component in &needing {
-        let network = component.base.field("network");
-        for rule in egress_rules(network, "allow") {
-            allow.add(rule, component.entry_id);
-        }
-        for additions in &component.additions {
-            for rule in &additions.egress_allow {
-                allow.add(rule, component.entry_id);
+    for contribution in contributions {
+        match contribution.body {
+            LayerBody::Base(base) => {
+                let network = base.field("network");
+                for rule in egress_rules(network, "allow") {
+                    allow.add(rule, contribution);
+                }
+                for rule in egress_rules(network, "deny") {
+                    deny.add(rule, contribution);
+                }
+            }
+            LayerBody::Additions(additions) => {
+                for rule in &additions.egress_allow {
+                    allow.add(rule, contribution);
+                }
             }
         }
-        for rule in egress_rules(network, "deny") {
-            deny.add(rule, component.entry_id);
-        }
     }
-    deny.items.retain(|(_, rule, deny_ids)| {
-        let Some((_, required, allow_ids)) = allow
+    deny.items.retain(|denied| {
+        let required: Vec<&RuleItem> = allow
             .items
             .iter()
-            .find(|(_, a, _)| rules_overlap(a, rule))
-        else {
+            .filter(|a| rules_overlap(&a.rule, &denied.rule))
+            .collect();
+        if required.is_empty() {
             return true;
-        };
-        warnings.push(format!(
-            "removed catalog egress deny {} ({}) because it overlaps required egress allow {} ({}); the entire deny rule was removed, so other grants may now apply throughout {}",
-            describe_rule(rule),
-            deny_ids.join(", "),
-            describe_rule(required),
-            allow_ids.join(", "),
-            describe_rule(rule)
+        }
+        let owners: Vec<&[usize]> = std::iter::once(denied.owners.as_slice())
+            .chain(required.iter().map(|a| a.owners.as_slice()))
+            .collect();
+        let entry_ids: Vec<&[String]> = std::iter::once(denied.entry_ids.as_slice())
+            .chain(required.iter().map(|a| a.entry_ids.as_slice()))
+            .collect();
+        warnings.push(detail(
+            &owners,
+            &entry_ids,
+            DetailWarningKind::NetworkDenyRemoved {
+                removed: denied.requirement(),
+                required_by: required.iter().map(|a| a.requirement()).collect(),
+            },
+            format!(
+                "removed catalog egress deny {} ({}) because it overlaps required egress allow {} ({}); the entire deny rule was removed, so other grants may now apply throughout {}",
+                describe_rule(&denied.rule),
+                denied.entry_ids.join(", "),
+                describe_rule(&required[0].rule),
+                required[0].entry_ids.join(", "),
+                describe_rule(&denied.rule)
+            ),
         ));
         false
     });
 
     let single_base = match needing.as_slice() {
-        [only] => only.base.field("network").and_then(Json::as_object),
+        [only] => only
+            .base
+            .and_then(|b| b.field("network"))
+            .and_then(Json::as_object),
         _ => None,
     };
     let mut egress = JsonObject::new();

@@ -16,7 +16,7 @@ pub fn run() {
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let source = manifest_dir.join("policy_store").join("catalog");
 
-        println!("cargo:rerun-if-changed={}", source.display());
+    println!("cargo:rerun-if-changed={}", source.display());
 
     assert!(
         source.join("manifest.json").is_file(),
@@ -72,7 +72,8 @@ pub fn run() {
     }
     writeln!(code, "];").unwrap();
 
-    let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("policy_store_catalog.rs");
+    let out =
+        PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("policy_store_catalog.rs");
     fs::write(out, code).expect("write policy_store_catalog.rs");
 }
 

@@ -297,9 +297,30 @@ pub mod v1 {
         }
     }
 
+    /// **Prototype, pending API review.** Policy-store lookup inputs,
+    /// diagnostics, and catalog metadata for [`resolve_tool_requirements`].
+    pub mod tool_requirements {
+        pub use crate::policy_store::{
+            Architecture, ArchitectureFallback, CatalogAdditionsMetadata, CatalogEntryMetadata,
+            CatalogIdentityMetadata, CatalogInfo, CatalogIntentMetadata, DefaultMetadata,
+            DependencyRecord, DetailWarningKind, Diagnostics, EntryMatchRecord, IdentityStrength,
+            IntentMode, IntentSelection, MatchedIdentity, NetworkRequirement, PathAccess,
+            PathRequirement, Platform, PlatformVariantMetadata, Provenance, PurlComponent,
+            ResolutionDetailWarning, ResolveContext, SymbolMap, SymbolValueSource, ToolCandidate,
+            ToolInput, ToolInputs, ToolRecord, ToolResolutionStatus, ToolResolutionWarning,
+            ToolWarningKind, VersionScheme, VersionSelection, VersionStatus,
+            VersionVariantMetadata, Warning,
+        };
+    }
+
+    pub use crate::policy_store::sdk::{
+        get_catalog_info, list_catalog_entries, resolve_tool_requirements,
+        resolve_tool_requirements_with_diagnostics, ToolRequirementsResolution,
+    };
+
     pub use crate::policy::{
-        ClipboardPolicy, ContainerRequest, Containment, FilesystemPolicy, NetworkAction,
-        NetworkEgressPolicy, NetworkIngressPolicy, NetworkPeerPolicy, NetworkPolicy,
+        ClipboardPolicy, ContainerRequest, ContainerRequirements, Containment, FilesystemPolicy,
+        NetworkAction, NetworkEgressPolicy, NetworkIngressPolicy, NetworkPeerPolicy, NetworkPolicy,
         NetworkPortPolicy, NetworkProtocol, NetworkRulePolicy, NetworkRuntimeConfig, UiPolicy,
     };
     pub use crate::sandbox::{

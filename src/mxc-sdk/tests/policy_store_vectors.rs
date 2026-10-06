@@ -10,7 +10,6 @@ mod common;
 use common::*;
 use mxc_sdk::__policy_store::tooling::{
     canonical_json, is_absolute_path, normalize_path, parse_purl, path_key_segments, Json,
-    ParsedPurl,
 };
 use mxc_sdk::__policy_store::Platform;
 
@@ -82,13 +81,11 @@ fn path_vectors() {
 #[test]
 fn malformed_percent_encoding_is_an_invalid_purl() {
     assert_eq!(parse_purl("pkg:npm/npm@%E0%A4%A"), None);
-    assert_eq!(
-        parse_purl("pkg:npm/npm@10.9.0"),
-        Some(ParsedPurl {
-            key: "npm/npm".into(),
-            version: Some("10.9.0".into())
-        })
-    );
+    let parsed = parse_purl("pkg:npm/npm@10.9.0").expect("valid purl");
+    assert_eq!(parsed.package_type, "npm");
+    assert_eq!(parsed.name, "npm");
+    assert_eq!(parsed.version.as_deref(), Some("10.9.0"));
+    assert!(!parsed.has_qualifiers && !parsed.has_subpath);
 }
 
 /// The embedded catalog must equal `catalog/` on disk (canonical content),

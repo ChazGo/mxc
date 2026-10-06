@@ -3,6 +3,7 @@
   "catalog": {
     "catalogSchemaVersion": "1",
     "catalogRevision": "2000-01-02.1",
+    "sdkContractVersion": "1.0.0",
     "entries": [
       {
         "entryId": "tool:helper",
@@ -18,8 +19,7 @@
           }
         ],
         "default": {
-          "sandboxPolicy": {
-            "version": "0.9.0-alpha",
+          "requirements": {
             "filesystem": {
               "readonlyPaths": [
                 "${git_prefix}/helper"
@@ -86,8 +86,7 @@
           }
         ],
         "default": {
-          "sandboxPolicy": {
-            "version": "0.9.0-alpha",
+          "requirements": {
             "filesystem": {
               "readonlyPaths": [
                 "${git_prefix}/fetcher"
@@ -141,8 +140,7 @@
           }
         ],
         "default": {
-          "sandboxPolicy": {
-            "version": "0.9.0-alpha",
+          "requirements": {
             "filesystem": {
               "readonlyPaths": [
                 "${git_prefix}/locker"
@@ -203,8 +201,7 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
               "/g/fetcher",
@@ -276,6 +273,9 @@
             {
               "entryId": "tool:helper",
               "entryRevision": 1,
+              "inputIndexes": [
+                0
+              ],
               "versionSelection": {
                 "status": "matched_default"
               },
@@ -288,7 +288,13 @@
             }
           ],
           "warnings": [
-            "input 0 ('fetcher') matched tool:fetcher only by invocation name (weak identity)"
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:fetcher",
+              "invocationName": "fetcher",
+              "message": "input 0 ('fetcher') matched tool:fetcher only by invocation name (weak identity)"
+            }
           ]
         }
       }
@@ -307,8 +313,7 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
               "/g/locker",
@@ -373,6 +378,9 @@
             {
               "entryId": "tool:helper",
               "entryRevision": 1,
+              "inputIndexes": [
+                0
+              ],
               "versionSelection": {
                 "status": "matched_default"
               },
@@ -383,7 +391,13 @@
             }
           ],
           "warnings": [
-            "input 0 ('locker') matched tool:locker only by invocation name (weak identity)"
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:locker",
+              "invocationName": "locker",
+              "message": "input 0 ('locker') matched tool:locker only by invocation name (weak identity)"
+            }
           ]
         }
       }
@@ -405,8 +419,7 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
               "/g/helper",
@@ -507,6 +520,9 @@
             {
               "entryId": "tool:helper",
               "entryRevision": 1,
+              "inputIndexes": [
+                1
+              ],
               "versionSelection": {
                 "status": "matched_default"
               },
@@ -519,8 +535,20 @@
             }
           ],
           "warnings": [
-            "input 0 ('helper') matched tool:helper only by invocation name (weak identity)",
-            "input 1 ('fetcher') matched tool:fetcher only by invocation name (weak identity)"
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:helper",
+              "invocationName": "helper",
+              "message": "input 0 ('helper') matched tool:helper only by invocation name (weak identity)"
+            },
+            {
+              "code": "weak_identity",
+              "inputIndex": 1,
+              "entryId": "tool:fetcher",
+              "invocationName": "fetcher",
+              "message": "input 1 ('fetcher') matched tool:fetcher only by invocation name (weak identity)"
+            }
           ]
         }
       }
@@ -542,13 +570,12 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
               "/g/fetcher",
-              "/g/locker",
-              "/g/helper"
+              "/g/helper",
+              "/g/locker"
             ]
           },
           "network": {
@@ -654,6 +681,9 @@
             {
               "entryId": "tool:helper",
               "entryRevision": 1,
+              "inputIndexes": [
+                1
+              ],
               "versionSelection": {
                 "status": "matched_default"
               },
@@ -665,6 +695,9 @@
             {
               "entryId": "tool:helper",
               "entryRevision": 1,
+              "inputIndexes": [
+                0
+              ],
               "versionSelection": {
                 "status": "matched_default"
               },
@@ -677,9 +710,64 @@
             }
           ],
           "warnings": [
-            "input 0 ('fetcher') matched tool:fetcher only by invocation name (weak identity)",
-            "input 1 ('locker') matched tool:locker only by invocation name (weak identity)",
-            "removed catalog egress deny [192.0.2.0/23; any protocol and port] (tool:locker) because it overlaps required egress allow [192.0.2.0/24; tcp/443] (tool:fetcher); the entire deny rule was removed, so other grants may now apply throughout [192.0.2.0/23; any protocol and port]"
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:fetcher",
+              "invocationName": "fetcher",
+              "message": "input 0 ('fetcher') matched tool:fetcher only by invocation name (weak identity)"
+            },
+            {
+              "code": "weak_identity",
+              "inputIndex": 1,
+              "entryId": "tool:locker",
+              "invocationName": "locker",
+              "message": "input 1 ('locker') matched tool:locker only by invocation name (weak identity)"
+            },
+            {
+              "code": "network_deny_removed",
+              "inputIndexes": [
+                0,
+                1
+              ],
+              "entryIds": [
+                "tool:fetcher",
+                "tool:locker"
+              ],
+              "removed": {
+                "rule": {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.0/23"
+                    }
+                  ]
+                },
+                "entryIds": [
+                  "tool:locker"
+                ]
+              },
+              "requiredBy": [
+                {
+                  "rule": {
+                    "to": [
+                      {
+                        "cidr": "192.0.2.0/24"
+                      }
+                    ],
+                    "ports": [
+                      {
+                        "protocol": "tcp",
+                        "port": 443
+                      }
+                    ]
+                  },
+                  "entryIds": [
+                    "tool:fetcher"
+                  ]
+                }
+              ],
+              "message": "removed catalog egress deny [192.0.2.0/23; any protocol and port] (tool:locker) because it overlaps required egress allow [192.0.2.0/24; tcp/443] (tool:fetcher); the entire deny rule was removed, so other grants may now apply throughout [192.0.2.0/23; any protocol and port]"
+            }
           ]
         }
       }

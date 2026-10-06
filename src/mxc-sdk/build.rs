@@ -10,10 +10,10 @@ mod build_mxc_build_common;
 mod build_mxc_common;
 #[path = "build/build_mxc_telemetry.rs"]
 mod build_mxc_telemetry;
-#[path = "build/build_policy_store.rs"]
-mod build_policy_store;
 #[path = "build/build_nanvix_binaries.rs"]
 mod build_nanvix_binaries;
+#[path = "build/build_policy_store.rs"]
+mod build_policy_store;
 #[cfg(feature = "link-wslcsdk")]
 #[path = "build/build_wslc_common.rs"]
 mod build_wslc_common;

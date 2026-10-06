@@ -11,7 +11,8 @@
 //! - every entry resolves deterministically, through its own identity, for
 //!   every platform and architecture (every effective policy is also
 //!   materialized and validated by `validate_catalog_revision`);
-//! - the rendered reviewer view in `catalog/views/` is current;
+//! - the rendered reviewer view and exact-request bundle in `catalog/views/`
+//!   are current (CI validates the bundle against the SDK target schema);
 //! - every entry has a bundled-catalog conformance case, as a match or a
 //!   resolved dependency.
 //!
@@ -23,7 +24,8 @@ mod common;
 
 use common::{crate_dir, read_json};
 use mxc_sdk::__policy_store::tooling::{
-    render_reviewer_view, validate_bundled_catalog, IdentityPredicate, Json,
+    canonical_json, render_exact_requests, render_reviewer_view, validate_bundled_catalog,
+    IdentityPredicate, Json,
 };
 use mxc_sdk::__policy_store::{
     bundled_catalog_store, Architecture, FixedHost, Platform, PolicyCatalog, ResolveContext,
@@ -117,14 +119,14 @@ fn every_entry_resolves_deterministically_through_its_own_identity() {
                     let label =
                         format!("{revision_id} {} {platform}/{architecture}", entry.entry_id);
                     let first =
-                        catalog.resolve_sandbox_policy_with_diagnostics(candidate.clone(), &ctx);
+                        catalog.resolve_requirements_with_diagnostics(candidate.clone(), &ctx);
                     let second =
-                        catalog.resolve_sandbox_policy_with_diagnostics(candidate.clone(), &ctx);
+                        catalog.resolve_requirements_with_diagnostics(candidate.clone(), &ctx);
                     match (first, second) {
                         (Ok(first), Ok(second)) => {
-                            if first.policy.is_none() {
+                            if first.requirements.is_none() {
                                 failures.push(format!(
-                                    "{label} produced no policy: {:?}",
+                                    "{label} produced no requirements: {:?}",
                                     first.diagnostics.warnings
                                 ));
                             } else if first.to_json() != second.to_json() {
@@ -206,8 +208,8 @@ fn every_entry_has_a_bundled_conformance_case() {
     );
 }
 
-/// The reviewer view is generated; set `MXC_POLICY_STORE_UPDATE_VIEWS=1` to
-/// rewrite it after a catalog change.
+/// The reviewer view and exact-request bundle are generated; set
+/// `MXC_POLICY_STORE_UPDATE_VIEWS=1` to rewrite them after a catalog change.
 #[test]
 fn reviewer_views_are_current() {
     let store = bundled_catalog_store().unwrap();
@@ -219,11 +221,21 @@ fn reviewer_views_are_current() {
             .unwrap()
             .replace('\n', "\r\n");
         let path = dir.join(format!("{revision_id}.md"));
+        let requests = render_exact_requests(&revision, store.contract()).unwrap();
+        let requests_path = dir.join(format!("{revision_id}.requests.json"));
         if update {
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(&path, &rendered).unwrap();
+            std::fs::write(&requests_path, format!("{}\n", requests.to_pretty_string())).unwrap();
             continue;
         }
+        let committed_requests = read_json(requests_path.clone());
+        assert_eq!(
+            canonical_json(&committed_requests),
+            canonical_json(&requests),
+            "{} is stale; regenerate with MXC_POLICY_STORE_UPDATE_VIEWS=1",
+            requests_path.display()
+        );
         let committed = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         assert_eq!(

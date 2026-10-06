@@ -3,6 +3,7 @@
   "catalog": {
     "catalogSchemaVersion": "1",
     "catalogRevision": "2000-01-01.1",
+    "sdkContractVersion": "1.0.0",
     "entries": [
       {
         "entryId": "tool:base",
@@ -18,8 +19,7 @@
           }
         ],
         "default": {
-          "sandboxPolicy": {
-            "version": "0.9.0-alpha",
+          "requirements": {
             "filesystem": {
               "readonlyPaths": [
                 "${git_prefix}/share"
@@ -86,8 +86,7 @@
           }
         ],
         "default": {
-          "sandboxPolicy": {
-            "version": "0.9.0-alpha",
+          "requirements": {
             "filesystem": {
               "readonlyPaths": [
                 "${git_prefix}/plugins"
@@ -119,8 +118,7 @@
           }
         ],
         "default": {
-          "sandboxPolicy": {
-            "version": "0.9.0-alpha",
+          "requirements": {
             "filesystem": {
               "readwritePaths": [
                 "${project_root}"
@@ -267,14 +265,13 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
-              "/g/lib-arm64",
-              "/g/tools",
               "/g/share",
-              "/g/lib"
+              "/g/lib",
+              "/g/lib-arm64",
+              "/g/tools"
             ],
             "readwritePaths": [
               "/w"
@@ -321,6 +318,9 @@
             {
               "entryId": "tool:base",
               "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
               "versionSelection": {
                 "status": "matched_default"
               },
@@ -332,6 +332,9 @@
             {
               "entryId": "tool:base",
               "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
               "requiredVersionRange": "vers:semver/>=22.0.0",
               "versionSelection": {
                 "status": "matched_default"
@@ -362,13 +365,12 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
-              "/g/tools",
               "/g/share",
-              "/g/lib"
+              "/g/lib",
+              "/g/tools"
             ],
             "readwritePaths": [
               "/w"
@@ -433,6 +435,9 @@
             {
               "entryId": "tool:base",
               "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
               "versionSelection": {
                 "status": "matched_default"
               },
@@ -442,7 +447,21 @@
               }
             }
           ],
-          "warnings": []
+          "warnings": [
+            {
+              "code": "architecture_fallback",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "platform": "linux",
+              "architecture": "x64",
+              "selected": "default",
+              "message": "tool:app has no x64-specific linux overlay; its architecture-neutral default data was used"
+            }
+          ]
         }
       }
     },
@@ -464,8 +483,7 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
               "/g/share",
@@ -535,6 +553,9 @@
             {
               "entryId": "tool:base",
               "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
               "versionSelection": {
                 "status": "matched_default"
               },
@@ -550,8 +571,20 @@
               "inputIndex": 0,
               "entryId": "tool:app",
               "detectedVersion": "1.0.0",
-              "intent": "serve",
               "message": "input 0 ('app'): detected version '1.0.0' is outside every reviewed version range for tool:app; its unversioned default applies"
+            },
+            {
+              "code": "architecture_fallback",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "platform": "linux",
+              "architecture": "x64",
+              "selected": "default",
+              "message": "tool:app has no x64-specific linux overlay; its architecture-neutral default data was used"
             }
           ]
         }
@@ -575,7 +608,6 @@
         }
       },
       "expect": {
-        "policy": null,
         "diagnostics": {
           "catalogRevision": "2000-01-01.1",
           "tools": [
@@ -611,7 +643,6 @@
               "inputIndex": 0,
               "entryId": "tool:app",
               "detectedVersion": "not a version",
-              "intent": "serve",
               "message": "input 0 ('app'): detected version 'not a version' is not a valid npm version for tool:app; the input contributes nothing"
             }
           ]
@@ -636,8 +667,7 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
               "/g/share",
@@ -689,6 +719,9 @@
             {
               "entryId": "tool:base",
               "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
               "versionSelection": {
                 "status": "matched_default"
               },
@@ -698,7 +731,21 @@
               }
             }
           ],
-          "warnings": []
+          "warnings": [
+            {
+              "code": "architecture_fallback",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "platform": "linux",
+              "architecture": "x64",
+              "selected": "default",
+              "message": "tool:app has no x64-specific linux overlay; its architecture-neutral default data was used"
+            }
+          ]
         }
       }
     },
@@ -720,7 +767,6 @@
         }
       },
       "expect": {
-        "policy": null,
         "diagnostics": {
           "catalogRevision": "2000-01-01.1",
           "tools": [
@@ -761,7 +807,6 @@
               "code": "intent_unsupported",
               "inputIndex": 0,
               "entryId": "tool:app",
-              "detectedVersion": "2.4.1",
               "intent": "publish",
               "message": "input 0 ('app'): intent 'publish' is not defined for the selected policy of tool:app (available: build, serve); the input contributes nothing"
             }
@@ -787,8 +832,7 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
               "/g/share",
@@ -872,6 +916,9 @@
             {
               "entryId": "tool:base",
               "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
               "versionSelection": {
                 "status": "matched_default"
               },
@@ -883,6 +930,9 @@
             {
               "entryId": "tool:base",
               "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
               "requiredVersionRange": "vers:semver/>=22.0.0",
               "versionSelection": {
                 "status": "matched_default"
@@ -893,7 +943,21 @@
               }
             }
           ],
-          "warnings": []
+          "warnings": [
+            {
+              "code": "architecture_fallback",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "platform": "linux",
+              "architecture": "x64",
+              "selected": "default",
+              "message": "tool:app has no x64-specific linux overlay; its architecture-neutral default data was used"
+            }
+          ]
         }
       }
     },
@@ -914,13 +978,12 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
-              "/g/tools",
               "/g/share",
-              "/g/lib"
+              "/g/lib",
+              "/g/tools"
             ],
             "readwritePaths": [
               "/w"
@@ -965,6 +1028,9 @@
             {
               "entryId": "tool:base",
               "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
               "versionSelection": {
                 "status": "matched_default"
               },
@@ -975,7 +1041,28 @@
             }
           ],
           "warnings": [
-            "input 0 ('app'): the version '2.4.1' embedded in packageUrl is not version evidence and was ignored; supply detectedVersion"
+            {
+              "code": "purl_components_ignored",
+              "inputIndex": 0,
+              "packageUrl": "pkg:npm/app@2.4.1",
+              "ignoredComponents": [
+                "version"
+              ],
+              "message": "input 0 ('app'): packageUrl version ignored for matching; it is not version evidence (supply detectedVersion)"
+            },
+            {
+              "code": "architecture_fallback",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "platform": "linux",
+              "architecture": "x64",
+              "selected": "default",
+              "message": "tool:app has no x64-specific linux overlay; its architecture-neutral default data was used"
+            }
           ]
         }
       }
@@ -1012,8 +1099,7 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
               "C:\\g\\share",
@@ -1050,8 +1136,25 @@
           ],
           "resolvedDependencies": [],
           "warnings": [
-            "input 0 ('base') matched tool:base only by invocation name (weak identity)",
-            "architecture was not specified; overlays were selected for the native system architecture 'arm64'; the tool's architecture was not verified"
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:base",
+              "invocationName": "base",
+              "message": "input 0 ('base') matched tool:base only by invocation name (weak identity)"
+            },
+            {
+              "code": "architecture_default",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:base"
+              ],
+              "platform": "windows",
+              "architecture": "arm64",
+              "message": "architecture was not specified; overlays were selected for the native system architecture 'arm64'; the tool's architecture was not verified"
+            }
           ]
         }
       }
@@ -1071,8 +1174,7 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
               "C:\\g\\share",
@@ -1109,7 +1211,13 @@
           ],
           "resolvedDependencies": [],
           "warnings": [
-            "input 0 ('base') matched tool:base only by invocation name (weak identity)"
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:base",
+              "invocationName": "base",
+              "message": "input 0 ('base') matched tool:base only by invocation name (weak identity)"
+            }
           ]
         }
       }
@@ -1127,13 +1235,12 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
-              "C:\\g\\tools",
               "C:\\g\\share",
-              "C:\\g\\arm64"
+              "C:\\g\\arm64",
+              "C:\\g\\tools"
             ],
             "readwritePaths": [
               "C:\\p"
@@ -1194,6 +1301,9 @@
             {
               "entryId": "tool:base",
               "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
               "versionSelection": {
                 "status": "matched_default"
               },
@@ -1204,7 +1314,13 @@
             }
           ],
           "warnings": [
-            "input 0 ('APP.CMD') matched tool:app only by invocation name (weak identity)"
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:app",
+              "invocationName": "APP.CMD",
+              "message": "input 0 ('APP.CMD') matched tool:app only by invocation name (weak identity)"
+            }
           ]
         }
       }
@@ -1223,7 +1339,6 @@
         "allowWeakIdentityFallback": true
       },
       "expect": {
-        "policy": null,
         "diagnostics": {
           "catalogRevision": "2000-01-01.1",
           "tools": [
@@ -1238,6 +1353,7 @@
             {
               "code": "tool_unmatched",
               "inputIndex": 0,
+              "invocationName": "BASE",
               "message": "input 0 ('BASE') matched no eligible catalog entry"
             }
           ]
@@ -1268,13 +1384,12 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
-              "/g/tools",
               "/g/share",
-              "/g/lib"
+              "/g/lib",
+              "/g/tools"
             ],
             "readwritePaths": [
               "/w"
@@ -1369,6 +1484,10 @@
             {
               "entryId": "tool:base",
               "entryRevision": 2,
+              "inputIndexes": [
+                0,
+                1
+              ],
               "versionSelection": {
                 "status": "matched_default"
               },
@@ -1378,7 +1497,22 @@
               }
             }
           ],
-          "warnings": []
+          "warnings": [
+            {
+              "code": "architecture_fallback",
+              "inputIndexes": [
+                0,
+                1
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "platform": "linux",
+              "architecture": "x64",
+              "selected": "default",
+              "message": "tool:app has no x64-specific linux overlay; its architecture-neutral default data was used"
+            }
+          ]
         }
       }
     },
@@ -1399,8 +1533,7 @@
         }
       },
       "expect": {
-        "policy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readwritePaths": [
               "/g"
@@ -1445,6 +1578,9 @@
             {
               "entryId": "tool:base",
               "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
               "versionSelection": {
                 "status": "matched_default"
               },
@@ -1455,9 +1591,99 @@
             }
           ],
           "warnings": [
-            "read-only '/g/tools' (tool:app) is covered by read-write '/g' (tool:app); the read-only entry was omitted",
-            "read-only '/g/share' (tool:base) is covered by read-write '/g' (tool:app); the read-only entry was omitted",
-            "read-only '/g/lib' (tool:base) is covered by read-write '/g' (tool:app); the read-only entry was omitted"
+            {
+              "code": "architecture_fallback",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "platform": "linux",
+              "architecture": "x64",
+              "selected": "default",
+              "message": "tool:app has no x64-specific linux overlay; its architecture-neutral default data was used"
+            },
+            {
+              "code": "readonly_superseded",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app",
+                "tool:base"
+              ],
+              "removed": {
+                "path": "/g/share",
+                "access": "readonly",
+                "entryIds": [
+                  "tool:base"
+                ]
+              },
+              "requiredBy": [
+                {
+                  "path": "/g",
+                  "access": "readwrite",
+                  "entryIds": [
+                    "tool:app"
+                  ]
+                }
+              ],
+              "message": "read-only '/g/share' (tool:base) is covered by read-write '/g' (tool:app); the read-only entry was omitted"
+            },
+            {
+              "code": "readonly_superseded",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app",
+                "tool:base"
+              ],
+              "removed": {
+                "path": "/g/lib",
+                "access": "readonly",
+                "entryIds": [
+                  "tool:base"
+                ]
+              },
+              "requiredBy": [
+                {
+                  "path": "/g",
+                  "access": "readwrite",
+                  "entryIds": [
+                    "tool:app"
+                  ]
+                }
+              ],
+              "message": "read-only '/g/lib' (tool:base) is covered by read-write '/g' (tool:app); the read-only entry was omitted"
+            },
+            {
+              "code": "readonly_superseded",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "removed": {
+                "path": "/g/tools",
+                "access": "readonly",
+                "entryIds": [
+                  "tool:app"
+                ]
+              },
+              "requiredBy": [
+                {
+                  "path": "/g",
+                  "access": "readwrite",
+                  "entryIds": [
+                    "tool:app"
+                  ]
+                }
+              ],
+              "message": "read-only '/g/tools' (tool:app) is covered by read-write '/g' (tool:app); the read-only entry was omitted"
+            }
           ]
         }
       }
@@ -1478,7 +1704,6 @@
         }
       },
       "expect": {
-        "policy": null,
         "diagnostics": {
           "catalogRevision": "2000-01-01.1",
           "tools": [
@@ -1493,7 +1718,7 @@
             {
               "code": "tool_unmatched",
               "inputIndex": 0,
-              "intent": "build",
+              "invocationName": "app",
               "message": "input 0 ('app') matched no eligible catalog entry: tool:app matched only by invocation name and allowWeakIdentityFallback is not enabled; tool:app-plugin matched only by invocation name and allowWeakIdentityFallback is not enabled"
             }
           ]

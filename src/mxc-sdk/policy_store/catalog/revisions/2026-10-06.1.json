@@ -1,10 +1,11 @@
 {
   "catalogSchemaVersion": "1",
-  "catalogRevision": "2026-10-05.1",
+  "catalogRevision": "2026-10-06.1",
+  "sdkContractVersion": "1.0.0",
   "entries": [
     {
       "entryId": "tool:git",
-      "entryRevision": 2,
+      "entryRevision": 3,
       "displayName": "Git",
       "versionScheme": "intdot",
       "identity": [
@@ -21,8 +22,7 @@
         }
       ],
       "default": {
-        "sandboxPolicy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
               "${git_prefix}"
@@ -166,7 +166,7 @@
     },
     {
       "entryId": "tool:node",
-      "entryRevision": 1,
+      "entryRevision": 2,
       "displayName": "Node.js",
       "versionScheme": "semver",
       "identity": [
@@ -179,8 +179,7 @@
         }
       ],
       "default": {
-        "sandboxPolicy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
               "${node_prefix}"
@@ -195,7 +194,7 @@
     },
     {
       "entryId": "tool:npm",
-      "entryRevision": 1,
+      "entryRevision": 2,
       "displayName": "npm / npx",
       "versionScheme": "npm",
       "identity": [
@@ -214,8 +213,7 @@
         }
       ],
       "default": {
-        "sandboxPolicy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
               "${npm_prefix}"
@@ -239,7 +237,7 @@
     },
     {
       "entryId": "tool:ssh",
-      "entryRevision": 1,
+      "entryRevision": 2,
       "displayName": "OpenSSH client",
       "versionScheme": "intdot",
       "identity": [
@@ -252,8 +250,7 @@
         }
       ],
       "default": {
-        "sandboxPolicy": {
-          "version": "0.9.0-alpha",
+        "requirements": {
           "filesystem": {
             "readonlyPaths": [
               "${ssh_prefix}"

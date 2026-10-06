@@ -12,9 +12,16 @@
 //! - macOS: `/usr/sbin/sysctl -n hw.optional.arm64` (`1` = Apple silicon even
 //!   under Rosetta; the key is absent on Intel Macs), else the machine type.
 //! - Linux: the kernel machine type (`uname(2)`).
+//!
+//! It also supplies local symbol discovery (design §4.2) and filesystem
+//! object identity (design §4.5). Both describe this host only.
 
+use crate::mxc_common::filesystem_object::{
+    compare_existing_filesystem_objects, ExistingObjectComparison,
+};
 use crate::policy_store::errors::{ErrorReason, PolicyCatalogError, Result};
 use crate::policy_store::model::{Architecture, Platform};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
@@ -26,11 +33,165 @@ pub trait HostEnvironment: Send + Sync {
     fn native_architecture(&self) -> Result<Architecture>;
     /// Approved host-known symbols (`source: "host"`) for the current host.
     fn symbol(&self, name: &str) -> Option<String>;
+    /// Local discovery for caller-supplied symbols: `PATH` lookup and tool
+    /// configuration. It never executes tools, installs software, or contacts
+    /// the network. A failed configuration read is an error, not absence.
+    fn discover(&self, name: &str) -> Result<Option<String>>;
+    /// Compares two local host paths by filesystem object identity
+    /// (`mxc_common::filesystem_object`): a cleanly missing path is
+    /// `Different`, and an unexaminable one is `Unknown`.
+    fn compare_objects(&self, a: &str, b: &str) -> ExistingObjectComparison;
+}
+
+/// How one path relates to another by filesystem object identity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ObjectRelation {
+    /// `inner` names the object of `outer` or an object beneath it.
+    Within,
+    NotWithin,
+    /// Identity could not be established.
+    Unknown,
+}
+
+/// Whether `inner` is `outer` or beneath it by object identity, comparing
+/// existing ancestors. A cleanly missing suffix of `outer` is compared
+/// relative to its deepest existing ancestor; it is never treated as an
+/// existing alias.
+pub fn object_within(host: &dyn HostEnvironment, inner: &str, outer: &str) -> ObjectRelation {
+    let outer_path = Path::new(outer);
+    let mut anchor = None;
+    for ancestor in outer_path.ancestors() {
+        let text = ancestor.to_string_lossy();
+        if text.is_empty() {
+            break;
+        }
+        match host.compare_objects(&text, &text) {
+            ExistingObjectComparison::Same => {
+                let suffix = outer_path
+                    .strip_prefix(ancestor)
+                    .map(Path::to_path_buf)
+                    .unwrap_or_default();
+                anchor = Some((text.into_owned(), suffix));
+                break;
+            }
+            ExistingObjectComparison::Different => {}
+            ExistingObjectComparison::Unknown => return ObjectRelation::Unknown,
+        }
+    }
+    let Some((anchor, suffix)) = anchor else {
+        return ObjectRelation::NotWithin;
+    };
+    let inner_path = Path::new(inner);
+    let mut unknown = false;
+    for ancestor in inner_path.ancestors() {
+        let text = ancestor.to_string_lossy();
+        if text.is_empty() {
+            break;
+        }
+        let remainder = inner_path.strip_prefix(ancestor).unwrap_or(inner_path);
+        if !remainder.starts_with(&suffix) {
+            continue;
+        }
+        match host.compare_objects(&text, &anchor) {
+            ExistingObjectComparison::Same => return ObjectRelation::Within,
+            ExistingObjectComparison::Different => {}
+            ExistingObjectComparison::Unknown => unknown = true,
+        }
+    }
+    if unknown {
+        ObjectRelation::Unknown
+    } else {
+        ObjectRelation::NotWithin
+    }
+}
+
+/// Executables discovered on `PATH` for caller-supplied prefix symbols.
+fn discovery_executable(name: &str) -> Option<&'static str> {
+    match name {
+        "git_prefix" => Some("git"),
+        "node_prefix" => Some("node"),
+        "npm_prefix" => Some("npm"),
+        "ssh_prefix" => Some("ssh"),
+        _ => None,
+    }
+}
+
+/// The directory on `PATH` containing `executable` (with `PATHEXT` on
+/// Windows). Nothing is executed.
+fn find_on_path(executable: &str) -> Option<String> {
+    let path = std::env::var_os("PATH")?;
+    let extensions: Vec<String> = if cfg!(windows) {
+        std::env::var("PATHEXT")
+            .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string())
+            .split(';')
+            .filter(|e| !e.is_empty())
+            .map(str::to_string)
+            .collect()
+    } else {
+        vec![String::new()]
+    };
+    for directory in std::env::split_paths(&path) {
+        if !directory.is_absolute() {
+            continue;
+        }
+        for extension in &extensions {
+            let candidate = directory.join(format!("{executable}{extension}"));
+            if candidate.is_file() {
+                return Some(directory.to_string_lossy().into_owned());
+            }
+        }
+    }
+    None
+}
+
+/// npm's cache override: the `npm_config_cache` environment variable, then
+/// the `cache` key of the user `.npmrc`. Defaults come from the catalog.
+fn discover_npm_cache() -> Result<Option<String>> {
+    for name in ["npm_config_cache", "NPM_CONFIG_CACHE"] {
+        if let Some(value) = non_empty_env(name) {
+            return Ok(Some(value));
+        }
+    }
+    let Some(home) = home_dir() else {
+        return Ok(None);
+    };
+    let npmrc = Path::new(&home).join(".npmrc");
+    let text = match std::fs::read_to_string(&npmrc) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(PolicyCatalogError::new(
+                ErrorReason::UnsupportedHost,
+                format!(
+                    "symbol discovery could not read '{}': {error}",
+                    npmrc.display()
+                ),
+            ))
+        }
+    };
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with(['#', ';']) {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=') {
+            if key.trim() == "cache" {
+                let value = value.trim().trim_matches('"');
+                if !value.is_empty() && !value.contains("${") {
+                    return Ok(Some(value.to_string()));
+                }
+            }
+        }
+    }
+    Ok(None)
 }
 
 /// Maps an OS-reported machine/architecture string to a catalog selector.
 pub fn architecture_from_machine(machine: &str) -> Option<Architecture> {
-    match crate::policy_store::text::js_trim(machine).to_lowercase().as_str() {
+    match crate::policy_store::text::js_trim(machine)
+        .to_lowercase()
+        .as_str()
+    {
         "x86_64" | "amd64" | "x64" => Some(Architecture::X64),
         "arm64" | "aarch64" => Some(Architecture::Arm64),
         _ => None,
@@ -124,7 +285,9 @@ fn parse_reg_output(output: &str) -> Option<String> {
             let after = &trimmed[6..];
             let value = after.trim_start_matches(crate::policy_store::text::js_is_space);
             if value.len() < after.len() {
-                let end = value.find(crate::policy_store::text::js_is_space).unwrap_or(value.len());
+                let end = value
+                    .find(crate::policy_store::text::js_is_space)
+                    .unwrap_or(value.len());
                 if end > 0 {
                     return Some(value[..end].to_string());
                 }
@@ -253,20 +416,36 @@ impl HostEnvironment for SystemHost {
         match name {
             "user_home" => home_dir(),
             "temp_dir" => temp_dir(),
-            "programData" if cfg!(windows) => {
-                std::env::var("ProgramData").ok().filter(|v| !v.is_empty())
-            }
+            "programData" if cfg!(windows) => non_empty_env("ProgramData"),
+            "localAppData" if cfg!(windows) => non_empty_env("LOCALAPPDATA"),
             _ => None,
         }
+    }
+
+    fn discover(&self, name: &str) -> Result<Option<String>> {
+        if name == "npm_cache" {
+            return discover_npm_cache();
+        }
+        Ok(discovery_executable(name).and_then(find_on_path))
+    }
+
+    fn compare_objects(&self, a: &str, b: &str) -> ExistingObjectComparison {
+        compare_existing_filesystem_objects(Path::new(a), Path::new(b))
     }
 }
 
 /// A host with fixed facts, for tests and callers that already know them.
+///
+/// Object identity is simulated: every path exists and is distinct unless
+/// listed as an alias (the same object) or as unknown.
 #[derive(Clone, Debug)]
 pub struct FixedHost {
     pub platform: Platform,
     pub architecture: Architecture,
     pub symbols: Vec<(String, String)>,
+    pub discovered: Vec<(String, String)>,
+    pub aliases: Vec<(String, String)>,
+    pub unknown_paths: Vec<String>,
 }
 
 impl FixedHost {
@@ -275,11 +454,31 @@ impl FixedHost {
             platform,
             architecture,
             symbols: Vec::new(),
+            discovered: Vec::new(),
+            aliases: Vec::new(),
+            unknown_paths: Vec::new(),
         }
     }
 
     pub fn with_symbol(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.symbols.push((name.into(), value.into()));
+        self
+    }
+
+    pub fn with_discovered(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.discovered.push((name.into(), value.into()));
+        self
+    }
+
+    /// Declares that two paths name the same filesystem object.
+    pub fn with_alias(mut self, a: impl Into<String>, b: impl Into<String>) -> Self {
+        self.aliases.push((a.into(), b.into()));
+        self
+    }
+
+    /// Declares a path whose identity cannot be determined.
+    pub fn with_unknown_path(mut self, path: impl Into<String>) -> Self {
+        self.unknown_paths.push(path.into());
         self
     }
 }
@@ -298,6 +497,29 @@ impl HostEnvironment for FixedHost {
             .iter()
             .find(|(n, _)| n == name)
             .map(|(_, v)| v.clone())
+    }
+
+    fn discover(&self, name: &str) -> Result<Option<String>> {
+        Ok(self
+            .discovered
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.clone()))
+    }
+
+    fn compare_objects(&self, a: &str, b: &str) -> ExistingObjectComparison {
+        if self.unknown_paths.iter().any(|p| p == a || p == b) {
+            return ExistingObjectComparison::Unknown;
+        }
+        let aliased = self
+            .aliases
+            .iter()
+            .any(|(x, y)| (x == a && y == b) || (x == b && y == a));
+        if a == b || aliased {
+            ExistingObjectComparison::Same
+        } else {
+            ExistingObjectComparison::Different
+        }
     }
 }
 

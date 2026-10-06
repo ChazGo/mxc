@@ -63,7 +63,10 @@ pub fn catalog_for(revision: Json, host: Arc<FixedHost>) -> PolicyCatalog {
 }
 
 pub fn bundled_catalog(host: Arc<FixedHost>) -> PolicyCatalog {
-    PolicyCatalog::with_host(mxc_sdk::__policy_store::bundled_catalog_store().unwrap(), host)
+    PolicyCatalog::with_host(
+        mxc_sdk::__policy_store::bundled_catalog_store().unwrap(),
+        host,
+    )
 }
 
 pub fn j(text: &str) -> Json {
@@ -74,6 +77,7 @@ pub fn revision_with(entries: Vec<Json>, id: &str) -> Json {
     let mut o = JsonObject::new();
     o.insert("catalogSchemaVersion", "1".into());
     o.insert("catalogRevision", id.into());
+    o.insert("sdkContractVersion", "1.0.0".into());
     o.insert("entries", Json::Array(entries));
     Json::Object(o)
 }
@@ -89,7 +93,7 @@ pub fn entry(entry_id: &str, overrides: &str) -> Json {
     let mut base = j(&format!(
         r#"{{"entryId":"{entry_id}","entryRevision":1,"displayName":"{name}","versionScheme":"semver",
             "identity":[{{"kind":"invocation-name","names":["{name}"]}}],
-            "default":{{"sandboxPolicy":{{"version":"0.9.0-alpha","filesystem":{{"readwritePaths":["${{project_root}}"]}}}}}},
+            "default":{{"requirements":{{"filesystem":{{"readwritePaths":["${{project_root}}"]}}}}}},
             "provenance":{{"method":"test","sourceRevision":"test"}}}}"#
     ));
     if !overrides.is_empty() {

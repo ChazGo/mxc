@@ -9,22 +9,29 @@ use crate::policy_store::catalog::{
     entry_index, CatalogEntry, Dependency, IdentityPredicate, IntentDefinition, Overlay,
     SymbolSource,
 };
-use crate::policy_store::compose::{component_symbols, compose_check, compose_policy, Component};
-use crate::policy_store::effective::{
-    has_arch_specific, materialize, select_platform_variant, Closure, IntentChoice, Node,
+use crate::policy_store::compose::{
+    compose, compose_check, contribution_symbols, Contribution, IdentityOracle,
 };
-use crate::policy_store::errors::{invalid_catalog, invalid_context, ErrorReason, PolicyCatalogError, Result};
-use crate::policy_store::host::{HostEnvironment, SystemHost};
+use crate::policy_store::effective::{
+    has_arch_specific, materialize, select_platform_variant, Closure, IntentChoice, LayerSet,
+    PlatformSelection,
+};
+use crate::policy_store::errors::{
+    invalid_catalog, invalid_context, ErrorReason, PolicyCatalogError, Result,
+};
+use crate::policy_store::exact::validate_exact;
+use crate::policy_store::host::{object_within, HostEnvironment, ObjectRelation, SystemHost};
 use crate::policy_store::json::cmp_utf16;
 use crate::policy_store::model::{
-    Architecture, CatalogAdditionsMetadata, CatalogEntryMetadata, CatalogIdentityMetadata,
-    CatalogInfo, CatalogIntentMetadata, DefaultMetadata, Diagnostics, EntryMatchRecord, IntentMode,
-    IntentSelection, MatchedIdentity, Platform, PlatformVariantMetadata, Provenance,
-    ResolveContext, SandboxConfigResolution, SandboxPolicy, ToolCandidate, ToolInputs, ToolRecord,
-    ToolResolutionStatus, ToolResolutionWarning, ToolWarningCode, VersionSelection, VersionStatus,
-    VersionVariantMetadata, Warning,
+    Architecture, ArchitectureFallback, CatalogAdditionsMetadata, CatalogEntryMetadata,
+    CatalogIdentityMetadata, CatalogInfo, CatalogIntentMetadata, DefaultMetadata,
+    DetailWarningKind, Diagnostics, EntryMatchRecord, IntentMode, IntentSelection, MatchedIdentity,
+    Platform, PlatformVariantMetadata, Provenance, PurlComponent, Requirements,
+    RequirementsResolution, ResolutionDetailWarning, ResolveContext, SymbolValueSource,
+    ToolCandidate, ToolInputs, ToolRecord, ToolResolutionStatus, ToolResolutionWarning,
+    ToolWarningKind, VersionSelection, VersionStatus, VersionVariantMetadata, Warning,
 };
-use crate::policy_store::paths::{case_key, is_absolute_path};
+use crate::policy_store::paths::{case_key, is_absolute_path, normalize_path};
 use crate::policy_store::purl::{parse_purl, ParsedPurl};
 use crate::policy_store::store::{bundled_catalog_store, CatalogStore};
 use crate::policy_store::text::replace_symbols;
@@ -61,19 +68,33 @@ fn describe_input(index: usize, tool: &ToolCandidate) -> String {
     format!("input {index} ('{}')", tool.invocation_name)
 }
 
-fn tool_warning(
-    code: ToolWarningCode,
-    input_index: usize,
-    entry_id: Option<&str>,
-    tool: &ToolCandidate,
+fn tool_warning(input_index: usize, kind: ToolWarningKind, message: String) -> Warning {
+    Warning::Tool(ToolResolutionWarning {
+        input_index,
+        kind,
+        message,
+    })
+}
+
+fn union_into(target: &mut Vec<usize>, extra: &[usize]) {
+    target.extend_from_slice(extra);
+    target.sort_unstable();
+    target.dedup();
+}
+
+fn detail_warning(
+    mut input_indexes: Vec<usize>,
+    mut entry_ids: Vec<String>,
+    kind: DetailWarningKind,
     message: String,
 ) -> Warning {
-    Warning::Tool(ToolResolutionWarning {
-        code,
-        input_index,
-        entry_id: entry_id.map(str::to_string),
-        detected_version: tool.detected_version.clone(),
-        intent: tool.intent.clone(),
+    union_into(&mut input_indexes, &[]);
+    entry_ids.sort_by(|a, b| cmp_utf16(a, b));
+    entry_ids.dedup();
+    Warning::Detail(ResolutionDetailWarning {
+        input_indexes,
+        entry_ids,
+        kind,
         message,
     })
 }
@@ -161,6 +182,7 @@ impl PolicyCatalog {
         Ok(CatalogInfo {
             catalog_schema_version: revision.catalog_schema_version.clone(),
             catalog_revision: revision.catalog_revision.clone(),
+            sdk_contract_version: revision.sdk_contract_version.clone(),
         })
     }
 
@@ -193,7 +215,6 @@ impl PolicyCatalog {
                     .collect(),
                 default: DefaultMetadata {
                     dependency_entry_ids: dependency_ids(&entry.default.dependencies),
-                    sandbox_policy_version: entry.default.sandbox_policy.version().to_string(),
                     intents: intent_metadata(&entry.default.intents),
                 },
                 platform_variants: entry
@@ -225,28 +246,28 @@ impl PolicyCatalog {
     // Runtime lookup (design §5.1)
     // -----------------------------------------------------------------------
 
-    /// The composed candidate policy, or `None` when no policy can be resolved.
-    pub fn resolve_sandbox_policy(
+    /// The composed requirements, or `None` when none can be resolved.
+    pub fn resolve_requirements(
         &self,
         tools: impl Into<ToolInputs>,
         ctx: &ResolveContext,
-    ) -> Result<Option<SandboxPolicy>> {
-        Ok(self.resolve(&tools.into(), ctx)?.policy)
+    ) -> Result<Option<Requirements>> {
+        Ok(self.resolve(&tools.into(), ctx)?.requirements)
     }
 
     /// Resolves one tool or a list of tools in one pass: the composed
-    /// candidate policy with attribution and warnings. Library failures are
+    /// requirements with attribution and warnings. Library failures are
     /// errors, never absence. The result is a best-effort floor, not
     /// authorization.
-    pub fn resolve_sandbox_policy_with_diagnostics(
+    pub fn resolve_requirements_with_diagnostics(
         &self,
         tools: impl Into<ToolInputs>,
         ctx: &ResolveContext,
-    ) -> Result<SandboxConfigResolution> {
+    ) -> Result<RequirementsResolution> {
         self.resolve(&tools.into(), ctx)
     }
 
-    fn resolve(&self, tools: &ToolInputs, ctx: &ResolveContext) -> Result<SandboxConfigResolution> {
+    fn resolve(&self, tools: &ToolInputs, ctx: &ResolveContext) -> Result<RequirementsResolution> {
         let candidates: Vec<ToolCandidate> = tools.0.iter().map(|t| t.to_candidate()).collect();
         for (index, candidate) in candidates.iter().enumerate() {
             validate_candidate(candidate, index)?;
@@ -270,12 +291,68 @@ impl PolicyCatalog {
         let mut ordered: Vec<&CatalogEntry> = revision.entries.iter().collect();
         ordered.sort_by(|a, b| cmp_utf16(&a.entry_id, &b.entry_id));
 
-        let mut roots: Vec<Node<'_>> = Vec::new();
-        let mut contributed: HashSet<(String, String, Option<usize>, String)> = HashSet::new();
+        let mut set = LayerSet::default();
         let mut closure = Closure::new(&by_id, platform, &architecture);
+        // Root entries with their platform selection and requesting inputs.
+        let mut roots: Vec<(&CatalogEntry, Option<PlatformSelection<'_>>, Vec<usize>)> = Vec::new();
 
         for (input_index, tool) in candidates.iter().enumerate() {
-            let purl = self.parse_input_purl(tool, input_index, &mut warnings)?;
+            let unmatched = |records: &mut Vec<ToolRecord>| {
+                records.push(ToolRecord {
+                    input_index,
+                    status: ToolResolutionStatus::ToolUnmatched,
+                    matches: Vec::new(),
+                });
+            };
+            // Identity (design §4.3): an invalid candidate PURL leaves the
+            // pair unmatched, with no invocation-name retry.
+            let purl = match &tool.package_url {
+                None => None,
+                Some(package_url) => match parse_purl(package_url) {
+                    None => {
+                        warnings.push(tool_warning(
+                            input_index,
+                            ToolWarningKind::PurlInvalid {
+                                package_url: package_url.clone(),
+                            },
+                            format!(
+                                "{}: '{package_url}' is not a valid package URL; the input was not matched by invocation name either",
+                                describe_input(input_index, tool)
+                            ),
+                        ));
+                        unmatched(&mut tool_records);
+                        continue;
+                    }
+                    Some(purl) => {
+                        let mut ignored = Vec::new();
+                        if purl.version.is_some() {
+                            ignored.push(PurlComponent::Version);
+                        }
+                        if purl.has_qualifiers {
+                            ignored.push(PurlComponent::Qualifiers);
+                        }
+                        if purl.has_subpath {
+                            ignored.push(PurlComponent::Subpath);
+                        }
+                        if !ignored.is_empty() {
+                            let names: Vec<&str> = ignored.iter().map(|c| c.as_str()).collect();
+                            warnings.push(tool_warning(
+                                input_index,
+                                ToolWarningKind::PurlComponentsIgnored {
+                                    package_url: package_url.clone(),
+                                    ignored_components: ignored,
+                                },
+                                format!(
+                                    "{}: packageUrl {} ignored for matching; it is not version evidence (supply detectedVersion)",
+                                    describe_input(input_index, tool),
+                                    names.join(", ")
+                                ),
+                            ));
+                        }
+                        Some(purl)
+                    }
+                },
+            };
             let choice = match self.match_tool(
                 &ordered,
                 tool,
@@ -293,30 +370,33 @@ impl PolicyCatalog {
                         format!(": {}", skipped.join("; "))
                     };
                     warnings.push(tool_warning(
-                        ToolWarningCode::ToolUnmatched,
                         input_index,
-                        None,
-                        tool,
+                        ToolWarningKind::ToolUnmatched {
+                            invocation_name: tool.invocation_name.clone(),
+                        },
                         format!(
                             "{} matched no eligible catalog entry{suffix}",
                             describe_input(input_index, tool)
                         ),
                     ));
-                    tool_records.push(ToolRecord {
-                        input_index,
-                        status: ToolResolutionStatus::ToolUnmatched,
-                        matches: Vec::new(),
-                    });
+                    unmatched(&mut tool_records);
                     continue;
                 }
             };
             let entry = choice.entry;
             if !choice.strong {
-                warnings.push(Warning::Text(format!(
-                    "{} matched {} only by invocation name (weak identity)",
-                    describe_input(input_index, tool),
-                    entry.entry_id
-                )));
+                warnings.push(tool_warning(
+                    input_index,
+                    ToolWarningKind::WeakIdentity {
+                        entry_id: entry.entry_id.clone(),
+                        invocation_name: tool.invocation_name.clone(),
+                    },
+                    format!(
+                        "{} matched {} only by invocation name (weak identity)",
+                        describe_input(input_index, tool),
+                        entry.entry_id
+                    ),
+                ));
             }
             let matched_identities: Vec<MatchedIdentity> = choice
                 .satisfied
@@ -345,10 +425,11 @@ impl PolicyCatalog {
                     None => {
                         record.version_selection.status = VersionStatus::VersionUnparseable;
                         warnings.push(tool_warning(
-                            ToolWarningCode::VersionUnparseable,
                             input_index,
-                            Some(&entry.entry_id),
-                            tool,
+                            ToolWarningKind::VersionUnparseable {
+                                entry_id: entry.entry_id.clone(),
+                                detected_version: detected.clone(),
+                            },
                             format!(
                                 "{}: detected version '{detected}' is not a valid {} version for {}; the input contributes nothing",
                                 describe_input(input_index, tool),
@@ -379,10 +460,11 @@ impl PolicyCatalog {
                             None => {
                                 record.version_selection.status = VersionStatus::VersionOutOfRange;
                                 warnings.push(tool_warning(
-                                    ToolWarningCode::VersionOutOfRange,
                                     input_index,
-                                    Some(&entry.entry_id),
-                                    tool,
+                                    ToolWarningKind::VersionOutOfRange {
+                                        entry_id: entry.entry_id.clone(),
+                                        detected_version: detected.clone(),
+                                    },
                                     format!(
                                         "{}: detected version '{detected}' is outside every reviewed version range for {}; its unversioned default applies",
                                         describe_input(input_index, tool),
@@ -413,10 +495,11 @@ impl PolicyCatalog {
                 });
                 let available = effective.intent_names();
                 warnings.push(tool_warning(
-                    ToolWarningCode::IntentUnsupported,
                     input_index,
-                    Some(&entry.entry_id),
-                    tool,
+                    ToolWarningKind::IntentUnsupported {
+                        entry_id: entry.entry_id.clone(),
+                        intent: requested.clone(),
+                    },
                     format!(
                         "{}: intent '{requested}' is not defined for the selected policy of {} (available: {}); the input contributes nothing",
                         describe_input(input_index, tool),
@@ -450,117 +533,193 @@ impl PolicyCatalog {
                 status,
                 matches: vec![record],
             });
-
-            let key = (
-                entry.entry_id.clone(),
-                version_variant
-                    .map(|v| v.version_range.as_str().to_string())
-                    .unwrap_or_default(),
-                selection.map(|s| s.index),
-                tool.intent.clone().unwrap_or_else(|| "*".to_string()),
-            );
-            if contributed.insert(key) {
-                roots.push(Node {
-                    component: Component {
-                        entry_id: &entry.entry_id,
-                        base: &entry.default.sandbox_policy,
-                        additions: selected.additions.clone(),
-                    },
-                    neutral_fallback: selection
-                        .filter(|s| !s.exact && has_arch_specific(entry, platform))
-                        .map(|_| platform),
-                });
-                closure.add_dependencies(entry, &selected.dependencies)?;
+            match roots.iter_mut().find(|(e, _, _)| std::ptr::eq(*e, entry)) {
+                Some((_, _, owners)) => owners.push(input_index),
+                None => roots.push((entry, selection, vec![input_index])),
             }
+            closure.add_layers(entry, &selected.layers, &[input_index], &mut set)?;
         }
 
-        let resolved_dependencies = closure.sorted_records();
-        let mut nodes = roots;
-        nodes.extend(closure.nodes);
         let mut diagnostics = Diagnostics {
             catalog_revision: revision.catalog_revision.clone(),
             tools: tool_records,
-            resolved_dependencies,
+            resolved_dependencies: Vec::new(),
             warnings: Vec::new(),
         };
-        if nodes.is_empty() {
+        if set.is_empty() {
             diagnostics.warnings = warnings;
-            return Ok(SandboxConfigResolution {
-                policy: None,
+            return Ok(RequirementsResolution {
+                requirements: None,
                 diagnostics,
             });
         }
 
-        if ctx_architecture.is_none() {
-            if let Some(native) = lazy.value.get() {
-                warnings.push(Warning::Text(format!(
-                    "architecture was not specified; overlays were selected for the native system architecture '{native}'; the tool's architecture was not verified"
-                )));
+        // Architecture diagnostics (design §4.2): every entry whose platform
+        // has architecture-specific overlays consulted the architecture.
+        let mut consulted: Vec<(&CatalogEntry, Option<PlatformSelection<'_>>, Vec<usize>)> =
+            Vec::new();
+        for (entry, selection, owners) in roots
+            .iter()
+            .cloned()
+            .chain(closure.selections.iter().cloned())
+        {
+            if !has_arch_specific(entry, platform) {
+                continue;
             }
-        }
-        let mut reported: HashSet<&str> = HashSet::new();
-        for node in &nodes {
-            if let Some(platform) = node.neutral_fallback {
-                if reported.insert(node.component.entry_id) {
-                    warnings.push(Warning::Text(format!(
-                        "{} uses its architecture-neutral {platform} additions; no {}-specific overlay exists",
-                        node.component.entry_id,
-                        architecture()?
-                    )));
+            match consulted
+                .iter_mut()
+                .find(|(e, _, _)| std::ptr::eq(*e, entry))
+            {
+                Some((_, _, existing)) => union_into(existing, &owners),
+                None => {
+                    let mut owners = owners;
+                    union_into(&mut owners, &[]);
+                    consulted.push((entry, selection, owners));
                 }
             }
         }
+        consulted.sort_by(|a, b| cmp_utf16(&a.0.entry_id, &b.0.entry_id));
+        if ctx_architecture.is_none() && !consulted.is_empty() {
+            if let Some(native) = lazy.value.get() {
+                let mut owners = Vec::new();
+                for (_, _, o) in &consulted {
+                    union_into(&mut owners, o);
+                }
+                warnings.push(detail_warning(
+                    owners,
+                    consulted.iter().map(|(e, _, _)| e.entry_id.clone()).collect(),
+                    DetailWarningKind::ArchitectureDefault {
+                        platform,
+                        architecture: native,
+                    },
+                    format!(
+                        "architecture was not specified; overlays were selected for the native system architecture '{native}'; the tool's architecture was not verified"
+                    ),
+                ));
+            }
+        }
+        for (entry, selection, owners) in &consulted {
+            if selection.is_some_and(|s| s.exact) {
+                continue;
+            }
+            let arch = architecture()?;
+            let selected = if selection.is_some() {
+                ArchitectureFallback::Platform
+            } else {
+                ArchitectureFallback::Default
+            };
+            warnings.push(detail_warning(
+                owners.clone(),
+                vec![entry.entry_id.clone()],
+                DetailWarningKind::ArchitectureFallback {
+                    platform,
+                    architecture: arch,
+                    selected,
+                },
+                format!(
+                    "{} has no {arch}-specific {platform} overlay; its architecture-neutral {} data was used",
+                    entry.entry_id,
+                    match selected {
+                        ArchitectureFallback::Platform => "platform",
+                        ArchitectureFallback::Default => "default",
+                    }
+                ),
+            ));
+        }
 
-        let components: Vec<Component<'_>> = nodes.into_iter().map(|n| n.component).collect();
-        if let Err(violation) = compose_check(&components) {
+        let excluded_none = HashSet::new();
+        if let Err(violation) = compose_check(&set.contributions(&excluded_none)) {
             return Err(PolicyCatalogError::new(
                 ErrorReason::CompositionConflict,
                 format!("selected entries cannot be composed: {violation}"),
             ));
         }
 
-        let symbols = self.resolve_symbols(&components, ctx, platform, &mut warnings)?;
-        let policy = match symbols {
+        let Some(symbols) = self.resolve_symbols(
+            &set.contributions(&excluded_none),
+            ctx,
+            platform,
+            &mut warnings,
+        )?
+        else {
+            diagnostics.resolved_dependencies = closure.sorted_records();
+            diagnostics.warnings = warnings;
+            return Ok(RequirementsResolution {
+                requirements: None,
+                diagnostics,
+            });
+        };
+        let resolve = |template: &str| replace_symbols(template, |name| symbols[name].clone());
+
+        // Filesystem object identity (design §4.5): a relation whose identity
+        // is unknown fails closed for every pair that owns either side; the
+        // remaining layers are composed again.
+        let identity = HostIdentity {
+            host: self.host.as_ref(),
+            local: self.host.platform().ok() == Some(platform),
+        };
+        let mut excluded: HashSet<usize> = HashSet::new();
+        let composed = loop {
+            let contributions = set.contributions(&excluded);
+            if contributions.is_empty() {
+                break None;
+            }
+            let composed = compose(&contributions, &resolve, platform, &identity);
+            if composed.identity_failures.is_empty() {
+                break Some(composed);
+            }
+            for failure in &composed.identity_failures {
+                excluded.extend(failure.owners.iter().copied());
+                warnings.push(detail_warning(
+                    failure.owners.clone(),
+                    failure.entry_ids.clone(),
+                    DetailWarningKind::FilesystemIdentityUnresolved {
+                        paths: failure.paths.clone(),
+                        platform,
+                    },
+                    format!(
+                        "filesystem object identity of {} could not be established on {platform}; the requesting tools contribute nothing",
+                        failure
+                            .paths
+                            .iter()
+                            .map(|p| format!("'{p}'"))
+                            .collect::<Vec<_>>()
+                            .join(" and ")
+                    ),
+                ));
+            }
+        };
+        for record in &mut diagnostics.tools {
+            if excluded.contains(&record.input_index) {
+                record.status = ToolResolutionStatus::FilesystemIdentityUnresolved;
+            }
+        }
+        diagnostics.resolved_dependencies = closure
+            .sorted_records()
+            .into_iter()
+            .filter_map(|mut record| {
+                record.input_indexes.retain(|i| !excluded.contains(i));
+                (!record.input_indexes.is_empty()).then_some(record)
+            })
+            .collect();
+        let requirements = match composed {
             None => None,
-            Some(symbols) => {
-                let composed = compose_policy(
-                    &components,
-                    &|template: &str| replace_symbols(template, |name| symbols[name].clone()),
-                    platform,
-                );
-                warnings.extend(composed.warnings.into_iter().map(Warning::Text));
-                Some(composed.policy)
+            Some(composed) => {
+                warnings.extend(composed.warnings);
+                if let Err(problem) = validate_exact(&composed.requirements) {
+                    return Err(PolicyCatalogError::new(
+                        ErrorReason::CompositionConflict,
+                        format!("the composed requirements fail SDK target validation: {problem}"),
+                    ));
+                }
+                Some(composed.requirements)
             }
         };
         diagnostics.warnings = warnings;
-        Ok(SandboxConfigResolution {
-            policy,
+        Ok(RequirementsResolution {
+            requirements,
             diagnostics,
         })
-    }
-
-    fn parse_input_purl(
-        &self,
-        tool: &ToolCandidate,
-        input_index: usize,
-        warnings: &mut Vec<Warning>,
-    ) -> Result<Option<ParsedPurl>> {
-        let Some(package_url) = &tool.package_url else {
-            return Ok(None);
-        };
-        let Some(purl) = parse_purl(package_url) else {
-            return Err(invalid_context(format!(
-                "{}: '{package_url}' is not a valid package URL",
-                describe_input(input_index, tool)
-            )));
-        };
-        if let Some(version) = &purl.version {
-            warnings.push(Warning::Text(format!(
-                "{}: the version '{version}' embedded in packageUrl is not version evidence and was ignored; supply detectedVersion",
-                describe_input(input_index, tool)
-            )));
-        }
-        Ok(Some(purl))
     }
 
     /// The single most specific eligible entry (design §4.3), or the reasons
@@ -699,73 +858,146 @@ impl PolicyCatalog {
         Ok((platform, architecture))
     }
 
-    /// Resolves every symbol the selected components need; `None` (with
-    /// warnings) when any is unresolved. Never a partial policy.
+    /// Resolves every symbol the contributions need (design §4.2 precedence:
+    /// caller values, then host-local discovery, then the contract's platform
+    /// default); `None` (with warnings) when any is unresolved. Never a
+    /// partial result.
     fn resolve_symbols(
         &self,
-        components: &[Component<'_>],
+        contributions: &[Contribution<'_>],
         ctx: &ResolveContext,
         platform: Platform,
         warnings: &mut Vec<Warning>,
     ) -> Result<Option<HashMap<String, String>>> {
         let contract = self.store.contract();
+        let on_host = self.host.platform().ok() == Some(platform);
+        let supplied = |name: &str| {
+            ctx.symbols
+                .as_ref()
+                .and_then(|s| s.get(name))
+                .map(str::to_string)
+        };
         let mut values: HashMap<String, String> = HashMap::new();
-        let mut missing: Vec<(String, Vec<String>)> = Vec::new();
-        for (name, entry_ids) in component_symbols(components) {
+        let mut missing: Vec<(String, Vec<String>, Vec<usize>)> = Vec::new();
+        for (name, entry_ids, owners) in contribution_symbols(contributions) {
             let definition = contract
                 .symbol(&name)
                 .expect("validated revisions reference declared symbols");
-            let value = if definition.source == SymbolSource::Context {
-                ctx.project_root.clone()
-            } else {
-                let supplied = ctx
-                    .symbols
-                    .as_ref()
-                    .and_then(|s| s.get(&name))
-                    .map(str::to_string);
-                if supplied.is_none()
-                    && definition.source == SymbolSource::Host
-                    && self.host.platform().ok() == Some(platform)
-                {
-                    let discovered = self.host.symbol(&name);
-                    if let Some(value) = &discovered {
-                        warnings.push(Warning::Text(format!(
-                            "symbol '{name}' resolved from the host environment to '{value}'"
-                        )));
-                    }
-                    discovered
+            let mut value: Option<(String, SymbolValueSource)> =
+                if definition.source == SymbolSource::Context {
+                    ctx.project_root
+                        .clone()
+                        .map(|v| (v, SymbolValueSource::Caller))
                 } else {
-                    supplied
+                    supplied(&name).map(|v| (v, SymbolValueSource::Caller))
+                };
+            if value.is_none() && on_host {
+                value = match definition.source {
+                    SymbolSource::Host => self
+                        .host
+                        .symbol(&name)
+                        .map(|v| (v, SymbolValueSource::Host)),
+                    SymbolSource::Caller => self
+                        .host
+                        .discover(&name)?
+                        .map(|v| (v, SymbolValueSource::Discovery)),
+                    SymbolSource::Context => None,
+                };
+            }
+            if value.is_none() {
+                if let Some(template) = definition.default_for(platform) {
+                    let mut complete = true;
+                    let expanded = replace_symbols(template, |inner| {
+                        match supplied(inner)
+                            .or_else(|| on_host.then(|| self.host.symbol(inner)).flatten())
+                        {
+                            Some(v) => v,
+                            None => {
+                                complete = false;
+                                String::new()
+                            }
+                        }
+                    });
+                    if complete {
+                        value = Some((
+                            normalize_path(&expanded, platform),
+                            SymbolValueSource::Default,
+                        ));
+                    }
                 }
-            };
-            let Some(value) = value else {
-                missing.push((name, entry_ids));
+            }
+            let Some((value, source)) = value else {
+                missing.push((name, entry_ids, owners));
                 continue;
             };
             if value.contains("${") || !is_absolute_path(&value, platform) {
                 return Err(invalid_context(format!(
-                    "symbol '{name}' must resolve to an absolute {platform} path"
+                    "symbol '{name}' must resolve to an absolute {platform} path (from {} value '{value}')",
+                    source.as_str()
                 )));
+            }
+            if source != SymbolValueSource::Caller {
+                warnings.push(detail_warning(
+                    owners,
+                    entry_ids,
+                    DetailWarningKind::SymbolResolved {
+                        symbol: name.clone(),
+                        value: value.clone(),
+                        source,
+                    },
+                    format!(
+                        "symbol '{name}' resolved to '{value}' from {}",
+                        match source {
+                            SymbolValueSource::Discovery => "host-local discovery",
+                            SymbolValueSource::Host => "the host environment",
+                            SymbolValueSource::Default => "the contract's platform default",
+                            SymbolValueSource::Caller => "the caller",
+                        }
+                    ),
+                ));
             }
             values.insert(name, value);
         }
         if !missing.is_empty() {
             missing.sort_by(|a, b| cmp_utf16(&a.0, &b.0));
-            for (name, entry_ids) in missing {
+            for (name, entry_ids, owners) in missing {
                 let hint =
                     if contract.symbol(&name).map(|d| d.source) == Some(SymbolSource::Context) {
                         "ResolveContext.projectRoot".to_string()
                     } else {
                         format!("ResolveContext.symbols.{name}")
                     };
-                warnings.push(Warning::Text(format!(
-                    "required symbol '{name}' (needed by {}) is unresolved; supply {hint}; no policy was returned",
+                let message = format!(
+                    "required symbol '{name}' (needed by {}) is unresolved; supply {hint}; no requirements were returned",
                     entry_ids.join(", ")
-                )));
+                );
+                warnings.push(detail_warning(
+                    owners,
+                    entry_ids,
+                    DetailWarningKind::SymbolUnresolved { symbol: name },
+                    message,
+                ));
             }
             return Ok(None);
         }
         Ok(Some(values))
+    }
+}
+
+/// Host object identity, available only when the lookup targets the host's
+/// own platform; other targets fail closed.
+struct HostIdentity<'h> {
+    host: &'h dyn HostEnvironment,
+    local: bool,
+}
+
+impl IdentityOracle for HostIdentity<'_> {
+    fn within(&self, inner: &str, outer: &str) -> ObjectRelation {
+        if self.local {
+            object_within(self.host, inner, outer)
+        } else {
+            ObjectRelation::Unknown
+        }
     }
 }
 
@@ -778,20 +1010,20 @@ fn bundled() -> Result<&'static PolicyCatalog> {
     Ok(CATALOG.get_or_init(|| catalog))
 }
 
-/// Composed candidate policy for one or several tools, from the bundled catalog.
-pub fn resolve_sandbox_policy(
+/// Composed requirements for one or several tools, from the bundled catalog.
+pub fn resolve_requirements(
     tools: impl Into<ToolInputs>,
     ctx: &ResolveContext,
-) -> Result<Option<SandboxPolicy>> {
-    bundled()?.resolve_sandbox_policy(tools, ctx)
+) -> Result<Option<Requirements>> {
+    bundled()?.resolve_requirements(tools, ctx)
 }
 
-/// Composed candidate policy plus attribution, from the bundled catalog.
-pub fn resolve_sandbox_policy_with_diagnostics(
+/// Composed requirements plus attribution, from the bundled catalog.
+pub fn resolve_requirements_with_diagnostics(
     tools: impl Into<ToolInputs>,
     ctx: &ResolveContext,
-) -> Result<SandboxConfigResolution> {
-    bundled()?.resolve_sandbox_policy_with_diagnostics(tools, ctx)
+) -> Result<RequirementsResolution> {
+    bundled()?.resolve_requirements_with_diagnostics(tools, ctx)
 }
 
 /// Bundled catalog entry metadata.
@@ -799,7 +1031,7 @@ pub fn list_catalog_entries() -> Result<Vec<CatalogEntryMetadata>> {
     bundled()?.list_catalog_entries()
 }
 
-/// Bundled catalog schema version and revision.
+/// Bundled catalog schema version, revision, and SDK contract version.
 pub fn get_catalog_info() -> Result<CatalogInfo> {
     bundled()?.get_catalog_info()
 }

@@ -305,9 +305,9 @@ impl IdentityStrength {
     }
 }
 
-/// The filesystem part of a composed policy.
+/// The filesystem part of composed requirements.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct FilesystemPolicy {
+pub struct FilesystemRequirements {
     pub denied_paths: Option<Vec<String>>,
     pub readonly_paths: Option<Vec<String>>,
     pub readwrite_paths: Option<Vec<String>>,
@@ -317,7 +317,11 @@ pub(crate) fn strings(values: &[String]) -> Json {
     Json::Array(values.iter().map(|v| Json::String(v.clone())).collect())
 }
 
-impl FilesystemPolicy {
+fn indexes(values: &[usize]) -> Json {
+    Json::Array(values.iter().map(|v| Json::Number(*v as f64)).collect())
+}
+
+impl FilesystemRequirements {
     pub fn to_json(&self) -> Json {
         let mut object = JsonObject::new();
         if let Some(v) = &self.denied_paths {
@@ -333,21 +337,22 @@ impl FilesystemPolicy {
     }
 }
 
-/// The catalog-supported subset of MXC's `SandboxPolicy`, structurally
-/// compatible with the MXC SDK type. `network` and `ui` are carried as JSON.
+/// Composed requirements in the catalog's JSON model: the four
+/// `ContainerRequirements` fields (filesystem, directional network, v1 UI,
+/// and `timeoutMs`). `network` and `ui` keep the reviewed JSON shape; the
+/// SDK converts the whole value to its typed v1 sections.
 #[derive(Clone, Debug, PartialEq)]
-pub struct SandboxPolicy {
-    pub version: String,
-    pub filesystem: Option<FilesystemPolicy>,
+pub struct Requirements {
+    pub filesystem: Option<FilesystemRequirements>,
     pub network: Option<Json>,
     pub ui: Option<Json>,
-    pub timeout_ms: Option<f64>,
+    pub timeout_ms: Option<u32>,
 }
 
-impl SandboxPolicy {
+impl Requirements {
+    /// The `ContainerRequirements` JSON shape used by the Node and C# SDKs.
     pub fn to_json(&self) -> Json {
         let mut object = JsonObject::new();
-        object.insert("version", Json::String(self.version.clone()));
         if let Some(fs) = &self.filesystem {
             object.insert("filesystem", fs.to_json());
         }
@@ -358,7 +363,7 @@ impl SandboxPolicy {
             object.insert("ui", ui.clone());
         }
         if let Some(timeout) = self.timeout_ms {
-            object.insert("timeoutMs", Json::Number(timeout));
+            object.insert("timeoutMs", Json::Number(f64::from(timeout)));
         }
         Json::Object(object)
     }
@@ -396,6 +401,9 @@ pub enum ToolResolutionStatus {
     Version(VersionStatus),
     IntentUnsupported,
     ToolUnmatched,
+    /// Object identity needed to compose the pair's filesystem access could
+    /// not be established; the pair contributes nothing.
+    FilesystemIdentityUnresolved,
 }
 
 impl ToolResolutionStatus {
@@ -404,6 +412,7 @@ impl ToolResolutionStatus {
             ToolResolutionStatus::Version(status) => status.as_str(),
             ToolResolutionStatus::IntentUnsupported => "intent_unsupported",
             ToolResolutionStatus::ToolUnmatched => "tool_unmatched",
+            ToolResolutionStatus::FilesystemIdentityUnresolved => "filesystem_identity_unresolved",
         }
     }
 }
@@ -506,27 +515,84 @@ pub struct ToolRecord {
 pub struct DependencyRecord {
     pub entry_id: String,
     pub entry_revision: f64,
+    /// Sorted, distinct indexes of every requester, including transitive
+    /// ones. Not part of the record's identity.
+    pub input_indexes: Vec<usize>,
     pub required_version_range: Option<String>,
     pub version_selection: VersionSelection,
     pub intent_selection: IntentSelection,
 }
 
-/// Code of a structured per-input warning.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ToolWarningCode {
-    VersionOutOfRange,
-    VersionUnparseable,
-    IntentUnsupported,
-    ToolUnmatched,
+impl DependencyRecord {
+    /// Identity for de-duplication: everything except the requester indexes.
+    pub(crate) fn same_record(&self, other: &DependencyRecord) -> bool {
+        self.entry_id == other.entry_id
+            && self.entry_revision == other.entry_revision
+            && self.required_version_range == other.required_version_range
+            && self.version_selection == other.version_selection
+            && self.intent_selection == other.intent_selection
+    }
 }
 
-impl ToolWarningCode {
+/// Components of a candidate package URL ignored for matching.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PurlComponent {
+    Version,
+    Qualifiers,
+    Subpath,
+}
+
+impl PurlComponent {
     pub fn as_str(self) -> &'static str {
         match self {
-            ToolWarningCode::VersionOutOfRange => "version_out_of_range",
-            ToolWarningCode::VersionUnparseable => "version_unparseable",
-            ToolWarningCode::IntentUnsupported => "intent_unsupported",
-            ToolWarningCode::ToolUnmatched => "tool_unmatched",
+            PurlComponent::Version => "version",
+            PurlComponent::Qualifiers => "qualifiers",
+            PurlComponent::Subpath => "subpath",
+        }
+    }
+}
+
+/// The category-specific fields of a per-input warning.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ToolWarningKind {
+    VersionOutOfRange {
+        entry_id: String,
+        detected_version: String,
+    },
+    VersionUnparseable {
+        entry_id: String,
+        detected_version: String,
+    },
+    IntentUnsupported {
+        entry_id: String,
+        intent: String,
+    },
+    ToolUnmatched {
+        invocation_name: String,
+    },
+    PurlInvalid {
+        package_url: String,
+    },
+    PurlComponentsIgnored {
+        package_url: String,
+        ignored_components: Vec<PurlComponent>,
+    },
+    WeakIdentity {
+        entry_id: String,
+        invocation_name: String,
+    },
+}
+
+impl ToolWarningKind {
+    pub fn code(&self) -> &'static str {
+        match self {
+            ToolWarningKind::VersionOutOfRange { .. } => "version_out_of_range",
+            ToolWarningKind::VersionUnparseable { .. } => "version_unparseable",
+            ToolWarningKind::IntentUnsupported { .. } => "intent_unsupported",
+            ToolWarningKind::ToolUnmatched { .. } => "tool_unmatched",
+            ToolWarningKind::PurlInvalid { .. } => "purl_invalid",
+            ToolWarningKind::PurlComponentsIgnored { .. } => "purl_components_ignored",
+            ToolWarningKind::WeakIdentity { .. } => "weak_identity",
         }
     }
 }
@@ -534,56 +600,320 @@ impl ToolWarningCode {
 /// A structured per-input warning (design §5.1 `ToolResolutionWarning`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolResolutionWarning {
-    pub code: ToolWarningCode,
     pub input_index: usize,
-    pub entry_id: Option<String>,
-    pub detected_version: Option<String>,
-    pub intent: Option<String>,
+    pub kind: ToolWarningKind,
     pub message: String,
 }
 
-/// A diagnostics warning: a structured per-input warning or free text.
+/// Filesystem access class of a path requirement.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PathAccess {
+    Denied,
+    Readonly,
+    Readwrite,
+}
+
+impl PathAccess {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PathAccess::Denied => "denied",
+            PathAccess::Readonly => "readonly",
+            PathAccess::Readwrite => "readwrite",
+        }
+    }
+}
+
+/// A resolved path requirement and the entries contributing it.
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PathRequirement {
+    pub path: String,
+    pub access: PathAccess,
+    pub entry_ids: Vec<String>,
+}
+
+impl PathRequirement {
+    pub fn to_json(&self) -> Json {
+        let mut o = JsonObject::new();
+        o.insert("path", self.path.as_str().into());
+        o.insert("access", self.access.as_str().into());
+        o.insert("entryIds", strings(&self.entry_ids));
+        Json::Object(o)
+    }
+}
+
+/// A complete egress rule and the entries contributing it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NetworkRequirement {
+    pub rule: Json,
+    pub entry_ids: Vec<String>,
+}
+
+impl NetworkRequirement {
+    pub fn to_json(&self) -> Json {
+        let mut o = JsonObject::new();
+        o.insert("rule", self.rule.clone());
+        o.insert("entryIds", strings(&self.entry_ids));
+        Json::Object(o)
+    }
+}
+
+/// Which data an architecture-neutral fallback selected.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArchitectureFallback {
+    /// The platform's architecture-neutral overlay.
+    Platform,
+    /// No platform overlay: the common default.
+    Default,
+}
+
+impl ArchitectureFallback {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ArchitectureFallback::Platform => "platform",
+            ArchitectureFallback::Default => "default",
+        }
+    }
+}
+
+/// Where a symbol value came from (design §4.2 precedence).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SymbolValueSource {
+    Caller,
+    Discovery,
+    Host,
+    Default,
+}
+
+impl SymbolValueSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SymbolValueSource::Caller => "caller",
+            SymbolValueSource::Discovery => "discovery",
+            SymbolValueSource::Host => "host",
+            SymbolValueSource::Default => "default",
+        }
+    }
+}
+
+/// The category-specific fields of a resolution-detail warning.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DetailWarningKind {
+    ArchitectureDefault {
+        platform: Platform,
+        architecture: Architecture,
+    },
+    ArchitectureFallback {
+        platform: Platform,
+        architecture: Architecture,
+        selected: ArchitectureFallback,
+    },
+    SymbolResolved {
+        symbol: String,
+        value: String,
+        source: SymbolValueSource,
+    },
+    SymbolUnresolved {
+        symbol: String,
+    },
+    FilesystemCaseAssumed {
+        paths: Vec<String>,
+    },
+    FilesystemIdentityUnresolved {
+        paths: Vec<String>,
+        platform: Platform,
+    },
+    ReadonlySuperseded {
+        removed: PathRequirement,
+        required_by: Vec<PathRequirement>,
+    },
+    FilesystemDenyRemoved {
+        removed: PathRequirement,
+        required_by: Vec<PathRequirement>,
+    },
+    NetworkDenyRemoved {
+        removed: NetworkRequirement,
+        required_by: Vec<NetworkRequirement>,
+    },
+}
+
+impl DetailWarningKind {
+    pub fn code(&self) -> &'static str {
+        match self {
+            DetailWarningKind::ArchitectureDefault { .. } => "architecture_default",
+            DetailWarningKind::ArchitectureFallback { .. } => "architecture_fallback",
+            DetailWarningKind::SymbolResolved { .. } => "symbol_resolved",
+            DetailWarningKind::SymbolUnresolved { .. } => "symbol_unresolved",
+            DetailWarningKind::FilesystemCaseAssumed { .. } => "filesystem_case_assumed",
+            DetailWarningKind::FilesystemIdentityUnresolved { .. } => {
+                "filesystem_identity_unresolved"
+            }
+            DetailWarningKind::ReadonlySuperseded { .. } => "readonly_superseded",
+            DetailWarningKind::FilesystemDenyRemoved { .. } => "filesystem_deny_removed",
+            DetailWarningKind::NetworkDenyRemoved { .. } => "network_deny_removed",
+        }
+    }
+}
+
+/// A structured warning about shared resolution (design §5.1
+/// `ResolutionDetailWarning`), scoped to sorted, distinct inputs and entries.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ResolutionDetailWarning {
+    pub input_indexes: Vec<usize>,
+    pub entry_ids: Vec<String>,
+    pub kind: DetailWarningKind,
+    pub message: String,
+}
+
+/// A structured diagnostics warning.
+#[derive(Clone, Debug, PartialEq)]
 pub enum Warning {
-    Text(String),
     Tool(ToolResolutionWarning),
+    Detail(ResolutionDetailWarning),
 }
 
 impl Warning {
-    /// The human-readable message.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Warning::Tool(w) => w.kind.code(),
+            Warning::Detail(w) => w.kind.code(),
+        }
+    }
+
+    /// The human-readable message (not a parsing contract).
     pub fn message(&self) -> &str {
         match self {
-            Warning::Text(text) => text,
             Warning::Tool(w) => &w.message,
+            Warning::Detail(w) => &w.message,
         }
     }
 
     pub fn to_json(&self) -> Json {
+        let mut o = JsonObject::new();
+        o.insert("code", self.code().into());
         match self {
-            Warning::Text(text) => Json::String(text.clone()),
             Warning::Tool(w) => {
-                let mut o = JsonObject::new();
-                o.insert("code", w.code.as_str().into());
                 o.insert("inputIndex", Json::Number(w.input_index as f64));
-                if let Some(v) = &w.entry_id {
-                    o.insert("entryId", v.as_str().into());
-                }
-                if let Some(v) = &w.detected_version {
-                    o.insert("detectedVersion", v.as_str().into());
-                }
-                if let Some(v) = &w.intent {
-                    o.insert("intent", v.as_str().into());
+                match &w.kind {
+                    ToolWarningKind::VersionOutOfRange {
+                        entry_id,
+                        detected_version,
+                    }
+                    | ToolWarningKind::VersionUnparseable {
+                        entry_id,
+                        detected_version,
+                    } => {
+                        o.insert("entryId", entry_id.as_str().into());
+                        o.insert("detectedVersion", detected_version.as_str().into());
+                    }
+                    ToolWarningKind::IntentUnsupported { entry_id, intent } => {
+                        o.insert("entryId", entry_id.as_str().into());
+                        o.insert("intent", intent.as_str().into());
+                    }
+                    ToolWarningKind::ToolUnmatched { invocation_name } => {
+                        o.insert("invocationName", invocation_name.as_str().into());
+                    }
+                    ToolWarningKind::PurlInvalid { package_url } => {
+                        o.insert("packageUrl", package_url.as_str().into());
+                    }
+                    ToolWarningKind::PurlComponentsIgnored {
+                        package_url,
+                        ignored_components,
+                    } => {
+                        o.insert("packageUrl", package_url.as_str().into());
+                        o.insert(
+                            "ignoredComponents",
+                            Json::Array(
+                                ignored_components
+                                    .iter()
+                                    .map(|c| c.as_str().into())
+                                    .collect(),
+                            ),
+                        );
+                    }
+                    ToolWarningKind::WeakIdentity {
+                        entry_id,
+                        invocation_name,
+                    } => {
+                        o.insert("entryId", entry_id.as_str().into());
+                        o.insert("invocationName", invocation_name.as_str().into());
+                    }
                 }
                 o.insert("message", w.message.as_str().into());
-                Json::Object(o)
+            }
+            Warning::Detail(w) => {
+                o.insert("inputIndexes", indexes(&w.input_indexes));
+                o.insert("entryIds", strings(&w.entry_ids));
+                match &w.kind {
+                    DetailWarningKind::ArchitectureDefault {
+                        platform,
+                        architecture,
+                    } => {
+                        o.insert("platform", platform.as_str().into());
+                        o.insert("architecture", architecture.as_str().into());
+                    }
+                    DetailWarningKind::ArchitectureFallback {
+                        platform,
+                        architecture,
+                        selected,
+                    } => {
+                        o.insert("platform", platform.as_str().into());
+                        o.insert("architecture", architecture.as_str().into());
+                        o.insert("selected", selected.as_str().into());
+                    }
+                    DetailWarningKind::SymbolResolved {
+                        symbol,
+                        value,
+                        source,
+                    } => {
+                        o.insert("symbol", symbol.as_str().into());
+                        o.insert("value", value.as_str().into());
+                        o.insert("source", source.as_str().into());
+                    }
+                    DetailWarningKind::SymbolUnresolved { symbol } => {
+                        o.insert("symbol", symbol.as_str().into());
+                    }
+                    DetailWarningKind::FilesystemCaseAssumed { paths } => {
+                        o.insert("paths", strings(paths));
+                        o.insert("comparison", "case_sensitive".into());
+                    }
+                    DetailWarningKind::FilesystemIdentityUnresolved { paths, platform } => {
+                        o.insert("paths", strings(paths));
+                        o.insert("platform", platform.as_str().into());
+                    }
+                    DetailWarningKind::ReadonlySuperseded {
+                        removed,
+                        required_by,
+                    }
+                    | DetailWarningKind::FilesystemDenyRemoved {
+                        removed,
+                        required_by,
+                    } => {
+                        o.insert("removed", removed.to_json());
+                        o.insert(
+                            "requiredBy",
+                            Json::Array(required_by.iter().map(PathRequirement::to_json).collect()),
+                        );
+                    }
+                    DetailWarningKind::NetworkDenyRemoved {
+                        removed,
+                        required_by,
+                    } => {
+                        o.insert("removed", removed.to_json());
+                        o.insert(
+                            "requiredBy",
+                            Json::Array(
+                                required_by
+                                    .iter()
+                                    .map(NetworkRequirement::to_json)
+                                    .collect(),
+                            ),
+                        );
+                    }
+                }
+                o.insert("message", w.message.as_str().into());
             }
         }
-    }
-}
-
-impl From<String> for Warning {
-    fn from(value: String) -> Self {
-        Warning::Text(value)
+        Json::Object(o)
     }
 }
 
@@ -646,6 +976,7 @@ impl Diagnostics {
                 let mut o = JsonObject::new();
                 o.insert("entryId", Json::String(d.entry_id.clone()));
                 o.insert("entryRevision", Json::Number(d.entry_revision));
+                o.insert("inputIndexes", indexes(&d.input_indexes));
                 if let Some(range) = &d.required_version_range {
                     o.insert("requiredVersionRange", Json::String(range.clone()));
                 }
@@ -663,19 +994,20 @@ impl Diagnostics {
     }
 }
 
-/// Result of `resolve_sandbox_policy_with_diagnostics` (design §5.1).
+/// Result of a diagnostics lookup (design §5.1 `ToolRequirementsResolution`)
+/// in the catalog's JSON model.
 #[derive(Clone, Debug, PartialEq)]
-pub struct SandboxConfigResolution {
-    pub policy: Option<SandboxPolicy>,
+pub struct RequirementsResolution {
+    pub requirements: Option<Requirements>,
     pub diagnostics: Diagnostics,
 }
 
-impl SandboxConfigResolution {
-    /// `{"policy"?, "diagnostics"}`; `policy` is omitted when absent.
+impl RequirementsResolution {
+    /// `{"requirements"?, "diagnostics"}`; `requirements` is omitted when absent.
     pub fn to_json(&self) -> Json {
         let mut object = JsonObject::new();
-        if let Some(policy) = &self.policy {
-            object.insert("policy", policy.to_json());
+        if let Some(requirements) = &self.requirements {
+            object.insert("requirements", requirements.to_json());
         }
         object.insert("diagnostics", self.diagnostics.to_json());
         Json::Object(object)
@@ -749,7 +1081,6 @@ impl CatalogAdditionsMetadata {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DefaultMetadata {
     pub dependency_entry_ids: Vec<String>,
-    pub sandbox_policy_version: String,
     pub intents: Vec<CatalogIntentMetadata>,
 }
 
@@ -813,10 +1144,6 @@ impl CatalogEntryMetadata {
             "dependencyEntryIds",
             strings(&self.default.dependency_entry_ids),
         );
-        default.insert(
-            "sandboxPolicyVersion",
-            self.default.sandbox_policy_version.as_str().into(),
-        );
         default.insert("intents", intents_json(&self.default.intents));
         o.insert("default", Json::Object(default));
         let platform_variants = self
@@ -854,6 +1181,7 @@ impl CatalogEntryMetadata {
 pub struct CatalogInfo {
     pub catalog_schema_version: String,
     pub catalog_revision: String,
+    pub sdk_contract_version: String,
 }
 
 impl CatalogInfo {
@@ -864,6 +1192,10 @@ impl CatalogInfo {
             self.catalog_schema_version.as_str().into(),
         );
         o.insert("catalogRevision", self.catalog_revision.as_str().into());
+        o.insert(
+            "sdkContractVersion",
+            self.sdk_contract_version.as_str().into(),
+        );
         Json::Object(o)
     }
 }

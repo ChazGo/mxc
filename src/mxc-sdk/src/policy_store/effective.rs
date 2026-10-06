@@ -1,21 +1,22 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Effective policies (design §4.3–§4.4): the default plus the selected
-//! platform overlay, at most one version variant, and the selected intents;
-//! dependency closure; and the build-time materialization of every effective
-//! policy the catalog can produce.
+//! Effective policies (design §4.3–§4.5): the default plus the selected
+//! platform overlay, at most one version variant, and the selected intents,
+//! kept as independently de-duplicated source layers; the dependency closure;
+//! and the build-time materialization of every effective policy the catalog
+//! can produce.
 
 use crate::policy_store::catalog::{
-    fail, validate_sandbox_policy, Additions, CatalogContract, CatalogEntry, Dependency,
-    EntryIndex, IntentDefinition, Overlay, PlatformVariant, VersionVariant,
+    fail, validate_requirements, Additions, CatalogContract, CatalogEntry, CatalogPolicy,
+    Dependency, EntryIndex, IntentDefinition, Overlay, PlatformVariant, VersionVariant,
 };
-use crate::policy_store::compose::{compose_check, compose_policy, Component};
+use crate::policy_store::compose::{compose, compose_check, Contribution, LexicalIdentity};
 use crate::policy_store::errors::{invalid_catalog, Result};
 use crate::policy_store::json::{cmp_utf16, Json};
 use crate::policy_store::model::{
-    Architecture, DependencyRecord, IntentMode, IntentSelection, Platform, SandboxPolicy,
-    VersionSelection,
+    Architecture, DependencyRecord, FilesystemRequirements, IntentMode, IntentSelection, Platform,
+    Requirements, VersionSelection,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -66,8 +67,8 @@ pub fn select_platform_variant<'a>(
         }))
 }
 
-/// Whether the platform has architecture-specific overlays (so a neutral
-/// selection is a fallback worth reporting).
+/// Whether the platform has architecture-specific overlays (so the
+/// architecture was consulted, and a neutral selection is a fallback).
 pub fn has_arch_specific(entry: &CatalogEntry, platform: Platform) -> bool {
     entry
         .platform_variants
@@ -75,19 +76,57 @@ pub fn has_arch_specific(entry: &CatalogEntry, platform: Platform) -> bool {
         .any(|v| v.platform == platform && v.architecture.is_some())
 }
 
+/// Which part of an entry a layer comes from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum LayerSource {
+    Default,
+    /// A platform overlay, by index in `platformVariants`.
+    Platform(usize),
+    /// A version overlay, by index in `versionVariants`.
+    Version(usize),
+}
+
+/// The de-duplication key of one source contribution layer (design §4.5):
+/// the default base once; each platform base once; default intents by
+/// intent; platform intents by selector and intent; version bases by range;
+/// and version intents by range and intent. A requesting pair's version or
+/// intent is never part of a shared base-layer key.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct LayerKey {
+    pub entry_id: String,
+    pub source: LayerSource,
+    /// `None` for a base layer.
+    pub intent: Option<String>,
+}
+
+/// What a layer contributes.
+#[derive(Clone, Copy, Debug)]
+pub enum LayerBody<'a> {
+    /// The default's `requirements`.
+    Base(&'a CatalogPolicy),
+    /// Additive data from an intent or overlay.
+    Additions(&'a Additions),
+}
+
+#[derive(Clone, Debug)]
+pub struct Layer<'a> {
+    pub key: LayerKey,
+    pub entry_id: &'a str,
+    pub body: LayerBody<'a>,
+    pub dependencies: &'a [Dependency],
+}
+
 #[derive(Clone, Debug)]
 pub struct EffectiveIntent<'a> {
     pub name: String,
-    pub additions: Vec<&'a Additions>,
-    pub dependencies: Vec<&'a Dependency>,
+    pub layers: Vec<Layer<'a>>,
 }
 
 /// One effective policy before intent selection.
 #[derive(Clone, Debug)]
 pub struct Effective<'a> {
     pub entry: &'a CatalogEntry,
-    pub base_additions: Vec<&'a Additions>,
-    pub base_dependencies: Vec<&'a Dependency>,
+    pub base_layers: Vec<Layer<'a>>,
     /// Sorted by name.
     pub intents: Vec<EffectiveIntent<'a>>,
 }
@@ -107,23 +146,47 @@ pub enum IntentChoice<'s> {
 /// The selected base plus intents of one effective policy.
 #[derive(Clone, Debug)]
 pub struct Selected<'a> {
-    pub additions: Vec<&'a Additions>,
-    pub dependencies: Vec<&'a Dependency>,
+    pub layers: Vec<Layer<'a>>,
     pub intent_names: Vec<String>,
+}
+
+fn layer<'a>(
+    entry: &'a CatalogEntry,
+    source: LayerSource,
+    intent: Option<&str>,
+    body: LayerBody<'a>,
+    dependencies: &'a [Dependency],
+) -> Layer<'a> {
+    Layer {
+        key: LayerKey {
+            entry_id: entry.entry_id.clone(),
+            source,
+            intent: intent.map(str::to_string),
+        },
+        entry_id: &entry.entry_id,
+        body,
+        dependencies,
+    }
 }
 
 fn add_intents<'a>(
     intents: &mut Vec<EffectiveIntent<'a>>,
+    entry: &'a CatalogEntry,
+    source: LayerSource,
     list: &'a [(String, IntentDefinition)],
     extend: bool,
     origin: &str,
 ) -> std::result::Result<(), String> {
     for (name, definition) in list {
+        let added = layer(
+            entry,
+            source,
+            Some(name),
+            LayerBody::Additions(&definition.additions),
+            &definition.dependencies,
+        );
         match intents.iter_mut().find(|i| &i.name == name) {
-            Some(existing) if extend => {
-                existing.additions.push(&definition.additions);
-                existing.dependencies.extend(&definition.dependencies);
-            }
+            Some(existing) if extend => existing.layers.push(added),
             Some(_) => {
                 return Err(format!(
                     "intent '{name}' from {origin} is already declared by another overlay"
@@ -136,8 +199,7 @@ fn add_intents<'a>(
             }
             None => intents.push(EffectiveIntent {
                 name: name.clone(),
-                additions: vec![&definition.additions],
-                dependencies: definition.dependencies.iter().collect(),
+                layers: vec![added],
             }),
         }
     }
@@ -152,45 +214,76 @@ pub fn materialize<'a>(
 ) -> std::result::Result<Effective<'a>, String> {
     let mut effective = Effective {
         entry,
-        base_additions: Vec::new(),
-        base_dependencies: entry.default.dependencies.iter().collect(),
+        base_layers: vec![layer(
+            entry,
+            LayerSource::Default,
+            None,
+            LayerBody::Base(&entry.default.requirements),
+            &entry.default.dependencies,
+        )],
         intents: Vec::new(),
     };
     add_intents(
         &mut effective.intents,
+        entry,
+        LayerSource::Default,
         &entry.default.intents,
         false,
         "the default",
     )?;
-    let overlays: [(Option<&'a Overlay>, String); 2] = [
+    let platform_overlay = platform.map(|p| {
+        let index = entry
+            .platform_variants
+            .iter()
+            .position(|v| std::ptr::eq(v, p))
+            .expect("the platform overlay belongs to the entry");
         (
-            platform.map(|p| &p.overlay),
-            platform.map_or_else(String::new, |p| {
-                format!(
-                    "the {}/{} overlay",
-                    p.platform,
-                    p.architecture.map_or("*", Architecture::as_str)
-                )
-            }),
-        ),
+            &p.overlay,
+            LayerSource::Platform(index),
+            format!(
+                "the {}/{} overlay",
+                p.platform,
+                p.architecture.map_or("*", Architecture::as_str)
+            ),
+        )
+    });
+    let version_overlay = version.map(|v| {
+        let index = entry
+            .version_variants
+            .iter()
+            .position(|x| std::ptr::eq(x, v))
+            .expect("the version overlay belongs to the entry");
         (
-            version.map(|v| &v.overlay),
-            version.map_or_else(String::new, |v| {
-                format!("version range '{}'", v.version_range)
-            }),
-        ),
-    ];
-    for (overlay, origin) in overlays {
-        let Some(overlay) = overlay else { continue };
-        effective.base_additions.push(&overlay.policy_additions);
-        effective.base_dependencies.extend(&overlay.dependencies);
+            &v.overlay,
+            LayerSource::Version(index),
+            format!("version range '{}'", v.version_range),
+        )
+    });
+    for (overlay, source, origin) in [platform_overlay, version_overlay].into_iter().flatten() {
+        let overlay: &'a Overlay = overlay;
+        effective.base_layers.push(layer(
+            entry,
+            source,
+            None,
+            LayerBody::Additions(&overlay.policy_additions),
+            &overlay.dependencies,
+        ));
         add_intents(
             &mut effective.intents,
+            entry,
+            source,
             &overlay.intent_additions,
             true,
             &origin,
         )?;
-        add_intents(&mut effective.intents, &overlay.new_intents, false, &origin)?;
+        add_intents(
+            &mut effective.intents,
+            entry,
+            source,
+            &overlay.new_intents,
+            false,
+            &origin,
+        )?;
     }
     effective
         .intents
@@ -224,41 +317,86 @@ impl<'a> Effective<'a> {
                 return None;
             }
         }
-        let mut additions = self.base_additions.clone();
-        let mut dependencies = self.base_dependencies.clone();
+        let mut layers = self.base_layers.clone();
         for intent in &chosen {
-            additions.extend(&intent.additions);
-            dependencies.extend(&intent.dependencies);
+            layers.extend(intent.layers.iter().cloned());
         }
         Some(Selected {
-            additions,
-            dependencies,
+            layers,
             intent_names: chosen.iter().map(|i| i.name.clone()).collect(),
         })
     }
 }
 
-/// A node of the composed set: the component and how its platform overlay
-/// was selected.
-#[derive(Clone, Debug)]
-pub struct Node<'a> {
-    pub component: Component<'a>,
-    /// Neutral fallback on a platform with architecture-specific overlays.
-    pub neutral_fallback: Option<Platform>,
+/// Every selected layer of one lookup, de-duplicated by [`LayerKey`], with
+/// the sorted, distinct input indexes (owners) that require it.
+#[derive(Default)]
+pub struct LayerSet<'a> {
+    items: Vec<(Layer<'a>, Vec<usize>)>,
+    index: HashMap<LayerKey, usize>,
+}
+
+fn union_into(target: &mut Vec<usize>, extra: &[usize]) {
+    target.extend_from_slice(extra);
+    target.sort_unstable();
+    target.dedup();
+}
+
+impl<'a> LayerSet<'a> {
+    pub fn add(&mut self, layer: &Layer<'a>, owners: &[usize]) {
+        match self.index.get(&layer.key) {
+            Some(&at) => union_into(&mut self.items[at].1, owners),
+            None => {
+                self.index.insert(layer.key.clone(), self.items.len());
+                let mut owners = owners.to_vec();
+                union_into(&mut owners, &[]);
+                self.items.push((layer.clone(), owners));
+            }
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    pub fn layers(&self) -> impl Iterator<Item = (&Layer<'a>, &[usize])> {
+        self.items.iter().map(|(l, o)| (l, o.as_slice()))
+    }
+
+    /// Contributions of every layer that keeps an owner outside `excluded`,
+    /// with only those remaining owners. Layers owned solely by excluded
+    /// pairs are discarded.
+    pub fn contributions(&self, excluded: &HashSet<usize>) -> Vec<Contribution<'a>> {
+        self.items
+            .iter()
+            .filter_map(|(layer, owners)| {
+                let owners: Vec<usize> = owners
+                    .iter()
+                    .copied()
+                    .filter(|o| !excluded.contains(o))
+                    .collect();
+                (!owners.is_empty()).then_some(Contribution {
+                    entry_id: layer.entry_id,
+                    body: layer.body,
+                    owners,
+                })
+            })
+            .collect()
+    }
 }
 
 /// Accumulates the dependency closure of every contribution in one lookup.
 /// A dependency contributes its default base plus its platform overlay's base
-/// additions; a reference naming intents also adds those intents (design
-/// §4.5). Each (entry, base or intent) component contributes once.
+/// additions; a reference naming intents also adds those intents, with their
+/// applicable platform intent additions (design §4.5). Dependency layers
+/// inherit the owners of the layer that references them.
 pub struct Closure<'a, 'm> {
     pub by_id: &'m EntryIndex<'a>,
     pub platform: Platform,
     pub architecture: &'m dyn Fn() -> Result<Architecture>,
-    pub nodes: Vec<Node<'a>>,
     pub records: Vec<DependencyRecord>,
-    /// Node index per dependency entry, and the intents already added to it.
-    done: HashMap<&'a str, (usize, HashSet<String>)>,
+    /// Platform selection of every dependency entry visited, with its owners.
+    pub selections: Vec<(&'a CatalogEntry, Option<PlatformSelection<'a>>, Vec<usize>)>,
 }
 
 impl<'a, 'm> Closure<'a, 'm> {
@@ -271,25 +409,32 @@ impl<'a, 'm> Closure<'a, 'm> {
             by_id,
             platform,
             architecture,
-            nodes: Vec::new(),
             records: Vec::new(),
-            done: HashMap::new(),
+            selections: Vec::new(),
         }
     }
 
-    /// Adds the dependencies of a contribution of `root`, transitively.
-    pub fn add_dependencies(
+    /// Adds the dependencies of `layers` (selected for `root`), transitively.
+    pub fn add_layers(
         &mut self,
         root: &'a CatalogEntry,
-        dependencies: &[&'a Dependency],
+        layers: &[Layer<'a>],
+        owners: &[usize],
+        set: &mut LayerSet<'a>,
     ) -> Result<()> {
         let mut stack = vec![root.entry_id.as_str()];
-        self.visit_all(dependencies, &mut stack)
+        for layer in layers {
+            set.add(layer, owners);
+            self.visit_all(layer.dependencies, owners, set, &mut stack)?;
+        }
+        Ok(())
     }
 
     fn visit_all(
         &mut self,
-        dependencies: &[&'a Dependency],
+        dependencies: &'a [Dependency],
+        owners: &[usize],
+        set: &mut LayerSet<'a>,
         stack: &mut Vec<&'a str>,
     ) -> Result<()> {
         for dependency in dependencies {
@@ -313,15 +458,21 @@ impl<'a, 'm> Closure<'a, 'm> {
                 .map_err(|e| invalid_catalog(format!("'{}': {e}", target.entry_id)))?;
             let mut named: Vec<String> = dependency.intents.clone().unwrap_or_default();
             named.sort_by(|a, b| cmp_utf16(a, b));
-            if let Some(missing) = named.iter().find(|n| !effective.has_intent(n)) {
+            let Some(selected) = effective.select(IntentChoice::Set(&named)) else {
+                let missing = named
+                    .iter()
+                    .find(|n| !effective.has_intent(n))
+                    .cloned()
+                    .unwrap_or_default();
                 return Err(invalid_catalog(format!(
                     "dependency resolution failed: {from} -> {} names intent '{missing}', which {} does not define on {}",
                     target.entry_id, target.entry_id, self.platform
                 )));
-            }
+            };
             let record = DependencyRecord {
                 entry_id: target.entry_id.clone(),
                 entry_revision: target.entry_revision,
+                input_indexes: owners.to_vec(),
                 required_version_range: dependency.version_range.clone(),
                 version_selection: VersionSelection::default_match(),
                 intent_selection: IntentSelection {
@@ -331,64 +482,30 @@ impl<'a, 'm> Closure<'a, 'm> {
                     } else {
                         IntentMode::None
                     },
-                    selected: named.clone(),
+                    selected: named,
                 },
             };
-            if !self.records.contains(&record) {
-                self.records.push(record);
-            }
-            let (new_base, new_intents): (bool, Vec<String>) =
-                match self.done.get(target.entry_id.as_str()) {
-                    None => (true, named),
-                    Some((_, added)) => (
-                        false,
-                        named.into_iter().filter(|n| !added.contains(n)).collect(),
-                    ),
-                };
-            if !new_base && new_intents.is_empty() {
-                continue;
-            }
-            let base = effective
-                .select(IntentChoice::BaseOnly)
-                .expect("the base always selects");
-            let chosen = effective
-                .select(IntentChoice::Set(&new_intents))
-                .expect("named intents were checked");
-            // `chosen` repeats the base; keep only what is new.
-            let base_len = base.additions.len();
-            let base_dep_len = base.dependencies.len();
-            let mut additions: Vec<&'a Additions> = Vec::new();
-            let mut next: Vec<&'a Dependency> = Vec::new();
-            if new_base {
-                additions.extend(&base.additions);
-                next.extend(&base.dependencies);
-            }
-            additions.extend(&chosen.additions[base_len..]);
-            next.extend(&chosen.dependencies[base_dep_len..]);
-            match self.done.get_mut(target.entry_id.as_str()) {
-                Some((index, added)) => {
-                    added.extend(new_intents);
-                    self.nodes[*index].component.additions.extend(additions);
-                }
+            match self.records.iter_mut().find(|r| r.same_record(&record)) {
+                Some(existing) => union_into(&mut existing.input_indexes, owners),
                 None => {
-                    self.done.insert(
-                        &target.entry_id,
-                        (self.nodes.len(), new_intents.into_iter().collect()),
-                    );
-                    self.nodes.push(Node {
-                        component: Component {
-                            entry_id: &target.entry_id,
-                            base: &target.default.sandbox_policy,
-                            additions,
-                        },
-                        neutral_fallback: selection
-                            .filter(|s| !s.exact && has_arch_specific(target, self.platform))
-                            .map(|_| self.platform),
-                    });
+                    let mut record = record;
+                    union_into(&mut record.input_indexes, &[]);
+                    self.records.push(record);
                 }
+            }
+            match self
+                .selections
+                .iter_mut()
+                .find(|(entry, _, _)| std::ptr::eq(*entry, target))
+            {
+                Some((_, _, existing)) => union_into(existing, owners),
+                None => self.selections.push((target, selection, owners.to_vec())),
             }
             stack.push(&target.entry_id);
-            self.visit_all(&next, stack)?;
+            for layer in &selected.layers {
+                set.add(layer, owners);
+                self.visit_all(layer.dependencies, owners, set, stack)?;
+            }
             stack.pop();
         }
         Ok(())
@@ -425,7 +542,7 @@ impl<'a, 'm> Closure<'a, 'm> {
 }
 
 // ---------------------------------------------------------------------------
-// Build-time materialization (design §7)
+// Build-time materialization (design §4.2, §7)
 // ---------------------------------------------------------------------------
 
 /// One materialized effective policy, symbolic (templates unsubstituted).
@@ -437,43 +554,44 @@ pub struct Materialized {
     pub version_range: Option<String>,
     /// `None` for all intents.
     pub intent: Option<String>,
-    pub policy: SandboxPolicy,
+    pub requirements: Requirements,
     pub dependency_entry_ids: Vec<String>,
     pub intent_names: Vec<String>,
     /// The common default (no platform or version overlay) for the same
     /// intent, or its base for an intent the default does not declare.
-    pub default_policy: SandboxPolicy,
+    pub default_requirements: Requirements,
     pub default_dependency_entry_ids: Vec<String>,
 }
 
-fn compose_symbolic(
-    entry: &CatalogEntry,
-    selected: &Selected<'_>,
-    by_id: &EntryIndex<'_>,
+fn compose_symbolic<'a>(
+    entry: &'a CatalogEntry,
+    selected: &Selected<'a>,
+    by_id: &EntryIndex<'a>,
     platform: Platform,
     architecture: Architecture,
-) -> std::result::Result<(SandboxPolicy, Vec<String>), String> {
+) -> std::result::Result<(Requirements, Vec<String>), String> {
     let arch = move || Ok(architecture);
     let mut closure = Closure::new(by_id, platform, &arch);
+    let mut set = LayerSet::default();
     closure
-        .add_dependencies(entry, &selected.dependencies)
+        .add_layers(entry, &selected.layers, &[0], &mut set)
         .map_err(|e| e.detail().to_string())?;
-    let mut components = vec![Component {
-        entry_id: &entry.entry_id,
-        base: &entry.default.sandbox_policy,
-        additions: selected.additions.clone(),
-    }];
-    components.extend(closure.nodes.iter().map(|n| n.component.clone()));
-    compose_check(&components)?;
-    let composed = compose_policy(&components, &|t: &str| t.to_string(), platform);
+    let contributions = set.contributions(&HashSet::new());
+    compose_check(&contributions)?;
+    let composed = compose(
+        &contributions,
+        &|t: &str| t.to_string(),
+        platform,
+        &LexicalIdentity,
+    );
     let mut deps: Vec<String> = closure.records.iter().map(|r| r.entry_id.clone()).collect();
     deps.sort_by(|a, b| cmp_utf16(a, b));
     deps.dedup();
-    Ok((composed.policy, deps))
+    Ok((composed.requirements, deps))
 }
 
-fn rule_keys(policy: &SandboxPolicy) -> HashSet<String> {
-    policy
+fn rule_keys(requirements: &Requirements) -> HashSet<String> {
+    requirements
         .network
         .as_ref()
         .and_then(|n| n.get("egress"))
@@ -486,10 +604,10 @@ fn rule_keys(policy: &SandboxPolicy) -> HashSet<String> {
 }
 
 fn fs_paths(
-    policy: &SandboxPolicy,
-    field: fn(&crate::policy_store::model::FilesystemPolicy) -> &Option<Vec<String>>,
+    requirements: &Requirements,
+    field: fn(&FilesystemRequirements) -> &Option<Vec<String>>,
 ) -> Vec<String> {
-    policy
+    requirements
         .filesystem
         .as_ref()
         .and_then(|fs| field(fs).clone())
@@ -498,9 +616,9 @@ fn fs_paths(
 
 /// Every access the default grants is still granted by the effective policy.
 fn subset_violation(
-    default: &SandboxPolicy,
+    default: &Requirements,
     default_deps: &[String],
-    effective: &SandboxPolicy,
+    effective: &Requirements,
     effective_deps: &[String],
     platform: Platform,
 ) -> Option<String> {
@@ -535,8 +653,8 @@ fn subset_violation(
 }
 
 /// Materializes every platform × architecture × version × intent policy of
-/// `entry` (design §7), validating composition, the composed policy, and that
-/// the default is a subset of each effective policy.
+/// `entry` (design §7), validating composition, the closed composed fields,
+/// and that the default is a subset of each effective policy.
 pub fn materialize_entry(
     entry: &CatalogEntry,
     by_id: &EntryIndex<'_>,
@@ -572,13 +690,16 @@ pub fn materialize_entry(
                         .map_or(IntentChoice::All, IntentChoice::Named);
                     let at = format!("{at} intent {}", intent.as_deref().unwrap_or("(all)"));
                     let selected = effective.select(choice).expect("listed intents select");
-                    let (policy, deps) =
+                    let (requirements, deps) =
                         compose_symbolic(entry, &selected, by_id, platform, architecture)
                             .map_err(|e| invalid_catalog(format!("{at}: {e}")))?;
                     if let Err(e) =
-                        validate_sandbox_policy(Some(&policy.to_json()), "composed", contract)
+                        validate_requirements(Some(&requirements.to_json()), "composed", contract)
                     {
-                        return fail(format!("{at}: composed policy is invalid: {}", e.detail()));
+                        return fail(format!(
+                            "{at}: composed requirements are invalid: {}",
+                            e.detail()
+                        ));
                     }
                     let default_choice = match choice {
                         IntentChoice::Named(name) if !default_effective.has_intent(name) => {
@@ -589,12 +710,16 @@ pub fn materialize_entry(
                     let default_selected = default_effective
                         .select(default_choice)
                         .expect("default intents select");
-                    let (default_policy, default_deps) =
+                    let (default_requirements, default_deps) =
                         compose_symbolic(entry, &default_selected, by_id, platform, architecture)
                             .map_err(|e| invalid_catalog(format!("{at} (default): {e}")))?;
-                    if let Some(violation) =
-                        subset_violation(&default_policy, &default_deps, &policy, &deps, platform)
-                    {
+                    if let Some(violation) = subset_violation(
+                        &default_requirements,
+                        &default_deps,
+                        &requirements,
+                        &deps,
+                        platform,
+                    ) {
                         return fail(format!(
                             "{at}: the default is not a subset of the effective policy; it {violation}"
                         ));
@@ -604,10 +729,10 @@ pub fn materialize_entry(
                         architecture,
                         version_range: range.clone(),
                         intent: intent.clone(),
-                        policy,
+                        requirements,
                         dependency_entry_ids: deps,
                         intent_names: selected.intent_names,
-                        default_policy,
+                        default_requirements,
                         default_dependency_entry_ids: default_deps,
                     });
                 }
@@ -617,14 +742,28 @@ pub fn materialize_entry(
     Ok(out)
 }
 
-/// Revision-level materialization check, called from catalog validation.
+/// Revision-level materialization check, called from catalog validation:
+/// every combination composes, and its exact SDK request validates.
 pub(crate) fn validate_materializations(
     entries: &[CatalogEntry],
     by_id: &EntryIndex<'_>,
     contract: &CatalogContract,
 ) -> Result<()> {
     for entry in entries {
-        materialize_entry(entry, by_id, contract)?;
+        for materialized in materialize_entry(entry, by_id, contract)? {
+            crate::policy_store::exact::validate_materialized(&materialized, contract).map_err(
+                |e| {
+                    invalid_catalog(format!(
+                        "'{}' on {}/{} ({}) intent {}: {e}",
+                        entry.entry_id,
+                        materialized.platform,
+                        materialized.architecture,
+                        materialized.version_range.as_deref().unwrap_or("default"),
+                        materialized.intent.as_deref().unwrap_or("(all)")
+                    ))
+                },
+            )?;
+        }
     }
     Ok(())
 }

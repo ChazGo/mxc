@@ -1,7 +1,6 @@
 {
-  "$comment": "Catalog contract v1: the exact SandboxPolicy contract versions catalog entries may embed, and the symbol vocabulary entries may reference. 'context' symbols come only from ResolveContext.projectRoot; 'caller' symbols come only from ResolveContext.symbols; 'host' symbols are OS well-known folders the resolver may derive for the current host, which ResolveContext.symbols may override.",
+  "$comment": "Catalog contract v1: the symbol vocabulary entries may reference. Entries embed command-free MXC 1.0 request access fields; each revision records its SDK validation target (sdkContractVersion). 'context' symbols come only from ResolveContext.projectRoot; 'caller' symbols come from ResolveContext.symbols, then host-local discovery, then a platform default; 'host' symbols are OS well-known folders derived for the current host, which ResolveContext.symbols may override. A 'defaults' map gives a per-platform path template that may reference only host symbols.",
   "catalogSchemaVersion": "1",
-  "sandboxPolicyVersions": ["0.8.0-alpha", "0.9.0-alpha"],
   "symbols": {
     "project_root": {
       "source": "context",
@@ -9,19 +8,24 @@
     },
     "git_prefix": {
       "source": "caller",
-      "description": "Directory containing the git executable."
+      "description": "Directory containing the git executable (discovered on PATH when omitted)."
     },
     "node_prefix": {
       "source": "caller",
-      "description": "Directory containing the node executable."
+      "description": "Directory containing the node executable (discovered on PATH when omitted)."
     },
     "npm_prefix": {
       "source": "caller",
-      "description": "Directory containing the npm and npx launchers."
+      "description": "Directory containing the npm and npx launchers (discovered on PATH when omitted)."
     },
     "npm_cache": {
       "source": "caller",
-      "description": "The npm cache directory in effect for the invocation."
+      "description": "The npm cache directory in effect for the invocation (discovered from npm_config_cache or ~/.npmrc when omitted).",
+      "defaults": {
+        "linux": "${user_home}/.npm",
+        "macos": "${user_home}/.npm",
+        "windows": "${localAppData}/npm-cache"
+      }
     },
     "user_home": {
       "source": "host",
@@ -33,11 +37,15 @@
     },
     "ssh_prefix": {
       "source": "caller",
-      "description": "Directory containing the ssh executable."
+      "description": "Directory containing the ssh executable (discovered on PATH when omitted)."
     },
     "programData": {
       "source": "host",
       "description": "The Windows common application-data directory (%ProgramData%). Derived only on a Windows host."
+    },
+    "localAppData": {
+      "source": "host",
+      "description": "The Windows per-user local application-data directory (%LOCALAPPDATA%). Derived only on a Windows host."
     }
   }
 }

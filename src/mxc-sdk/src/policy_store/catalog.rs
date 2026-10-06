@@ -8,6 +8,7 @@
 use crate::policy_store::errors::{invalid_catalog, Result};
 use crate::policy_store::json::{js_number_to_string, js_to_string, Json, JsonObject};
 use crate::policy_store::model::{Architecture, IdentityStrength, Platform};
+use crate::policy_store::paths::is_absolute_path;
 use crate::policy_store::purl::parse_purl;
 use crate::policy_store::text::{is_symbol_name, js_to_lower, replace_symbols, symbol_matches};
 use crate::policy_store::vers::{VersRange, VersionScheme};
@@ -43,13 +44,29 @@ pub enum SymbolSource {
 pub struct SymbolDefinition {
     pub source: SymbolSource,
     pub description: String,
+    /// Documented per-platform default templates (design §4.2). They may
+    /// reference only host-known symbols.
+    pub defaults: Vec<(Platform, String)>,
 }
+
+impl SymbolDefinition {
+    pub fn default_for(&self, platform: Platform) -> Option<&str> {
+        self.defaults
+            .iter()
+            .find(|(p, _)| *p == platform)
+            .map(|(_, template)| template.as_str())
+    }
+}
+
+/// The SDK contract version this SDK build emits for `ContainerRequest`
+/// (`schemas/schema-version.json` `sdkMajorTargets`). Every catalog
+/// revision this SDK bundles must target it.
+pub const SDK_CONTRACT_VERSION: &str = "1.0.0";
 
 /// Validated catalog contract.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogContract {
     pub catalog_schema_version: String,
-    pub sandbox_policy_versions: Vec<String>,
     symbols: Vec<(String, SymbolDefinition)>,
 }
 
@@ -64,8 +81,9 @@ impl CatalogContract {
     }
 }
 
-/// An embedded, validated `SandboxPolicy`. The reviewed JSON object is kept
-/// as written so field order and values are preserved exactly.
+/// Embedded, validated `default.requirements` (the four access fields of a
+/// v1 `ContainerRequest`). The reviewed JSON object is kept as written so
+/// field order and values are preserved exactly.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CatalogPolicy {
     raw: JsonObject,
@@ -74,13 +92,6 @@ pub struct CatalogPolicy {
 impl CatalogPolicy {
     pub fn raw(&self) -> &JsonObject {
         &self.raw
-    }
-
-    pub fn version(&self) -> &str {
-        self.raw
-            .get("version")
-            .and_then(Json::as_str)
-            .unwrap_or_default()
     }
 
     pub fn has_filesystem(&self) -> bool {
@@ -175,7 +186,7 @@ pub struct Overlay {
 /// The unversioned default every entry has exactly once.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EntryDefault {
-    pub sandbox_policy: CatalogPolicy,
+    pub requirements: CatalogPolicy,
     pub dependencies: Vec<Dependency>,
     pub intents: Vec<(String, IntentDefinition)>,
 }
@@ -219,6 +230,8 @@ pub struct CatalogEntry {
 pub struct CatalogRevision {
     pub catalog_schema_version: String,
     pub catalog_revision: String,
+    /// The SDK `ContainerRequest` contract version the revision targets.
+    pub sdk_contract_version: String,
     pub entries: Vec<CatalogEntry>,
 }
 
@@ -321,12 +334,7 @@ pub fn validate_contract(raw: &Json) -> Result<CatalogContract> {
     };
     only_fields(
         raw,
-        &[
-            "$comment",
-            "catalogSchemaVersion",
-            "sandboxPolicyVersions",
-            "symbols",
-        ],
+        &["$comment", "catalogSchemaVersion", "symbols"],
         "contract",
     )?;
     if raw.get("catalogSchemaVersion").and_then(Json::as_str) != Some(CATALOG_SCHEMA_VERSION) {
@@ -334,11 +342,6 @@ pub fn validate_contract(raw: &Json) -> Result<CatalogContract> {
             "contract.catalogSchemaVersion must be '{CATALOG_SCHEMA_VERSION}'"
         ));
     }
-    let sandbox_policy_versions = string_array(
-        raw.get("sandboxPolicyVersions"),
-        "contract.sandboxPolicyVersions",
-        1,
-    )?;
     let Some(raw_symbols) = record(raw.get("symbols")) else {
         return fail("contract.symbols must be an object");
     };
@@ -350,7 +353,7 @@ pub fn validate_contract(raw: &Json) -> Result<CatalogContract> {
         };
         only_fields(
             definition,
-            &["source", "description"],
+            &["source", "description", "defaults"],
             &format!("contract.symbols.{name}"),
         )?;
         let source = match definition.get("source").and_then(Json::as_str) {
@@ -363,19 +366,61 @@ pub fn validate_contract(raw: &Json) -> Result<CatalogContract> {
             definition.get("description"),
             &format!("contract.symbols.{name}.description"),
         )?;
+        let mut defaults = Vec::new();
+        if let Some(raw_defaults) = definition.get("defaults") {
+            let at = format!("contract.symbols.{name}.defaults");
+            let Some(raw_defaults) = raw_defaults.as_object() else {
+                return fail(format!("{at} must be an object"));
+            };
+            if source == SymbolSource::Context {
+                return fail(format!(
+                    "{at}: a context symbol comes only from ResolveContext.projectRoot"
+                ));
+            }
+            for (platform, template) in raw_defaults.iter() {
+                let Some(parsed) = Platform::parse(platform) else {
+                    return fail(format!("{at}.{platform} is not a catalog platform"));
+                };
+                let template = non_empty_string(Some(template), &format!("{at}.{platform}"))?;
+                defaults.push((parsed, template));
+            }
+        }
         symbols.push((
             name.to_string(),
             SymbolDefinition {
                 source,
                 description,
+                defaults,
             },
         ));
     }
-    Ok(CatalogContract {
+    let contract = CatalogContract {
         catalog_schema_version: CATALOG_SCHEMA_VERSION.to_string(),
-        sandbox_policy_versions,
         symbols,
-    })
+    };
+    // Default templates may reference only host-known symbols and must form
+    // an absolute path on their platform once those are substituted.
+    for (name, definition) in contract.symbols() {
+        for (platform, template) in &definition.defaults {
+            let at = format!("contract.symbols.{name}.defaults.{platform}");
+            validate_template_path(template, &at, &contract)?;
+            for (_, _, referenced) in symbol_matches(template) {
+                if contract.symbol(referenced).map(|d| d.source) != Some(SymbolSource::Host) {
+                    return fail(format!(
+                        "'{at}' references '{referenced}', which is not a host-known symbol"
+                    ));
+                }
+            }
+            let probe = replace_symbols(template, |_| match platform {
+                Platform::Windows => "C:\\x".to_string(),
+                _ => "/x".to_string(),
+            });
+            if !is_absolute_path(&probe, *platform) {
+                return fail(format!("'{at}' does not form an absolute {platform} path"));
+            }
+        }
+    }
+    Ok(contract)
 }
 
 // ---------------------------------------------------------------------------
@@ -414,7 +459,7 @@ pub(crate) fn validate_template_path(
 }
 
 // ---------------------------------------------------------------------------
-// Embedded SandboxPolicy
+// Embedded requirements (v1 ContainerRequest access fields)
 // ---------------------------------------------------------------------------
 
 fn validate_network_rules(value: &Json, at: &str, deny_list: bool) -> Result<()> {
@@ -517,7 +562,7 @@ fn validate_network_rules(value: &Json, at: &str, deny_list: bool) -> Result<()>
     Ok(())
 }
 
-pub(crate) fn validate_sandbox_policy(
+pub(crate) fn validate_requirements(
     raw: Option<&Json>,
     at: &str,
     contract: &CatalogContract,
@@ -532,17 +577,18 @@ pub(crate) fn validate_sandbox_policy(
             ));
         }
     }
-    only_fields(
-        raw,
-        &["version", "filesystem", "network", "ui", "timeoutMs"],
-        at,
-    )?;
-    let version = non_empty_string(raw.get("version"), &format!("{at}.version"))?;
-    if !contract.sandbox_policy_versions.contains(&version) {
-        return fail(format!(
-            "'{at}.version' '{version}' is not a SandboxPolicy version registered in the catalog contract"
-        ));
+    for (key, reason) in [
+        ("command", "commands are supplied by the caller"),
+        ("version", "the SDK owns the wire version"),
+        ("lifecycle", "lifecycle settings are caller-owned"),
+        ("environment", "environment data is caller-owned"),
+        ("env", "environment data is caller-owned"),
+    ] {
+        if raw.contains_key(key) {
+            return fail(format!("'{at}.{key}' is not an access field; {reason}"));
+        }
     }
+    only_fields(raw, &["filesystem", "network", "ui", "timeoutMs"], at)?;
     if let Some(filesystem) = raw.get("filesystem") {
         let Some(filesystem) = filesystem.as_object() else {
             return fail(format!("'{at}.filesystem' must be an object"));
@@ -565,6 +611,11 @@ pub(crate) fn validate_sandbox_policy(
         let Some(network) = network.as_object() else {
             return fail(format!("'{at}.network' must be an object"));
         };
+        if network.contains_key("runtimeConfig") || network.contains_key("proxy") {
+            return fail(format!(
+                "'{at}.network' must not carry runtime proxy values; they are caller-owned"
+            ));
+        }
         only_fields(network, &["egress", "ingress"], &format!("{at}.network"))?;
         if let Some(egress) = network.get("egress") {
             let Some(egress) = egress.as_object() else {
@@ -620,14 +671,17 @@ pub(crate) fn validate_sandbox_policy(
         };
         only_fields(
             ui,
-            &["allowWindows", "clipboard", "allowInputInjection"],
+            &["disable", "clipboard", "allowInputInjection"],
             &format!("{at}.ui"),
         )?;
-        for key in ["allowWindows", "allowInputInjection"] {
-            if let Some(value) = ui.get(key) {
-                if value.as_bool().is_none() {
-                    return fail(format!("'{at}.ui.{key}' must be a boolean"));
-                }
+        if ui.get("disable").and_then(Json::as_bool).is_none() {
+            return fail(format!(
+                "'{at}.ui.disable' is required and must be a boolean"
+            ));
+        }
+        if let Some(value) = ui.get("allowInputInjection") {
+            if value.as_bool().is_none() {
+                return fail(format!("'{at}.ui.allowInputInjection' must be a boolean"));
             }
         }
         if let Some(clipboard) = ui.get("clipboard") {
@@ -637,8 +691,13 @@ pub(crate) fn validate_sandbox_policy(
         }
     }
     if let Some(timeout) = raw.get("timeoutMs") {
-        if !timeout.as_f64().is_some_and(|n| is_integer(n) && n >= 1.0) {
-            return fail(format!("'{at}.timeoutMs' must be a positive integer"));
+        let valid = timeout
+            .as_f64()
+            .is_some_and(|n| is_integer(n) && (1.0..=f64::from(u32::MAX)).contains(&n));
+        if !valid {
+            return fail(format!(
+                "'{at}.timeoutMs' must be a positive unsigned 32-bit integer"
+            ));
         }
     }
     Ok(CatalogPolicy { raw: raw.clone() })
@@ -682,9 +741,9 @@ fn validate_identity(raw: Option<&Json>, at: &str) -> Result<Vec<IdentityPredica
                 let Some(parsed) = parse_purl(&value) else {
                     return fail(format!("'{item_at}.value' is not a valid package URL"));
                 };
-                if parsed.version.is_some() {
+                if parsed.version.is_some() || parsed.has_qualifiers || parsed.has_subpath {
                     return fail(format!(
-                        "'{item_at}.value' must not pin a version; versions select 'versionVariants'"
+                        "'{item_at}.value' must name only type, namespace, and name; versions select 'versionVariants', and qualifiers and subpaths are not identity"
                     ));
                 }
                 predicates.push(IdentityPredicate::Purl { value });
@@ -707,7 +766,8 @@ fn validate_identity(raw: Option<&Json>, at: &str) -> Result<Vec<IdentityPredica
     let mut seen = HashSet::new();
     for key in predicates.iter().flat_map(identity_keys) {
         if !seen.insert(key.clone()) {
-            return fail(format!("'{at}' repeats identity '{key}'"));
+            let shown: Vec<&str> = key.split('\0').filter(|s| !s.is_empty()).collect();
+            return fail(format!("'{at}' repeats identity '{}'", shown.join("/")));
         }
     }
     Ok(predicates)
@@ -962,11 +1022,11 @@ fn validate_default(
             "'{at}' must be an object; every entry has exactly one unversioned default"
         ));
     };
-    only_fields(item, &["sandboxPolicy", "dependencies", "intents"], at)?;
+    only_fields(item, &["requirements", "dependencies", "intents"], at)?;
     Ok(EntryDefault {
-        sandbox_policy: validate_sandbox_policy(
-            item.get("sandboxPolicy"),
-            &format!("{at}.sandboxPolicy"),
+        requirements: validate_requirements(
+            item.get("requirements"),
+            &format!("{at}.requirements"),
             contract,
         )?,
         dependencies: validate_dependencies(
@@ -1242,7 +1302,12 @@ pub fn validate_catalog_revision(
     };
     only_fields(
         object,
-        &["catalogSchemaVersion", "catalogRevision", "entries"],
+        &[
+            "catalogSchemaVersion",
+            "catalogRevision",
+            "sdkContractVersion",
+            "entries",
+        ],
         "catalog",
     )?;
     if object.get("catalogSchemaVersion").and_then(Json::as_str)
@@ -1258,6 +1323,15 @@ pub fn validate_catalog_revision(
     if !is_catalog_revision_id(&catalog_revision) {
         return fail(format!(
             "catalog.catalogRevision '{catalog_revision}' must match YYYY-MM-DD.N"
+        ));
+    }
+    let sdk_contract_version = non_empty_string(
+        object.get("sdkContractVersion"),
+        "catalog.sdkContractVersion",
+    )?;
+    if sdk_contract_version != SDK_CONTRACT_VERSION {
+        return fail(format!(
+            "catalog.sdkContractVersion '{sdk_contract_version}' is not this SDK's ContainerRequest contract version '{SDK_CONTRACT_VERSION}'"
         ));
     }
     let Some(raw_entries) = object.get("entries").and_then(Json::as_array) else {
@@ -1304,6 +1378,7 @@ pub fn validate_catalog_revision(
     Ok(CatalogRevision {
         catalog_schema_version: contract.catalog_schema_version.clone(),
         catalog_revision,
+        sdk_contract_version,
         entries,
     })
 }
