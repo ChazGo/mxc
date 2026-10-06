@@ -24,7 +24,8 @@ build time; nothing is downloaded.
 
 | Path | Contents |
 |------|----------|
-| `catalog/` | Contract, manifest, immutable published revisions (V1 data), and generated views (`views/`: reviewer view and exact MXC 1.0.0 requests) |
+| `catalog/entries/` | Editable sources: one JSON file per tool with its full entry (subdirectories are organizational only) |
+| `catalog/` | Contract and manifest; `revisions/` holds generated, immutable published snapshots assembled from `entries/`, and `views/` the generated reviewer view and exact MXC 1.0.0 requests |
 | `schema/` | JSON Schemas for the catalog and manifest (editor validation) |
 | `conformance/` | Language-neutral fixtures and path/canonical-JSON vectors |
 
@@ -38,7 +39,9 @@ cargo test -p mxc-sdk --test policy_store_library --test policy_store_conformanc
 cargo test -p mxc_ffi --test policy_store
 ```
 
-`tests/policy_store_catalog_validation.rs` is the contribution gate: contract,
+`tests/policy_store_catalog_validation.rs` is the contribution gate: the
+default revision snapshot matches the assembled `entries/`
+(`MXC_POLICY_STORE_UPDATE_REVISION=1` regenerates it), contract,
 entry-revision history, every materialized effective policy validated as an
 exact MXC 1.0.0 request, deterministic resolution, conformance coverage, and
 current views (`MXC_POLICY_STORE_UPDATE_VIEWS=1` regenerates `catalog/views/`).

@@ -25,6 +25,7 @@
 //! `mxc_ffi`. [`tooling`] exposes the catalog contribution rules (validation,
 //! history, canonical JSON, paths) that the `policy_store_*` tests enforce.
 
+pub mod assemble;
 pub mod catalog;
 pub mod compose;
 pub mod effective;
@@ -70,6 +71,9 @@ pub use store::{
 
 /// Contribution and CI tooling (not part of the runtime lookup API).
 pub mod tooling {
+    pub use crate::policy_store::assemble::{
+        assemble_revision, collect_entry_sources, render_revision, EntrySource,
+    };
     pub use crate::policy_store::catalog::{
         compare_catalog_revisions, validate_catalog_revision, validate_contract, Additions,
         CatalogContract, CatalogEntry, CatalogRevision, Dependency, EntryDefault,

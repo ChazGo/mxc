@@ -1,0 +1,43 @@
+{
+  "entryId": "tool:npm",
+  "entryRevision": 2,
+  "displayName": "npm / npx",
+  "versionScheme": "npm",
+  "identity": [
+    {
+      "kind": "purl",
+      "value": "pkg:npm/npm"
+    },
+    {
+      "kind": "invocation-name",
+      "names": [
+        "npm",
+        "npm.cmd",
+        "npx",
+        "npx.cmd"
+      ]
+    }
+  ],
+  "default": {
+    "requirements": {
+      "filesystem": {
+        "readonlyPaths": [
+          "${npm_prefix}"
+        ],
+        "readwritePaths": [
+          "${project_root}",
+          "${npm_cache}"
+        ]
+      }
+    },
+    "dependencies": [
+      {
+        "entryId": "tool:node"
+      }
+    ]
+  },
+  "provenance": {
+    "method": "prototype-migration",
+    "sourceRevision": "ChazGo/mxc@17070fb:sdk/node/src/config-floors/catalog.json"
+  }
+}

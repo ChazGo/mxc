@@ -11,6 +11,8 @@
 //! - every entry resolves deterministically, through its own identity, for
 //!   every platform and architecture (every effective policy is also
 //!   materialized and validated by `validate_catalog_revision`);
+//! - the default revision snapshot is the current assembly of the editable
+//!   `catalog/entries/` files (design §6.3);
 //! - the rendered reviewer view and exact-request bundle in `catalog/views/`
 //!   are current (CI validates the bundle against the SDK target schema);
 //! - every entry has a bundled-catalog conformance case, as a match or a
@@ -24,8 +26,8 @@ mod common;
 
 use common::{crate_dir, read_json};
 use mxc_sdk::__policy_store::tooling::{
-    canonical_json, render_exact_requests, render_reviewer_view, validate_bundled_catalog,
-    IdentityPredicate, Json,
+    assemble_revision, canonical_json, collect_entry_sources, render_exact_requests,
+    render_reviewer_view, render_revision, validate_bundled_catalog, IdentityPredicate, Json,
 };
 use mxc_sdk::__policy_store::{
     bundled_catalog_store, Architecture, FixedHost, Platform, PolicyCatalog, ResolveContext,
@@ -245,4 +247,64 @@ fn reviewer_views_are_current() {
             path.display()
         );
     }
+}
+
+/// `revisions/<defaultRevision>.json` is generated from `catalog/entries/`.
+/// Set `MXC_POLICY_STORE_UPDATE_REVISION=1` to rewrite it after editing an
+/// entry, then `MXC_POLICY_STORE_UPDATE_VIEWS=1` for the views. Publishing a
+/// change means pointing `defaultRevision` at a new revision first; the
+/// `MXC_POLICY_STORE_BASE_REF` gate rejects rewriting a published snapshot.
+#[test]
+fn default_revision_matches_the_entry_sources() {
+    let catalog = crate_dir().join("catalog");
+    let manifest = read_json(catalog.join("manifest.json"));
+    let schema_version = manifest
+        .get("catalogSchemaVersion")
+        .and_then(Json::as_str)
+        .unwrap();
+    let default_revision = manifest
+        .get("defaultRevision")
+        .and_then(Json::as_str)
+        .unwrap();
+    let file = manifest
+        .get("revisions")
+        .and_then(Json::as_array)
+        .unwrap()
+        .iter()
+        .find(|r| r.get("catalogRevision").and_then(Json::as_str) == Some(default_revision))
+        .and_then(|r| r.get("file"))
+        .and_then(Json::as_str)
+        .expect("the default revision is listed in the manifest");
+    let sources = collect_entry_sources(&catalog.join("entries")).unwrap();
+    let assembled = assemble_revision(&sources, schema_version, default_revision)
+        .unwrap_or_else(|errors| panic!("catalog/entries does not assemble: {errors:#?}"));
+    let path = catalog.join(file);
+    if std::env::var("MXC_POLICY_STORE_UPDATE_REVISION").is_ok_and(|v| v == "1") {
+        std::fs::write(&path, render_revision(&assembled)).unwrap();
+        return;
+    }
+    let committed =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    assert_eq!(
+        committed.replace("\r\n", "\n"),
+        render_revision(&assembled),
+        "{} is stale against catalog/entries; regenerate with MXC_POLICY_STORE_UPDATE_REVISION=1",
+        path.display()
+    );
+}
+
+/// Moving entry files between category directories, or renaming them, does
+/// not change the assembled revision.
+#[test]
+fn entry_file_paths_do_not_affect_the_revision() {
+    let mut sources = collect_entry_sources(&crate_dir().join("catalog").join("entries")).unwrap();
+    let baseline = render_revision(&assemble_revision(&sources, "1", "r").unwrap());
+    sources.reverse();
+    for (index, source) in sources.iter_mut().enumerate() {
+        source.path = format!("category-{index}/renamed-{index}.json");
+    }
+    assert_eq!(
+        baseline,
+        render_revision(&assemble_revision(&sources, "1", "r").unwrap())
+    );
 }

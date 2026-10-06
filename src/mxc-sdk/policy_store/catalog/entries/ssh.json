@@ -1,0 +1,28 @@
+{
+  "entryId": "tool:ssh",
+  "entryRevision": 2,
+  "displayName": "OpenSSH client",
+  "versionScheme": "intdot",
+  "identity": [
+    {
+      "kind": "invocation-name",
+      "names": [
+        "ssh",
+        "ssh.exe"
+      ]
+    }
+  ],
+  "default": {
+    "requirements": {
+      "filesystem": {
+        "readonlyPaths": [
+          "${ssh_prefix}"
+        ]
+      }
+    }
+  },
+  "provenance": {
+    "method": "design-example",
+    "sourceRevision": "docs/mxc-policy-store.md (Policy Store design, git example)"
+  }
+}

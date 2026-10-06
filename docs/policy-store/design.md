@@ -16,6 +16,12 @@ The [README](README.md) describes the API and the catalog workflow.
   (`src/mxc-sdk/src/policy_store/`), with the V1 catalog compiled in from
   `src/mxc-sdk/policy_store/catalog/`. There is no separate crate, library,
   or CLI.
+- Catalog sources follow spec §6.3: one editable file per tool in
+  `catalog/entries/`. `assemble_revision` (a checked generator, like the
+  reviewer views) builds the default revision snapshot in `entryId` order and
+  rejects duplicate IDs and dangling dependencies; a cargo test fails when the
+  checked-in snapshot is stale. The static, manifest-selected embedding is
+  unchanged.
 - Rust: `mxc_sdk::v1::{resolve_tool_requirements,
   resolve_tool_requirements_with_diagnostics, get_catalog_info,
   list_catalog_entries}` return `ContainerRequirements` built from the v1

@@ -134,26 +134,34 @@ Absence is not a failure: the resolve call yields no requirements.
 
 ## Changing the catalog
 
-Published revisions are immutable. Never edit a file under
-`src/mxc-sdk/policy_store/catalog/revisions/` that is already listed in
-`catalog/manifest.json`; publish a new revision instead.
+Authors edit one JSON file per tool under
+`src/mxc-sdk/policy_store/catalog/entries/`. Each file holds that tool's full
+entry: identity, default, intents, every platform and version variant,
+dependencies, and provenance. Optional category subdirectories are
+organizational only; a file's path never affects identity, lookup, or
+composition. `revisions/<catalogRevision>.json` and `views/` are generated,
+immutable published snapshots: never edit them by hand, and never rewrite one
+that is already published.
 
-1. Copy the latest revision to `catalog/revisions/<YYYY-MM-DD.N>.json` and set
-   its `catalogRevision`.
-2. Make the change. Bump `entryRevision` for every entry that changes. Every
-   entry needs a `versionScheme` and one `default`; overlays are additive
-   only, and version ranges in one entry must not overlap.
-3. Append `{ catalogRevision, file }` to the manifest and point
+1. Add a new `{ catalogRevision, file }` (`<YYYY-MM-DD.N>`,
+   `revisions/<YYYY-MM-DD.N>.json`) to `catalog/manifest.json` and point
    `defaultRevision` at it. The data is compiled into the native library and
    inherits MXC package signing.
+2. Edit the entry files. Bump `entryRevision` for every entry that changes.
+   Every entry needs a `versionScheme` and one `default`; overlays are
+   additive only, and version ranges in one entry must not overlap.
+3. Generate the revision snapshot from the entries with
+   `MXC_POLICY_STORE_UPDATE_REVISION=1`, then the views with
+   `MXC_POLICY_STORE_UPDATE_VIEWS=1` (both run
+   `cargo test -p mxc-sdk --test policy_store_catalog_validation`), and review
+   them. The assembler orders entries by `entryId` and rejects duplicate
+   `entryId` values and dependencies on entries no file defines.
 4. Add or update a case in `conformance/fixtures/bundled-catalog.json`. Every
    entry in the default revision needs one. To record actual outcomes for
    review, run the conformance test with
    `MXC_POLICY_STORE_UPDATE_FIXTURES=<output-dir>`, then merge them by hand.
-5. Regenerate the views with `MXC_POLICY_STORE_UPDATE_VIEWS=1`
-   (`cargo test -p mxc-sdk --test policy_store_catalog_validation`) and
-   review them.
-6. Run the checks (from `src/`):
+5. Run the checks (from `src/`). They fail if a generated snapshot or view is
+   stale against its inputs:
 
    ```text
    cargo test -p mxc-sdk --lib policy_store
