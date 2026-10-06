@@ -31,10 +31,9 @@ use crate::Error;
 
 fn run_typed_state_aware(
     input: crate::mxc_common::sdk_input::SdkStateAwareInput,
-    experimental: bool,
     dry_run: bool,
 ) -> Result<StateAwareResult, Error> {
-    crate::mxc_engine::run_typed_state_aware_request(input, experimental, dry_run)
+    crate::mxc_engine::run_typed_state_aware_request(input, false, dry_run)
         .map(StateAwareResult::from_engine)
 }
 
@@ -46,7 +45,7 @@ pub fn provision(
     let input = request
         .into_sdk_input(options.telemetry)
         .map_err(Error::from)?;
-    run_typed_state_aware(input, options.experimental, false)?
+    run_typed_state_aware(input, false)?
         .into_provision()
         .map_err(Error::from)
 }
@@ -59,7 +58,7 @@ pub fn validate_provision(
     let input = request
         .into_sdk_input(options.telemetry)
         .map_err(Error::from)?;
-    run_typed_state_aware(input, options.experimental, true)?
+    run_typed_state_aware(input, true)?
         .into_validation()
         .map_err(Error::from)
 }
@@ -70,7 +69,7 @@ pub fn start(container_id: &ContainerId, options: StartOptions) -> Result<Lifecy
         StateAwareOperation::Start { sandbox_id }
     })
     .map_err(Error::from)?;
-    run_typed_state_aware(input, options.experimental, false)?
+    run_typed_state_aware(input, false)?
         .into_lifecycle()
         .map_err(Error::from)
 }
@@ -84,7 +83,7 @@ pub fn validate_start(
         StateAwareOperation::Start { sandbox_id }
     })
     .map_err(Error::from)?;
-    run_typed_state_aware(input, options.experimental, true)?
+    run_typed_state_aware(input, true)?
         .into_validation()
         .map_err(Error::from)
 }
@@ -95,7 +94,7 @@ pub fn stop(container_id: &ContainerId, options: StopOptions) -> Result<Lifecycl
         StateAwareOperation::Stop { sandbox_id }
     })
     .map_err(Error::from)?;
-    run_typed_state_aware(input, options.experimental, false)?
+    run_typed_state_aware(input, false)?
         .into_lifecycle()
         .map_err(Error::from)
 }
@@ -109,7 +108,7 @@ pub fn validate_stop(
         StateAwareOperation::Stop { sandbox_id }
     })
     .map_err(Error::from)?;
-    run_typed_state_aware(input, options.experimental, true)?
+    run_typed_state_aware(input, true)?
         .into_validation()
         .map_err(Error::from)
 }
@@ -123,7 +122,7 @@ pub fn deprovision(
         StateAwareOperation::Deprovision { sandbox_id }
     })
     .map_err(Error::from)?;
-    run_typed_state_aware(input, options.experimental, false)?
+    run_typed_state_aware(input, false)?
         .into_lifecycle()
         .map_err(Error::from)
 }
@@ -137,7 +136,7 @@ pub fn validate_deprovision(
         StateAwareOperation::Deprovision { sandbox_id }
     })
     .map_err(Error::from)?;
-    run_typed_state_aware(input, options.experimental, true)?
+    run_typed_state_aware(input, true)?
         .into_validation()
         .map_err(Error::from)
 }
@@ -151,8 +150,7 @@ pub fn spawn_in_container(
     let input = request
         .into_sdk_input(container_id, options.telemetry)
         .map_err(Error::from)?;
-    crate::mxc_engine::exec_typed_state_aware_request(input, options.experimental)
-        .map(MxcProcess::new)
+    crate::mxc_engine::exec_typed_state_aware_request(input, false).map(MxcProcess::new)
 }
 
 /// Spawn a workload in an existing container with a caller-controlled PTY.
@@ -165,12 +163,8 @@ pub fn spawn_in_container_with_pty(
     let input = request
         .into_sdk_input(container_id, options.telemetry)
         .map_err(Error::from)?;
-    crate::mxc_engine::exec_typed_state_aware_pty_request(
-        input,
-        options.experimental,
-        options.size.into(),
-    )
-    .and_then(MxcPtyProcess::new)
+    crate::mxc_engine::exec_typed_state_aware_pty_request(input, false, options.size.into())
+        .and_then(MxcPtyProcess::new)
 }
 
 /// Validate an execution request without running a workload.
@@ -182,7 +176,7 @@ pub fn validate_process(
     let input = request
         .into_sdk_input(container_id, options.telemetry)
         .map_err(Error::from)?;
-    run_typed_state_aware(input, options.experimental, true)?
+    run_typed_state_aware(input, true)?
         .into_validation()
         .map_err(Error::from)
 }
@@ -199,12 +193,12 @@ fn exec_in_attached(
     let input = request
         .into_sdk_input(container_id, options.telemetry)
         .map_err(Error::from)?;
-    crate::mxc_engine::exec_typed_state_aware_attached_request(input, options.experimental).map(
-        |outcome| match outcome {
+    crate::mxc_engine::exec_typed_state_aware_attached_request(input, false).map(|outcome| {
+        match outcome {
             ExecOutcome::Exited(code) => WaitResult::Exited(code),
             ExecOutcome::TimedOut => WaitResult::TimedOut,
-        },
-    )
+        }
+    })
 }
 
 /// The outcome of waiting on a [`MxcProcess`] (see [`MxcProcess::wait`]).

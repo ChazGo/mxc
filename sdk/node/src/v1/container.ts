@@ -8,7 +8,6 @@ import {
     ContainerConfig,
     ContainmentChoice,
     ExecutionResult,
-    type MxcOptions,
     UnsupportedV1NetworkFields,
 } from './types.js';
 import { applyLinuxNetworkPolicy } from '../helper.js';
@@ -360,7 +359,7 @@ export function prepareContainerRequest(
 
 function validateOperationOptions(
   apiName: string,
-  options: MxcOptions,
+  options: object,
   supportsDryRun: boolean,
   additionalOptionKeys: readonly string[] = [],
 ): void {
@@ -393,7 +392,6 @@ function validateOperationOptions(
       continue;
     }
     if (
-      key !== 'experimental' &&
       key !== 'dryRun' &&
       !additionalOptionKeys.includes(key)
     ) {
@@ -434,7 +432,7 @@ export async function spawn(
   validateOperationOptions('spawn', options, false);
   return spawnBindingSandboxProcess(
     prepareContainerRequest(request, options.telemetry),
-    options.experimental === true,
+    false,
   );
 }
 
@@ -465,7 +463,7 @@ export async function spawnWithPty(
     : spawnBindingSandboxWithPty;
   return spawnPty(
     preparedRequest,
-    options.experimental === true,
+    false,
     size.rows,
     size.columns,
   );
@@ -479,6 +477,6 @@ export async function run(
   validateOperationOptions('run', options, false);
   return toExecutionResult(await runOneShotJsonAsync(
     prepareContainerRequest(request, options.telemetry),
-    options.experimental === true,
+    false,
   ));
 }
