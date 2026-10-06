@@ -786,7 +786,7 @@ public enum NetworkAction
 
 ## `Microsoft.Mxc.Sdk.V1.NetworkEgressPolicy`
 
-Schema-0.8 outbound network policy.
+Supported directional outbound network policy.
 
 ```csharp
 public sealed class NetworkEgressPolicy
@@ -802,7 +802,7 @@ public sealed class NetworkEgressPolicy
 
 ## `Microsoft.Mxc.Sdk.V1.NetworkIngressPolicy`
 
-Schema-0.8 inbound and host-loopback network policy.
+Supported directional inbound and host-loopback network policy.
 
 ```csharp
 public sealed class NetworkIngressPolicy
@@ -894,7 +894,7 @@ public sealed class NetworkRulePolicy
 
 ## `Microsoft.Mxc.Sdk.V1.NetworkRuntimeConfig`
 
-Schema-0.8 runtime network values.
+Supported runtime network values.
 
 ```csharp
 public sealed class NetworkRuntimeConfig
@@ -1211,7 +1211,7 @@ Schema versions supported by this SDK release.
 ```csharp
 public static class SchemaVersions
 {
-    public const string Minimum = "0.6.0-alpha";
+    public const string Minimum = "0.9.0-alpha";
     public const string MaximumSupported = "1.1.0-alpha";
     public const string LatestStable = "1.0.0";
 }
