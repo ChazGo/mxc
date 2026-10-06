@@ -20,6 +20,8 @@
           <a href="#architecture">Architecture</a>
           <a href="#ownership">Ownership</a>
           <a href="#flow">Flow</a>
+          <a href="#catalog">Catalog</a>
+          <a href="#samples">Samples</a>
           <a href="#questions">Open questions</a>
           <a href="#sources">Sources</a>
         </div>
@@ -130,16 +132,14 @@ export declare function
   ctx?: ResolveContext
 ): Promise&lt;ToolRequirementsResolution&gt;;</code></pre>
             <div class="usage-note usage-example">
-              <span>Resolve, review, then add the command</span>
-              <code>const ctx: ResolveContext = {</code>
-              <code>  projectRoot: "C:\\workspace\\project",</code>
-              <code>  allowWeakIdentityFallback: true };</code>
-              <code>const reqs = await resolveToolRequirements(</code>
-              <code>  { invocationName: "git",</code>
-              <code>    detectedVersion: "2.45", intent: "push" }, ctx);</code>
-              <code>// review and constrain reqs, then add the command</code>
-              <code>const request: ContainerRequest =</code>
-              <code>  { ...approved, command };</code>
+              <span>Smaller caller: shared requirements, no diagnostics</span>
+              <code>const suggestion = await resolveToolRequirements(</code>
+              <code>  ["git", "node"],</code>
+              <code>  { ...context, allowWeakIdentityFallback: true });</code>
+              <code>if (suggestion === undefined) return undefined;</code>
+              <code>// non-empty is not proof both tools matched</code>
+              <code>const approved = await reviewSharedSuggestion(suggestion);</code>
+              <code>// later: { ...approvedRequirements, command }</code>
             </div>
             <div class="usage-note usage-example">
               <span>Language bindings</span>
@@ -611,6 +611,114 @@ export declare function
       </ol>
     </section>
 
+    <section id="catalog" class="section alt">
+      <div class="section-heading">
+        <div>
+          <span class="kicker">Catalog authoring</span>
+          <h2>One editable file per tool, immutable generated revisions</h2>
+        </div>
+        <p>Authors edit tool files. Build tooling assembles, validates, and embeds the snapshot the SDK resolves against.</p>
+      </div>
+
+      <div class="resolution-grid">
+        <article class="status-card">
+          <span class="card-label">Source layout</span>
+          <h3>Everything about a tool lives in its own JSON file</h3>
+          <p>Each file under <code>entries/</code> holds the tool's full entry: identity, common default, intents, all platform and version variants, dependencies, and provenance. Variants and intents are never split into separate files.</p>
+          <pre class="catalog-tree"><code>src/mxc-sdk/policy_store/
+  catalog/
+    contract.v1.json
+    manifest.json
+    entries/
+      git.json
+      node.json
+      npm.json
+    revisions/
+      &lt;catalogRevision&gt;.json            # generated snapshot
+    views/
+      &lt;catalogRevision&gt;.md              # generated reviewer view
+      &lt;catalogRevision&gt;.requests.json   # generated validation requests
+  schema/
+    catalog.v1.schema.json
+    manifest.v1.schema.json
+  conformance/</code></pre>
+        </article>
+
+        <article class="git-example">
+          <span class="card-label">Assembly and revisions</span>
+          <h3>Paths organize; they never select</h3>
+          <div class="git-layers">
+            <div><b>Collect</b><span>Entry files are gathered recursively. Optional category folders are organizational only: path and file order never affect identity, lookup, or composition.</span></div>
+            <div><b>Validate</b><span>The assembler requires globally unique <code>entryId</code> values and resolvable dependency references, then emits the candidate revision in stable <code>entryId</code> order.</span></div>
+            <div><b>Generate</b><span><code>revisions/</code> and <code>views/</code> are generated, immutable snapshots; CI checks them against the editable inputs. Authors never hand-maintain a second policy copy.</span></div>
+            <div><b>Publish</b><span><code>manifest.json</code> selects the default revision. Any policy change produces a new catalog revision and never overwrites a published one; moving a file between folders is not a policy change.</span></div>
+          </div>
+          <p>The build embeds validated snapshots in the native library. These are source and generated-artifact paths, not runtime lookup directories or consumer-editable files, and the public API is unchanged.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="samples" class="section">
+      <div class="section-heading">
+        <div>
+          <span class="kicker">Caller samples</span>
+          <h2>An advisor that reviews before it prepares</h2>
+        </div>
+        <p>ContosoClaw is an illustrative agent client. Its requirements advisor queries the read-only catalog; it never manages catalog files.</p>
+      </div>
+
+      <div class="resolution-grid">
+        <article class="status-card">
+          <span class="card-label">ContosoClaw: one tool with diagnostics</span>
+          <h3>Absence leaves the action unprepared, never authorized</h3>
+          <div class="api-examples">
+            <pre><code>async prepareTool(tool: ToolCandidate) {
+  let result: ToolRequirementsResolution;
+  try {
+    result = await resolveToolRequirementsWithDiagnostics(
+      tool, this.context);
+  } catch (error) {
+    this.reportFailure(error); // by primary MxcError code
+    return undefined;
+  }
+  this.app.logResolution(tool, result.diagnostics);
+  const status = result.diagnostics.tools[0]?.status;
+  const covered = status === "matched_default"
+    || status === "matched_version"
+    || status === "version_out_of_range";
+  if (result.requirements === undefined || !covered) {
+    this.app.showUnpreparedTool(tool, result.diagnostics);
+    return undefined;
+  }
+  const reviewWarnings = result.diagnostics.warnings
+    .filter(w =&gt; w.code !== "symbol_resolved");
+  return this.app.reviewAndConstrain(
+    tool, result.requirements, reviewWarnings);
+}</code></pre>
+          </div>
+          <p class="status-note"><code>reviewAndConstrain</code> returns <code>undefined</code> on rejection and never relaxes user or enterprise restrictions. The advisor keeps no cache that could reuse an earlier approval after a failed lookup.</p>
+        </article>
+
+        <article class="git-example">
+          <span class="card-label">How the advisor treats diagnostics</span>
+          <h3>Log everything; change workflow only where needed</h3>
+          <div class="status-table-shell">
+            <table>
+              <thead><tr><th>Diagnostic</th><th>Client behavior</th></tr></thead>
+              <tbody>
+                <tr><td><code>symbol_resolved</code>; successful selections</td><td>Log; still require ordinary approval</td></tr>
+                <tr><td>Architecture default/fallback, assumed casing, ignored PURL components, weak identity, out-of-range version</td><td>Surface the uncertainty during review</td></tr>
+                <tr><td>Superseded read-only access, removed filesystem/network denies</td><td>Review the complete changed scope and source entries</td></tr>
+                <tr><td>Unmatched/invalid identity, unparseable version, unsupported intent, unresolved filesystem identity or symbol</td><td>Return no prepared requirements; show corrective context</td></tr>
+                <tr><td>Library failure</td><td>Report by primary MXC code; no retry, revision substitution, or uncontained fallback</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>The smaller array sample in the API callout uses <code>resolveToolRequirements(["git", "node"])</code> without diagnostics. It makes no coverage promise; a caller that needs coverage uses the diagnostics form. One shared container shares its combined access, not separate per-tool permissions.</p>
+        </article>
+      </div>
+    </section>
+
     <section id="questions" class="section alt">
       <div class="section-heading">
         <div>
@@ -654,6 +762,11 @@ export declare function
           <strong>microsoft/mxc#1309 - Known-tool policy floors</strong>
           <small>Pinned to revision f7a450c: MXC 1.0 alignment with the command-free requirements API.</small>
         </a>
+        <a href="https://github.com/ChazGo/mxc/blob/chazgo-mxc-policy-spec/docs/mxc-policy-store-api.md" data-draft-link="unpublished">
+          <span>API contract (draft)</span>
+          <strong>Policy Store API - types, behavior, and caller samples</strong>
+          <small>Split from the design spec, which keeps catalog authoring and implementation. Not yet published; this link resolves once the document is committed and pushed.</small>
+        </a>
         <a href="https://github.com/microsoft/mxc/pull/779">
           <span>Design proposal</span>
           <strong>microsoft/mxc#779 - Sandbox config floors</strong>
@@ -672,7 +785,9 @@ export declare function
       </div>
 
       <p class="as-of">
-        Design status as of October 6, 2026, reflecting spec revision f7a450c. The APIs
+        Design status as of October 6, 2026, reflecting spec revision f7a450c plus the
+        accepted one-file-per-tool catalog layout and API/design document split, which
+        are not yet published. The APIs
         remain pending review and are not part of MXC 1.0; no later release is committed.
         <span id="prototype-status">The
         <a href="https://github.com/ChazGo/mxc/tree/36cca01c89e63b3a817aa9ecdf86ef1be0f908dc/docs/policy-store">draft prototype at 36cca01</a>

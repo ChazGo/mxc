@@ -100,12 +100,14 @@ const details = {
     owner: "MXC SDK",
     heading: "Read reviewed floor",
     summary:
-      "The SDK reads a local, immutable catalog revision embedded in the native library at build time, inheriting MXC package signing. Entries author access fields only under default.requirements, revalidated against the SDK's exact v1 target at build. Lookup never downloads updates or contacts a service.",
+      "The SDK reads a local, immutable catalog revision embedded in the native library at build time, inheriting MXC package signing. Authors edit one JSON file per tool (identity, default, intents, all variants, dependencies, provenance); an assembler checks unique entryIds and dependency references, then emits the revision sorted by entryId. Entries author access fields only under default.requirements, revalidated against the SDK's exact v1 target at build. Lookup never downloads updates or contacts a service.",
     code: "ctx.catalogRevision ?? installed default",
     items: [
       "Overlays use policyAdditions, intentAdditions for default intents, and newIntents for new names",
       "Commands, wire versions, backend settings, and unknown fields are rejected as catalog data",
       "Every entry declares one of five version schemes: npm, semver, pypi, nuget, or intdot",
+      "File paths and optional category folders never affect lookup",
+      "Generated revisions/ and views/ are immutable; any policy change makes a new revision",
       "A requested revision that is unavailable is an error, not a substitution",
       "Consumers cannot write approvals or learned changes into the catalog",
     ],
