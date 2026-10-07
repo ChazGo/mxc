@@ -48,7 +48,8 @@
         <div class="hero-actions">
           <a class="button primary" href="#architecture">Explore the design</a>
           <a class="button secondary" href="./tool-scope/">View the initial tool scope</a>
-          <a class="button secondary" href="https://github.com/ChazGo/mxc/blob/f7a450c04a28a5346d67e8aa6ae538a91b74665a/docs/mxc-policy-store.md">Read the spec proposal</a>
+          <a class="button secondary" href="https://github.com/ChazGo/mxc/blob/5c2ba8e60ade041ca7893670985d61009a22b9ff/docs/mxc-policy-store-api.md">Read the API contract</a>
+          <a class="button secondary" href="https://github.com/ChazGo/mxc/blob/5c2ba8e60ade041ca7893670985d61009a22b9ff/docs/mxc-policy-store.md">Read the catalog design spec</a>
         </div>
       </div>
       <aside class="principle-card">
@@ -138,8 +139,8 @@ export declare function
               <code>  { ...context, allowWeakIdentityFallback: true });</code>
               <code>if (suggestion === undefined) return undefined;</code>
               <code>// non-empty is not proof both tools matched</code>
-              <code>const approved = await reviewSharedSuggestion(suggestion);</code>
-              <code>// later: { ...approvedRequirements, command }</code>
+              <code>const selected = await applySharedClientSettings(suggestion);</code>
+              <code>// later: { ...selected, command: "node build.js" }</code>
             </div>
             <div class="usage-note usage-example">
               <span>Language bindings</span>
@@ -664,15 +665,21 @@ export declare function
           <span class="kicker">Caller samples</span>
           <h2>An advisor that reviews before it prepares</h2>
         </div>
-        <p>ContosoClaw is an illustrative agent client. Its requirements advisor queries the read-only catalog; it never manages catalog files.</p>
+        <p>Zava Agent is an illustrative agent client. Its requirements advisor queries the read-only catalog; it never manages catalog files. Samples follow the <a href="https://github.com/ChazGo/mxc/blob/5c2ba8e60ade041ca7893670985d61009a22b9ff/docs/mxc-policy-store-api.md#5-usage-examples">API contract's usage examples</a>.</p>
       </div>
 
       <div class="resolution-grid">
         <article class="status-card">
-          <span class="card-label">ContosoClaw: one tool with diagnostics</span>
-          <h3>Absence leaves the action unprepared, never authorized</h3>
+          <span class="card-label">Zava Agent: create a tool request with diagnostics</span>
+          <h3>Saved settings first; the catalog only when enabled</h3>
           <div class="api-examples">
-            <pre><code>async prepareTool(tool: ToolCandidate) {
+            <pre><code>private async prepareTool(tool: ToolCandidate) {
+  const saved = await this.app.loadApplicableToolRequirements(
+    tool, this.context);
+  if (saved !== undefined)
+    return this.app.applyClientSettings(tool, saved, []);
+  if (!this.app.isMxcFloorCatalogEnabled()) return undefined;
+
   let result: ToolRequirementsResolution;
   try {
     result = await resolveToolRequirementsWithDiagnostics(
@@ -690,13 +697,19 @@ export declare function
     this.app.showUnpreparedTool(tool, result.diagnostics);
     return undefined;
   }
-  const reviewWarnings = result.diagnostics.warnings
+  const relevantWarnings = result.diagnostics.warnings
     .filter(w =&gt; w.code !== "symbol_resolved");
-  return this.app.reviewAndConstrain(
-    tool, result.requirements, reviewWarnings);
+  return this.app.applyClientSettings(
+    tool, result.requirements, relevantWarnings);
+}
+
+async createRequestForTool(tool: ToolCandidate, command: string) {
+  const requirements = await this.prepareTool(tool);
+  return requirements === undefined
+    ? undefined : { ...requirements, command };
 }</code></pre>
           </div>
-          <p class="status-note"><code>reviewAndConstrain</code> returns <code>undefined</code> on rejection and never relaxes user or enterprise restrictions. The advisor keeps no cache that could reuse an earlier approval after a failed lookup.</p>
+          <p class="status-note">Saved tool/intent settings take precedence even when catalog lookup is disabled; the enablement check is a Zava Agent preference, not an MXC API. <code>applyClientSettings</code> may accept, further restrict, or decline requirements, including applying client-wide "never allow" restrictions, and may prompt if configured. The command is added only to the returned <code>ContainerRequest</code>, never sent to the catalog.</p>
         </article>
 
         <article class="git-example">
@@ -706,15 +719,15 @@ export declare function
             <table>
               <thead><tr><th>Diagnostic</th><th>Client behavior</th></tr></thead>
               <tbody>
-                <tr><td><code>symbol_resolved</code>; successful selections</td><td>Log; still require ordinary approval</td></tr>
-                <tr><td>Architecture default/fallback, assumed casing, ignored PURL components, weak identity, out-of-range version</td><td>Surface the uncertainty during review</td></tr>
-                <tr><td>Superseded read-only access, removed filesystem/network denies</td><td>Review the complete changed scope and source entries</td></tr>
+                <tr><td><code>symbol_resolved</code>; successful selections</td><td>Log; use the result according to client settings</td></tr>
+                <tr><td>Architecture default/fallback, assumed casing, ignored PURL components, weak identity, out-of-range version</td><td>Pass the uncertainty to <code>applyClientSettings</code></td></tr>
+                <tr><td>Superseded read-only access, removed filesystem/network denies</td><td>Pass the full changed scope and source entries to the same helper</td></tr>
                 <tr><td>Unmatched/invalid identity, unparseable version, unsupported intent, unresolved filesystem identity or symbol</td><td>Return no prepared requirements; show corrective context</td></tr>
                 <tr><td>Library failure</td><td>Report by primary MXC code; no retry, revision substitution, or uncontained fallback</td></tr>
               </tbody>
             </table>
           </div>
-          <p>The smaller array sample in the API callout uses <code>resolveToolRequirements(["git", "node"])</code> without diagnostics. It makes no coverage promise; a caller that needs coverage uses the diagnostics form. One shared container shares its combined access, not separate per-tool permissions.</p>
+          <p>The smaller sample in the API callout is a project runner preparing one shared sandbox for a Node build that invokes Git. It calls <code>resolveToolRequirements(["git", "node"])</code> without diagnostics as a broad, best-effort starting point, not a build-specific minimum, then adds <code>command: "node build.js"</code> and its working directory. A defined result does not prove both tools matched; a runner needing that uses diagnostics. One shared container shares its combined access, not separate per-tool permissions.</p>
         </article>
       </div>
     </section>
@@ -729,12 +742,12 @@ export declare function
       </div>
 
       <div class="question-grid single">
-        <article><span>API sign-off</span><h3>Approve the command-free <code>resolveToolRequirements</code> / <code>resolveToolRequirementsWithDiagnostics</code> surface returning <code>ContainerRequirements</code>, with Promise-based Node resolution and matching Rust/.NET bindings?</h3></article>
+        <article><span>API sign-off</span><h3>Review the <a href="https://github.com/ChazGo/mxc/blob/5c2ba8e60ade041ca7893670985d61009a22b9ff/docs/mxc-policy-store-api.md">API contract</a> before implementation: approve the command-free <code>resolveToolRequirements</code> / <code>resolveToolRequirementsWithDiagnostics</code> surface returning <code>ContainerRequirements</code>, with Promise-based Node resolution and matching Rust/.NET bindings?</h3></article>
       </div>
 
       <div class="status-table-shell alignment-table">
         <table>
-          <thead><tr><th>Earlier draft (was)</th><th>Spec f7a450c (now)</th></tr></thead>
+          <thead><tr><th>Earlier draft (was)</th><th>Spec 5c2ba8e (now)</th></tr></thead>
           <tbody>
             <tr><td><code>SandboxPolicy</code>, <code>resolveSandboxPolicy</code></td><td><code>ContainerRequirements</code>, <code>resolveToolRequirements</code></td></tr>
             <tr><td><code>SandboxConfigResolution.policy</code></td><td><code>ToolRequirementsResolution.requirements</code></td></tr>
@@ -745,7 +758,7 @@ export declare function
           </tbody>
         </table>
       </div>
-      <p class="status-note">Also in f7a450c: PURL matching on type/namespace/name, per-layer de-duplication, object identity that fails closed per pair, typed warnings, preserved alias paths, and dependency <code>inputIndexes</code>.</p>
+      <p class="status-note">Also since f7a450c: PURL matching on type/namespace/name, per-layer de-duplication, object identity that fails closed per pair, typed warnings, preserved alias paths, and dependency <code>inputIndexes</code>.</p>
     </section>
 
     <section id="sources" class="section sources">
@@ -757,15 +770,15 @@ export declare function
       </div>
 
       <div class="source-list">
-        <a href="https://github.com/ChazGo/mxc/blob/f7a450c04a28a5346d67e8aa6ae538a91b74665a/docs/mxc-policy-store.md">
-          <span>Feature spec</span>
-          <strong>microsoft/mxc#1309 - Known-tool policy floors</strong>
-          <small>Pinned to revision f7a450c: MXC 1.0 alignment with the command-free requirements API.</small>
+        <a href="https://github.com/ChazGo/mxc/blob/5c2ba8e60ade041ca7893670985d61009a22b9ff/docs/mxc-policy-store-api.md">
+          <span>API contract</span>
+          <strong>microsoft/mxc#1309 - Policy Store API</strong>
+          <small>Authoritative caller contract: operations, types, behavior, errors, diagnostics, and usage examples. Pinned to revision 5c2ba8e.</small>
         </a>
-        <a href="https://github.com/ChazGo/mxc/blob/chazgo-mxc-policy-spec/docs/mxc-policy-store-api.md" data-draft-link="unpublished">
-          <span>API contract (draft)</span>
-          <strong>Policy Store API - types, behavior, and caller samples</strong>
-          <small>Split from the design spec, which keeps catalog authoring and implementation. Not yet published; this link resolves once the document is committed and pushed.</small>
+        <a href="https://github.com/ChazGo/mxc/blob/5c2ba8e60ade041ca7893670985d61009a22b9ff/docs/mxc-policy-store.md">
+          <span>Design spec</span>
+          <strong>microsoft/mxc#1309 - Known-tool policy floors</strong>
+          <small>Catalog data model, authoring and source layout, implementation, and test plan. Pinned to revision 5c2ba8e.</small>
         </a>
         <a href="https://github.com/microsoft/mxc/pull/779">
           <span>Design proposal</span>
@@ -785,9 +798,9 @@ export declare function
       </div>
 
       <p class="as-of">
-        Design status as of October 6, 2026, reflecting spec revision f7a450c plus the
-        accepted one-file-per-tool catalog layout and API/design document split, which
-        are not yet published. The APIs
+        Design status as of October 6, 2026, reflecting spec revision 5c2ba8e, which splits the
+        API contract from the catalog design and adopts the one-file-per-tool catalog
+        layout. The APIs
         remain pending review and are not part of MXC 1.0; no later release is committed.
         <span id="prototype-status">The
         <a href="https://github.com/ChazGo/mxc/tree/511651b3954575e8f0304bb29f66b3b6fe97399c/docs/policy-store">draft prototype at 511651b</a>
