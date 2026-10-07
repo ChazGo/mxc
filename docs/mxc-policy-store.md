@@ -31,6 +31,8 @@ an SDK catalog contract with identity, platform, dependency, revision, and
 inspection behavior. It reuses #779's model where possible and calls out
 differences directly.
 
+For caller-facing review, start with the [API spec](mxc-policy-store-api.md).
+
 This document does not restate general MXC sandboxing concepts already covered
 by the [v1 SDK reference](https://github.com/microsoft/mxc/blob/894f4c159705f5f470727e4fa1e363a2abec88f1/docs/reference/node/v1/README.md) or
 [`docs/versioning.md`](versioning.md). It covers only what a policy store adds.
@@ -79,35 +81,11 @@ checklist in
   time and ships in the existing MXC SDK packages. See
   [§6](#6-intended-repository-and-packaging-boundary).
 
-Defaults and omission behavior are:
 
-- `ResolveContext` is optional and carries lookup context only. No command or
-  execution settings are required, inferred, or returned by the resolver.
-- Existing callers do not perform catalog lookup automatically. A consumer
-  must explicitly enable or invoke it.
-- Omitted `ResolveContext.platform` uses the current host platform.
-- Omitted `ResolveContext.architecture` uses the device's native system
-  architecture, not the architecture of the library's process or a detected
-  tool build. Explicit caller selection takes precedence. See the selection
-  rules and emulation risk in [§4.4](#44-platform-variants).
-- Omitted `ResolveContext.catalogRevision` uses the currently installed
-  catalog revision.
-- Omitted `ResolveContext.allowWeakIdentityFallback` is `false`.
-- Omitted `projectRoot` and `symbols` provide no caller overrides. The resolver
-  uses supported local discovery and shared documented defaults for required
-  symbols as specified in [§4.2](#42-entry-shape). It does not invent a project
-  root or an installation path. A selected entry with an unresolved required
-  symbol is not resolvable.
-- The resolver does not fabricate an omitted `packageUrl` or `detectedVersion`.
-- Omitted `ToolCandidate.detectedVersion` selects the unversioned default,
-  without a version warning.
-- Omitted `ToolCandidate.intent` selects the base plus all intents of the
-  effective version policy. An unsupported intent contributes no policy and
-  produces an `intent_unsupported` warning.
-- If no policy can be resolved, `resolveToolRequirements` yields `undefined`.
-  `resolveToolRequirementsWithDiagnostics` yields a result whose `requirements` is
-  `undefined`, preserving the diagnostics. The consumer's restrictive baseline
-  remains unchanged.
+Caller defaults and omission behavior are defined in the
+[API spec](mxc-policy-store-api.md#context-defaults-and-symbol-resolution).
+Lookup is command-free and opt-in; unresolved requirements never authorize a
+less restrictive execution fallback.
 
 ## 2. Ownership boundary
 
@@ -391,808 +369,108 @@ templates may reference approved host-known symbols; they cannot contain
 commands or executable discovery logic. Shared definitions and defaults are
 embedded with the entries and cannot change behind a pinned catalog revision.
 
-For symbols required by selected entries and dependencies, precedence is:
-
-1. Explicit caller values from `projectRoot` or `symbols`, as applicable.
-2. Supported local discovery, including `PATH`, known host locations, and
-   relevant tool configuration overrides.
-3. A documented default for the selected platform, if applicable.
-4. Unresolved, with diagnostics and no partial policy.
-
-Tool-specific discovery runs in the library, not in catalog-supplied code.
-It does not execute candidate tools, install software, or contact the network.
-Automatic discovery and host-derived values describe the current host and
-environment; callers targeting another execution environment supply overrides.
-A failed configuration read is an explicit library error, not evidence that
-no override exists and a default should be used. Discovery does not verify
-tool identity. The diagnostics operation reports the source and resolved value
-of each discovered or defaulted symbol through `diagnostics.warnings`.
+Symbol discovery implementations follow the
+[API precedence and failure rules](mxc-policy-store-api.md#context-defaults-and-symbol-resolution).
+Tool-specific discovery is library code, never executable catalog data.
 
 ### 4.3 Identity
 
-Lookup uses tool identity, an optional detected version, and optional
-tool-defined intent. Package URL
-provides strong identity and invocation name is the opt-in fallback. Raw
-command lines and calling-application identity are not lookup keys; the caller
-maps operations to intents and applies its own restrictions. Platform and
-architecture remain resolution context.
+Entries declare package-identity predicates and invocation-name fallbacks,
+with tool-defined intents and version overlays. The
+[API matching contract](mxc-policy-store-api.md#identity-and-match-precedence)
+defines equality, precedence, and malformed-input behavior; the
+[version/intent contract](mxc-policy-store-api.md#version-intent-and-platform-selection)
+defines selection and diagnostic outcomes. Catalog indexing and validation
+must use those same rules, not introduce a second comparison policy.
 
-`identity` describes the predicates a candidate can satisfy for an entry,
-using the layering #779 §3.1 establishes (invocation name vs. launcher artifact
-vs. executing image; falsifiable-against-a-local-artifact as the admission test
-for a new kind).
-
-Caller-supplied identity is not verified identity. A `packageUrl` match does
-not prove that the installed tool belongs to that package; the caller is
-responsible for verifying that association. The library does not inspect the
-tool to verify it.
-
-Parse candidate and catalog package URLs using the
-[PURL component rules](https://github.com/package-url/purl-spec/blob/7cd2d3442fb9c88155db17ada7c911b40ec22d41/docs/specification/standard/Clause-5-Package-URL-Specification.md)
-and applicable type definitions, including percent-decoding before comparison.
-Compare only type, namespace, and name. Catalog comparison is
-locale-independent and case-insensitive for type and namespace; the name
-follows its package type's normalization and case rules. Namespace folding is
-a catalog lookup rule, not a claim that every ecosystem treats namespaces
-case-insensitively.
-
-Ignore candidate version, qualifiers, and subpath for matching and record
-`purl_components_ignored` when any is present. Only `detectedVersion` supplies
-tool-version evidence. Validate the complete PURL before ignoring components.
-An invalid candidate PURL makes that pair `tool_unmatched` with `purl_invalid`;
-do not repair it, retry invocation-name matching, or fail other pairs.
-Invalid catalog PURLs are catalog validation errors.
-
-Invocation-name matching is locale-independent and case-insensitive on Windows
-and macOS, and exact on Linux. This does not change the caller's command or
-package-identity matching.
-
-For each input tool, consider entries with an eligible identity predicate and
-their applicable platform additions. Rank matches in this order:
-
-1. Package URL match over invocation-name-only match.
-2. A requested intent declared in the default or applicable overlays over no
-   matching intent declaration.
-3. Exact architecture over architecture-neutral additions or the common default.
-
-Select the unique highest-ranked match. Two distinct matches tied after all
-three comparisons produce an error, not a union or a file-order tie-break.
-Multiple predicates satisfied within the same entry count as one identity
-match, ranked by its strongest satisfied predicate.
-
-After selecting the entry, resolve its version and then its intent as below.
-Version ranges do not choose a different tool entry.
-Failure for that pair does not retry another entry or a wildcard entry.
-Composition includes only contributing pairs in an array request.
-
-Composition applies across tools in an array request, not across competing
-identity matches for one tool. Diagnostics follow input order and identify the
-single selected entry, satisfied identity predicates, and selected intents.
-
-Invocation-name-only matching requires explicit opt-in
-(`allowWeakIdentityFallback: true`). Intent selection does not bypass that
-option.
-
-`versionRange` uses the Package-URL project's
-[VERS syntax](https://github.com/package-url/vers-spec/blob/797c842a4afebf258e6710a68cd60306afc36708/docs/specification/standard/Clause-5-VERS-Specification.md):
-`vers:<type>/<constraints>`, for example `vers:npm/>=10.0.0|<12.0.0`.
-V1 supports these [version types](https://github.com/package-url/vers-spec/blob/797c842a4afebf258e6710a68cd60306afc36708/docs/types/vers-types.md):
-
-| VERS type | Version parsing and comparison |
-|---|---|
-| `npm` | node-semver version rules, as referenced by the VERS npm definition |
-| `semver` | Semantic Versioning 2.0.0 |
-| `pypi` | PEP 440 |
-| `nuget` | NuGet version normalization and comparison |
-| `intdot` | VERS dotted-integer comparison for numeric tool versions such as Git `2.40` |
-
-VERS defines the range syntax and interval evaluation; the named type defines
-version parsing, normalization, and ordering, including prereleases and
-accepted prefixes. Do not apply npm's native range syntax to other types or
-strip version prefixes independently of the named rules. `generic` is not
-supported while its upstream comparison algorithm is unspecified.
-
-Catalog authoring/build validation rejects malformed VERS strings, invalid
-constraints, and unsupported types as invalid catalog data.
-
-For each requested tool/intent pair, parse `detectedVersion` under the selected
-entry's `versionScheme`. Use only that scheme's specified parsing and
-normalization; do not repair rejected input, try other schemes, or perform
-fuzzy matching.
-
-| Version input | Effective policy data | Version status / warning |
-|---|---|---|
-| Omitted | Default plus platform additions | `matched_default`; no version warning |
-| Valid, inside exactly one range | Default plus platform and selected version additions | `matched_version`; record the selected range |
-| Valid, in no range | Default plus platform additions | `version_out_of_range` warning |
-| Unparseable under the entry's scheme | None for this pair | `version_unparseable` warning |
-
-An out-of-range version never selects the nearest, highest, or broadest variant.
-An unparseable version contributes nothing, while other requested pairs still
-resolve. After version selection, a named intent must exist in the effective
-policy. Otherwise emit `intent_unsupported` and contribute nothing for that
-pair, not the base or an all-intents fallback. An out-of-range version requesting
-a newer-only intent emits both warnings and contributes nothing. With no
-intent, combine the effective base with all of its effective intents.
-
-No catalog match yields `tool_unmatched`, no contribution, and no wildcard
-fallback. Diagnostics preserve input order. These per-pair outcomes are not
-whole-request failures.
+Validate complete catalog PURLs and reject invalid predicates. Validate VERS
+syntax, supported schemes, and non-overlapping ranges during authoring/build.
+Neither predicate ordering nor file order may resolve an ambiguous match.
 
 ### 4.4 Platform variants
 
-Supported platforms are `windows`, `linux`, and `macos`. Supported architecture
-selectors are `x64` and `arm64`. A variant selector has this closed shape:
+Each platform variant's `when` selector contains `platform` (`windows`,
+`linux`, or `macos`) and optional `architecture` (`x64` or `arm64`).
+It adds `policyAdditions`, `dependencies`, `intentAdditions`, and
+`newIntents` to the common default; it never removes, narrows, or replaces
+default requirements. Catalog validation rejects duplicate exact selectors
+and more than one architecture-neutral variant for a platform.
 
-```ts
-interface PlatformVariantSelector {
-  platform: "windows" | "linux" | "macos";
-  architecture?: "x64" | "arm64";
-}
-```
-
-A platform variant contains only additions to the common default, using the
-same `policyAdditions`, `dependencies`, `intentAdditions`, and `newIntents`
-fields as a version overlay. It never removes, narrows, or replaces default
-requirements. Select at most one platform/architecture overlay, then combine
-its additions with the default and the selected version overlay.
-Architecture is a catalog selector, not a field added to `ContainerRequest`. Omitting
-`when.architecture` makes a catalog variant architecture-neutral; omitting the
-caller's `ResolveContext.architecture` instead requests the host default.
-
-Selection first filters by platform. After identity and intent specificity
-([§4.3](#43-identity)), architecture selection uses the following precedence:
-
-| Caller context | Preferred variant | Fallback |
-|---|---|---|
-| Explicit `architecture: "x64"` | x64 for the selected platform | Architecture-neutral for that platform |
-| Explicit `architecture: "arm64"` | ARM64 for the selected platform | Architecture-neutral for that platform |
-| Architecture omitted | Device's native system architecture for the selected platform | Architecture-neutral for that platform |
-
-The native system architecture is the architecture reported by the host OS,
-not the architecture of the process hosting the library. For example, on an
-ARM64 device with both x64 and ARM64 catalog variants and no neutral variant,
-omitting architecture selects ARM64. An explicit `architecture: "x64"` selects
-x64 on that same device. The resolver does not require a neutral variant to
-return a result when the effective architecture has an exact match.
-
-Catalog validation rejects duplicate exact selectors and more than one
-architecture-neutral variant for the same platform. If neither an exact nor
-architecture-neutral variant exists, retain the common default without platform
-additions; never select another architecture's overlay. A failure to determine
-the native system architecture when it is needed is a library error, not a
-guessed selection.
-
-**Emulation risk:** A host-derived default does not establish the architecture
-of the installed tool. An x64 tool running under emulation on an ARM64 device
-may need the x64 variant rather than the default ARM64 variant. The resolver
-does not inspect or run the tool to discover its architecture. Callers that
-know the relevant tool and runtime requirements should select architecture
-explicitly and remain responsible for deciding whether the result applies.
-Neither explicit selection nor a host default guarantees that the returned
-policy is sufficient or minimal. Host-derived selection and neutral fallback
-are surfaced through `diagnostics.warnings` by the diagnostics API
-([§5.1](#51-runtime-lookup)).
-
-A platform variant must not name a specific MXC containment backend. Policies
-stay backend-neutral; the selected backend still decides whether a stated
-requirement can be realized on that host.
+The [API selection rules](mxc-policy-store-api.md#version-intent-and-platform-selection)
+define precedence, host defaults, and emulation diagnostics. Architecture is
+catalog context, not a new `ContainerRequest` field. Variants remain
+backend-neutral; execution still validates backend capabilities.
 
 ### 4.5 Dependencies and composition
 
-Dependencies reference another entry's `entryId` and can belong to the base or
-to an intent, in the default or a selected overlay. Include base dependencies
-and only the selected intent dependencies. A dependency contributes only its
-unversioned default base plus its applicable platform overlay's base
-additions; it never selects a version overlay or includes intents. This
-differs from a requested tool with no intent, which includes all effective
-intents. A reference may name dependency intents, for example
-`{ "entryId": "tool:ssh", "intents": ["connect"] }`; those intents, including
-their applicable platform `intentAdditions`, are then added. Catalog validation
-rejects a named dependency intent that is missing from any materialized
-platform combination where the reference applies. An optional dependency
-`versionRange` uses the same VERS syntax and authoring/build validation;
-a range is not a detected version and does not select a version overlay.
-Resolution is otherwise transitive, cycle-rejecting, and deterministic, and
-the diagnostics API returns the resolved dependency metadata alongside the
-policy.
+The [API composition contract](mxc-policy-store-api.md#dependencies-and-composition)
+defines selected dependencies, effective access, conflicts, and failures.
+Implement the same rules within entries, across requested tools, and through
+dependency closures. Caller restrictions are never inputs to floor composition.
 
-Compose each selected base with its selected intent additions, then combine
-the results for different requested tools and their transitive dependencies.
-De-duplicate each source contribution layer independently within an entry and
-catalog revision. The default base contributes once, and each selected platform
-base layer contributes once, regardless of requested version or intent.
-Default intent additions are keyed by intent; platform intent additions by
-platform selector and intent; version base additions by range; and version
-intent additions by range and intent. Include new-intent definitions under
-their owning overlay. Never attach the requesting pair's version or intent to
-a shared base-layer key. Repeated identical layers contribute once; distinct
-version and intent additions selected by different pairs are retained.
-Preserve per-input attribution. A shared `ResolveContext` applies to the whole
-lookup; each tool candidate carries its own intent.
+Dependency references use `entryId` and may name intents, for example
+`{ "entryId": "tool:ssh", "intents": ["connect"] }`. Validate that those
+intents exist in every materialized platform combination where referenced.
+A dependency range is validated VERS metadata, not detected version evidence.
+Traverse transitively, rejecting cycles.
 
-Following #779's floor semantics, filesystem composition preserves the access
-required by all selected tools rather than intersecting their requirements.
-An overlapping read-only requirement must not suppress another tool's needed
-write access, and a catalog-provided deny must not block a required read or
-write path. This is not a rule for merging consumer authorization policy.
-Filesystem composition uses the exact
-`filesystem.deniedPaths`, `filesystem.readonlyPaths`, and
-`filesystem.readwritePaths` fields:
+De-duplicate each source layer independently within an entry/catalog revision:
+default base once; platform base by selector; default intent by name; platform
+intent by selector/name; version base by range; version intent by range/name.
+New intents belong to their defining overlay. Do not attach a requesting
+pair's version or intent to a shared base key. Preserve all requesting input
+indexes for direct and transitive attribution.
 
-1. All selected entries and additions use the containing catalog revision's
-   validated SDK target; no stored request contains a `version`.
-2. At lookup time, resolve all required symbols and normalize paths using the
-   selected platform's path rules before comparing equal or
-   ancestor/descendant paths. Combine the selected entries and dependencies,
-   de-duplicating equivalent pathnames within each access class, not distinct
-   required alias locations.
-3. Preserve every required read-write subtree. Remove read-only entries equal
-   to or contained within a read-write subtree, since read-write already
-   satisfies their read requirement. Retain a read-only ancestor of a
-   read-write subtree without promoting the whole ancestor to read-write.
-4. Remove each catalog-provided deny that overlaps any required read-only or
-   read-write path, whether equal, an ancestor, or a descendant. Remove the
-   entire deny entry, not an invented exception beneath it. Retain
-   non-overlapping denies.
-5. Return the composed policy and make the access changes available through
-   diagnostics. The same rules apply to overlaps within one selected entry
-   and across multiple entries; matching or traversal order must not change
-   the effective access.
+Resolve symbols and validate bound values before floor composition. Lexical
+normalization respects platform path syntax and actual case rules; retain
+original casing. It does not establish filesystem-object identity.
+Use MXC's [object comparison primitives](https://github.com/microsoft/mxc/blob/894f4c159705f5f470727e4fa1e363a2abec88f1/src/mxc-sdk/src/core/mxc_common/filesystem_object.rs#L100-L265):
+Windows volume serial/file ID via `CreateFileW`/`FileIdInfo`, Unix device/inode
+via `stat`. Resolve existing ancestors for subtree comparison. A cleanly
+missing suffix is relative to its deepest established ancestor, not an existing
+alias; unreadable components and unresolvable broken links are unknown.
 
-Filesystem comparison is separate from invocation-name matching. Equality,
-de-duplication, and ancestor checks honor the applicable filesystem and
-directory case-sensitivity, not a blanket OS assumption. When that information
-cannot be determined, compare case-sensitively, preserve differently cased
-paths for comparison, and report the assumption in diagnostics. Returned paths
-retain their casing; comparison must not lowercase the policy paths. Another
-target environment must not inherit this host's filesystem case rules.
+Preserve required alias locations, including bind mounts, symlinks, junctions,
+hard links, and 8.3 names, even when object identity is shared. Reconcile access
+without deleting a needed pathname. For unknown relationships, exclude every
+affected pair, not just the restrictive side; remove solely owned layers and
+retain shared layers for remaining contributors. Recompose complete surviving
+pairs. This resolver observation does not replace enforcement-time checks.
 
-Resolve actual filesystem object identity using MXC's
-[object comparison primitives](https://github.com/microsoft/mxc/blob/894f4c159705f5f470727e4fa1e363a2abec88f1/src/mxc-sdk/src/core/mxc_common/filesystem_object.rs#L100-L265).
-Symlink, junction, hard-link, bind-mount, and 8.3 aliases must participate in
-the same catalog access composition, not silently cause a required read-write
-path to become read-only or denied when MXC later normalizes the request.
-Keep this floor composition separate from the runner's restrictive enforcement.
-
-Object identity reconciles access, not pathname reachability. Retain every
-required alias location even when multiple paths name the same object. If a
-read-only alias names an object required read-write through another path,
-retain that alias with the composed read-write access instead of deleting it.
-Do not collapse same-class aliases merely because their object identities
-match: path-based backends still need each required mount or pathname.
-
-If necessary identity cannot be established for the target, that pair
-contributes nothing and reports `filesystem_identity_unresolved`; other
-independently resolved pairs can still contribute. This includes unresolved
-aliases introduced by dependencies or cross-pair composition. Do not treat
-unknown identity as proof that paths differ, bypass this check with lexical
-case rules, or weaken MXC enforcement.
-
-V1 inspects local host-side source paths, not a remote or guest filesystem.
-Windows identity uses volume serial number and file ID through
-`CreateFileW`/`FileIdInfo`; Unix uses `stat` device/inode (following links).
-Compare opened/resolved objects, preserve every required alias pathname, and
-compare existing ancestor identities for subtree overlap. A cleanly missing
-suffix is compared relative to its deepest resolvable existing ancestor; it
-is not treated as an existing alias. An unreadable component, broken link
-whose target cannot be established, or different target filesystem is unknown
-and drops every input whose access relationship depends on that fact. Never
-drop only the restrictive side of an unresolved relation to retain its grant.
-Case-sensitive comparison is only a lexical aid when case sensitivity is
-unknown, not permission to skip object checks. Apply the same analysis across
-pair/dependency boundaries. Discard all layers solely owned by excluded pairs,
-then compose the remaining complete pairs; retain shared layers only for
-remaining owners. No lookup result bypasses the runner's authoritative
-enforcement-time checks or claims protection from later filesystem changes.
-
-| Resolved requirements | Composed filesystem policy |
-|---|---|
-| Read-only `/work` and read-write `/work` | Read-write `/work`; omit read-only `/work` |
-| Read-write `/work` and read-only `/work/tools` | Read-write `/work`; omit read-only `/work/tools` |
-| Read-only `/work` and read-write `/work/cache` | Retain read-only `/work` and read-write `/work/cache`; do not make all of `/work` writable |
-| Denied `/data` and read-write `/data/cache` | Remove denied `/data`; retain read-write `/data/cache` and report that the entire `/data` deny was removed |
-| Denied `/secrets` and read-write `/work` | Retain both non-overlapping entries |
-
-These are composition rules for the returned `ContainerRequirements`, not changes
-to MXC's enforcement precedence. Simply concatenating a conflicting deny or
-read-only entry with a grant is insufficient: the restrictive entry could
-still prevent the access the composed floor is intended to request.
-
-Removing a parent deny removes its protection for the entire subtree, not
-just the overlapping required path. It does not itself add a grant to that
-subtree, but other grants can now apply there. Diagnostics must identify the
-removed deny and this broader effect. Caller-owned denies and other user,
-enterprise, device, or backend restrictions are never inputs to this
-least-restrictive catalog composition and must not be removed by it.
-
-Publication checks validate policy shapes, symbols, and supported composition
-fields and exercise the rules with known paths and fixtures. Equal or nested
-filesystem requirements are not by themselves invalid catalog data. Caller
-symbol values can introduce additional overlaps, so the resolver must always
-apply these rules after substitution and normalization at lookup time.
-An overlap covered by these rules is not a composition error; missing required
-symbols or unsupported composed fields retain their existing failure behavior.
-
-Network requirements also combine across selected tools, intents, and
-dependencies. A tool that needs no network contributes no network access; it
-does not veto access required by another requested tool. For example, Git's
-`local` intent alone needs no network, while a request combining it with a
-tool needing HTTPS access includes that tool's HTTPS requirement.
-
-When only one selected component requires network, preserve its supported
-network requirements; components with no grants do not force an additional
-network merge. For multiple scoped outbound requirements in v1, retain
-`network.egress.default: "deny"` and union the selected
-`network.egress.allow` and catalog `network.egress.deny` rules,
-de-duplicating identical rules.
-Preserve each whole rule's destination, exclusions, protocol, and port
-relationships; never form a cross-product of destinations and ports. Missing
-network fields or deny-by-default contribute no grants, not a restriction on
-another component's required grants. Do not introduce unrestricted outbound
-access or include unselected version or intent additions. An omitted intent
-selects all intents in the effective version policy; an unsupported intent
-contributes no access.
-
-Catalog egress denies follow the filesystem deny rule. Remove each catalog
-deny rule that overlaps any required allow rule, meaning their destination
-CIDRs intersect after `except` exclusions and their protocol/port selectors
-intersect. Remove the entire deny rule, not an invented exception within it.
-Retain non-overlapping deny rules. The same rule applies within one entry and
-across entries, and a conflicting deny never fails the request.
-Diagnostics identify the removed rule, its full destination and port scope,
-and the contributing entries.
-
-This combined access belongs to the shared sandbox, not to isolated
-permissions per tool. Caller-owned network denies and other user, enterprise,
-device, or backend restrictions are never inputs to this composition and are
-never removed by it. Other network configuration, including allow-by-default,
-non-default ingress, and proxy configuration, is rejected rather than
-approximated with broader access when more than one selected policy sets it.
-The same rejection
-applies to timeout, clipboard, lifecycle, UI, and every other field without an
-explicit composition rule. A single selected policy without additions or
-dependencies may use catalog-supported fields without cross-policy composition.
+Catalog validation exercises composition with fixtures, but caller symbols and
+filesystem observations require lookup-time validation too. Materialization
+must not invoke the runner's restrictive normalization as the floor merge
+algorithm. Unsupported composition fails explicitly.
 
 ## 5. API surface
 
-The MXC SDK APIs separate runtime resolution from catalog inspection.
-Resolution accepts one tool or an array, selects the most specific match for
-each input, and composes its effective base, selected intents, and dependencies into one
-`ContainerRequirements`. Callers choose a requirements-only operation or a diagnostic
-operation over the same resolution logic. Neither
-implicitly returns the whole catalog. These are SDK library calls, not a
-hosted service or a command-line utility.
-
-The signatures below use TypeScript to describe the shared contract. Rust and
-C# expose the same operations and metadata with idiomatic names and types.
-TypeScript and C# expose single-tool and array overloads; Rust uses an idiomatic
-one-or-many input type because it does not support function overloading. An
-absent policy is `undefined` in TypeScript/JavaScript, `None` in Rust, and
-`null` in C#. Library failures remain distinct from policy absence.
+The [Policy Store API spec](mxc-policy-store-api.md) is the authoritative
+caller-facing contract: public types, signatures, defaults, behavior, errors,
+diagnostics, and usage examples. This document owns catalog authoring and
+implementation. API review comes first; implementation follows the approved
+contract.
 
 ### 5.1 Runtime lookup
 
-`ContainerRequirements` preserves the earlier four-field scope: filesystem,
-network, UI, and timeout, with the composition rules in §4.5. It reuses the
-SDK's nested types and optionality; `Pick` is not runtime validation or an
-expansion of the catalog's supported fields (§4.2). Rust/.NET use an equivalent
-four-field aggregate, not duplicate nested models.
-
-Context is optional and lookup-only. Command, containment, name, working
-directory, environment, cleanup, proxy, and operation options remain caller-owned,
-not resolver inputs or outputs. Intent selects requirements, not a command.
-Resolve again or supply overrides if the eventual execution environment differs
-from discovery. Requirements do not certify coverage of an arbitrary command.
-
-Node resolution uses Promise-returning plain verbs, matching the v1
-[run/spawn convention](https://github.com/microsoft/mxc/blob/894f4c159705f5f470727e4fa1e363a2abec88f1/sdk/node/src/v1/container.ts#L428-L477);
-filesystem work must not block the event loop. Rust exposes
-`v1::resolve_tool_requirements` / `resolve_tool_requirements_with_diagnostics`
-as `Result<Option<ContainerRequirements>, Error>` / `Result<ToolRequirementsResolution, Error>`.
-.NET exposes `MxcContainer.ResolveToolRequirements` and
-`ResolveToolRequirementsWithDiagnostics` (plus `Async` Task forms) in `V1`.
-Metadata inspection stays synchronous; no operation creates a container.
-
-Failures reuse existing MXC error codes, which are sufficient for normal
-programmatic handling. An optional `details.reason` may provide a stable,
-catalog-specific distinction for logging, investigation, or finer handling
-when the code alone is too broad. Callers need not branch on it; an absent or
-unrecognized reason retains the same handling as the primary code. A reason
-must not duplicate a distinction already expressed by an existing MXC code.
-
-The following primary-code mappings apply across all language bindings.
-When `details.reason` is supplied for these failures, it uses the listed value;
-callers may ignore it.
-
-| Failure | MXC error code | Optional `details.reason` |
-|---|---|---|
-| Invalid tool input or resolution context | `malformed_request` | `invalid_context` |
-| Invalid catalog data, including invalid dependency references or cycles | `policy_validation` | `invalid_catalog` |
-| Distinct matches for one tool tied at the highest identity/intent/architecture rank | `policy_validation` | `ambiguous_match` |
-| Unsupported composition, including incompatible SDK target metadata or fields without a composition rule | `policy_validation` | `composition_conflict` |
-| Unsupported or undetectable host platform or architecture | `unsupported_containment` | `unsupported_host` |
-| Bundled catalog content cannot be read | `backend_error` | `integrity` |
-| Explicitly requested catalog revision is not installed | `backend_error` | `revision_unavailable` |
-
-Filesystem and network overlaps handled by
-[§4.5](#45-dependencies-and-composition) are not composition failures. Ordinary no-match results remain policy absence, not an
-error from this table. Invalid candidate PURLs, well-typed but unparseable
-version strings, unsupported intents, and unresolved filesystem identity are
-per-pair diagnostic outcomes, not whole-request errors from this table.
-
-```ts
-import type { ContainerRequest, NetworkRuleConfig } from "@microsoft/mxc-sdk/v1";
-
-export type ContainerRequirements = Pick<ContainerRequest,
-  "filesystem" | "network" | "ui" | "timeoutMs">;
-
-interface ToolCandidate {
-  invocationName: string;
-  packageUrl?: string;
-  detectedVersion?: string;
-  intent?: string;
-}
-
-type ToolInput = string | ToolCandidate;
-
-interface ResolveContext {
-  projectRoot?: string;
-  symbols?: Record<string, string>;
-  platform?: "windows" | "linux" | "macos";
-  architecture?: "x64" | "arm64";
-  catalogRevision?: string;
-  allowWeakIdentityFallback?: boolean;
-}
-
-interface IntentSelection {
-  requested?: string;
-  mode: "named" | "all" | "none" | "unsupported";
-  selected: string[];
-}
-
-type VersionStatus =
-  | "matched_default"
-  | "matched_version"
-  | "version_out_of_range"
-  | "version_unparseable";
-
-interface VersionSelection {
-  status: VersionStatus;
-  detectedVersion?: string;
-  selectedVersionRange?: string;
-}
-
-type ToolResolutionStatus =
-  | VersionStatus
-  | "intent_unsupported"
-  | "tool_unmatched"
-  | "filesystem_identity_unresolved";
-
-type InputWarning = { inputIndex: number; message: string };
-type ToolResolutionWarning = InputWarning & (
-  | { code: "version_out_of_range" | "version_unparseable";
-      entryId: string; detectedVersion: string }
-  | { code: "intent_unsupported"; entryId: string; intent: string }
-  | { code: "tool_unmatched"; invocationName: string }
-  | { code: "purl_invalid"; packageUrl: string }
-  | { code: "purl_components_ignored"; packageUrl: string;
-      ignoredComponents: Array<"version" | "qualifiers" | "subpath"> }
-  | { code: "weak_identity"; entryId: string; invocationName: string }
-);
-
-interface WarningScope {
-  inputIndexes: number[];
-  entryIds: string[];
-  message: string;
-}
-
-interface PathRequirement {
-  path: string;
-  access: "denied" | "readonly" | "readwrite";
-  entryIds: string[];
-}
-
-type EgressRule =
-  NetworkRuleConfig;
-
-interface NetworkRequirement {
-  rule: EgressRule;
-  entryIds: string[];
-}
-
-type ResolutionDetailWarning = WarningScope & (
-  | { code: "architecture_default"; platform: CatalogPlatform;
-      architecture: CatalogArchitecture }
-  | { code: "architecture_fallback"; platform: CatalogPlatform;
-      architecture: CatalogArchitecture; selected: "platform" | "default" }
-  | { code: "symbol_resolved"; symbol: string; value: string;
-      source: "caller" | "discovery" | "host" | "default" }
-  | { code: "symbol_unresolved"; symbol: string }
-  | { code: "filesystem_case_assumed"; paths: string[];
-      comparison: "case_sensitive" }
-  | { code: "filesystem_identity_unresolved"; paths: string[];
-      platform: CatalogPlatform }
-  | { code: "readonly_superseded"; removed: PathRequirement;
-      requiredBy: PathRequirement[] }
-  | { code: "filesystem_deny_removed"; removed: PathRequirement;
-      requiredBy: PathRequirement[] }
-  | { code: "network_deny_removed"; removed: NetworkRequirement;
-      requiredBy: NetworkRequirement[] }
-);
-
-type PolicyResolutionWarning = ToolResolutionWarning | ResolutionDetailWarning;
-
-interface ToolRequirementsResolution {
-  requirements: ContainerRequirements | undefined;
-  diagnostics: {
-    catalogRevision: string;
-    tools: Array<{
-      inputIndex: number;
-      status: ToolResolutionStatus;
-      matches: Array<{
-        entryId: string;
-        entryRevision: number;
-        matchedIdentities: Array<{
-          kind: string;
-          strength: "strong" | "weak";
-        }>;
-        versionSelection: VersionSelection;
-        intentSelection?: IntentSelection;
-      }>;
-    }>;
-    resolvedDependencies: Array<{
-      entryId: string;
-      entryRevision: number;
-      inputIndexes: number[];
-      requiredVersionRange?: string;
-      versionSelection: VersionSelection;
-      intentSelection: IntentSelection;
-    }>;
-    warnings: PolicyResolutionWarning[];
-  };
-}
-
-export declare function resolveToolRequirements(
-  tool: ToolInput,
-  ctx?: ResolveContext
-): Promise<ContainerRequirements | undefined>;
-
-export declare function resolveToolRequirements(
-  tools: readonly ToolInput[],
-  ctx?: ResolveContext
-): Promise<ContainerRequirements | undefined>;
-
-export declare function resolveToolRequirementsWithDiagnostics(
-  tool: ToolInput,
-  ctx?: ResolveContext
-): Promise<ToolRequirementsResolution>;
-
-export declare function resolveToolRequirementsWithDiagnostics(
-  tools: readonly ToolInput[],
-  ctx?: ResolveContext
-): Promise<ToolRequirementsResolution>;
-```
-
-A string input is shorthand for `{ invocationName: tool }`; it supplies no
-intent, package, or version evidence and follows the same weak-identity option
-as an object input. For example, name-only lookup under the opt-in
-rule is:
-
-```ts
-const ctx: ResolveContext = {
-  platform: "windows",
-  architecture: "x64",
-  allowWeakIdentityFallback: true,
-  projectRoot: String.raw`D:\work\repo`,
-  symbols: {
-    git_prefix: String.raw`D:\tools\git`,
-    ssh_prefix: String.raw`D:\tools\ssh`,
-    programData: String.raw`C:\ProgramData`,
-    temp_dir: String.raw`D:\temp`,
-  },
-};
-const push = await resolveToolRequirementsWithDiagnostics(
-  { invocationName: "git", detectedVersion: "2.45", intent: "push" }, ctx);
-const bundle = await resolveToolRequirementsWithDiagnostics(
-  { invocationName: "git", detectedVersion: "2.55", intent: "bundle-fetch" }, ctx);
-const noVersionBundle = await resolveToolRequirementsWithDiagnostics(
-  { invocationName: "git", intent: "bundle-fetch" }, ctx);
-const combinedRequirements = await resolveToolRequirements(
-  [{ invocationName: "git", detectedVersion: "2.45", intent: "push" }, "node"], ctx);
-for (const warning of push.diagnostics.warnings) {
-  if (warning.code === "filesystem_deny_removed") {
-    console.log(warning.removed.path, warning.requiredBy, warning.entryIds);
-  }
-}
-```
-
-Later, reviewed and constrained requirements combine with a command without
-converting their nested types:
-
-```ts
-function createRequest(
-  approvedRequirements: ContainerRequirements,
-  command: string,
-): ContainerRequest {
-  return { ...approvedRequirements, command };
-}
-```
-
-For the Git entry above, with referenced dependencies available:
-
-| Request | Selected version data | Result |
-|---|---|---|
-| `2.45` + `push` | Default + Windows additions + `vers:intdot/>=2.40\|<2.50` | `matched_version`; push policy plus the SSH dependency's default and Windows base additions |
-| `2.55` + `bundle-fetch` | Default + Windows additions + `vers:intdot/>=2.50\|<3` | `matched_version`; new bundle-fetch policy, no inherited SSH addition |
-| No version + `bundle-fetch` | Default + Windows additions | `intent_unsupported`; `requirements` is `undefined` for this single-pair call |
-
-Single-tool lookup is equivalent to a one-element array; its diagnostic
-`inputIndex` is `0`. A caller retaining separate policies per tool can use
-single-tool calls. A caller wanting one sandbox for several tools passes an
-array. Both forms select one most-specific match per input, then compose the
-contributing requirements. A string input uses the unversioned default and all
-its effective intents, including applicable platform additions.
-
-Both operations yield the same requirements; the diagnostics form adds
-attribution and warnings from that resolution pass. No second lookup or
-process-global "last result" state is needed.
-
-**The returned requirements may cover only a subset of the requested tools.**
-Partial results are intentional in both APIs. `tool_unmatched`,
-`version_unparseable`, `intent_unsupported`, and
-`filesystem_identity_unresolved` pairs contribute nothing; other pairs still
-resolve. The requirements-only call makes no coverage promise, even when its result
-is non-`undefined`. Callers needing to know which pairs contributed use
-`resolveToolRequirementsWithDiagnostics` and inspect per-input statuses.
-No wildcard entry fills a missing match, and there is no `requireAllMatches`
-option.
-
-Each input has a diagnostic record in input order. A `tool_unmatched` input
-has an empty `matches` list and a warning. An empty array or a lookup with no
-contributing pairs produces no requirements, not an empty requirements object:
-`resolveToolRequirements` yields `undefined`, while the diagnostics operation yields
-a `ToolRequirementsResolution` with `requirements: undefined`. An empty array has no
-per-input records. Unresolved required symbols in selected entries prevent a
-policy from being returned and produce diagnostics; they are not grounds for
-silently omitting a selected requirement to produce a partial policy.
-
-Each input's `matches` contains at most one identity-matched entry, including
-when its version or intent prevents contribution. Equally specific matches
-remain an ambiguity error. `versionSelection` reports the supplied version,
-version status, and selected range only for `matched_version`.
-
-`intentSelection` reports `mode: "named"` or `"all"` and sorted selected names.
-An unsupported name uses `"unsupported"` and an empty list. Version parse
-failure skips intent resolution. With no intent and no effective intents,
-`"all"` has an empty list and the effective base still contributes.
-
-A contributing pair's status is its version status. Unresolved target object
-identity makes its status `filesystem_identity_unresolved` while preserving
-any completed version and intent selection. Unsupported intent makes
-the pair's status `intent_unsupported` while retaining the version status in
-`versionSelection`. Structured warnings preserve input order; for an
-out-of-range version and unsupported intent, emit `version_out_of_range` then
-`intent_unsupported`. All warnings are structured records; `code` selects the
-category's fields and `message` is human-readable, not a parsing contract.
-These statuses never silently select another variant or entry.
-
-Per-input warning fields retain the prototype's `inputIndex`, `entryId`,
-`detectedVersion`, `intent`, and `message` vocabulary where applicable.
-Warnings about shared contributions use sorted, distinct `inputIndexes` and
-`entryIds`; each path/rule contribution also identifies its source entries.
-`removed` always contains the complete original deny path or egress rule,
-including exclusions and protocol/port selectors, not merely the intersection.
-Removing it can affect its entire scope wherever other grants apply.
-
-Dependency metadata includes version and intent selections. A dependency
-always reports `matched_default`, and `mode: "none"` with an empty list unless
-its reference names intents, which report `"named"`. De-duplicate identical
-entry/revision/range/selection records and sort by those fields. Shared
-contributions retain sorted, distinct `inputIndexes` for every contributing
-requester, including transitive dependencies. Union these indexes when
-de-duplicating identical records; requester indexes are not part of the
-dependency-record identity.
-
-When architecture is omitted, diagnostics include a warning naming the
-effective native system architecture and stating that the tool's architecture
-was not verified. Architecture-neutral fallback is also identified. These
-diagnostics describe selection; they do not attest to the installed tool's
-architecture. The requirements-only operation does not expose warnings or
-attribution; consumers needing them use `resolveToolRequirementsWithDiagnostics`.
-
-Composition diagnostics report read-only requirements superseded by
-read-write requirements, and catalog filesystem and egress denies removed to
-satisfy required access. Each warning identifies the resolved paths or rules,
-access classes, and contributing entry IDs. A removed deny warning names the
-full removed scope and explains that other grants may now apply throughout
-it, not only at the overlap. Both APIs return the same composed policy;
-callers needing to review these adjustments use
-`resolveToolRequirementsWithDiagnostics`.
+`resolveToolRequirements` resolves one tool or an array into command-free
+`ContainerRequirements`; `resolveToolRequirementsWithDiagnostics` also
+reports coverage, selections, dependencies, and warnings.
+See [operations](mxc-policy-store-api.md#1-operations),
+[types](mxc-policy-store-api.md#2-types-and-fields), and
+[results/coverage](mxc-policy-store-api.md#results-coverage-and-attribution).
 
 ### 5.2 Setup and inspection
 
-```ts
-type CatalogPlatform = "windows" | "linux" | "macos";
-type CatalogArchitecture = "x64" | "arm64";
-
-type CatalogIdentityMetadata =
-  | { kind: "purl"; value: string }
-  | { kind: "invocation-name"; names: string[] };
-
-interface CatalogIntentMetadata {
-  name: string;
-  exampleSubcommands?: string[];
-  dependencyEntryIds: string[];
-}
-
-interface CatalogAdditionsMetadata {
-  dependencyEntryIds: string[];
-  intentAdditions: CatalogIntentMetadata[];
-  newIntents: CatalogIntentMetadata[];
-}
-
-interface CatalogEntryMetadata {
-  catalogRevision: string;
-  entryId: string;
-  entryRevision: number;
-  displayName: string;
-  versionScheme: "npm" | "semver" | "pypi" | "nuget" | "intdot";
-  identity: CatalogIdentityMetadata[];
-  default: {
-    dependencyEntryIds: string[];
-    intents: CatalogIntentMetadata[];
-  };
-  platformVariants: Array<CatalogAdditionsMetadata & {
-    platform: CatalogPlatform;
-    architecture?: CatalogArchitecture;
-  }>;
-  versionVariants: Array<CatalogAdditionsMetadata & { versionRange: string }>;
-  provenance: {
-    method: string;
-    sourceRevision: string;
-  };
-}
-
-export declare function listCatalogEntries(): CatalogEntryMetadata[];
-export declare function getCatalogInfo(): {
-  catalogSchemaVersion: string;
-  catalogRevision: string;
-  sdkContractVersion: string;
-};
-```
-
-This supports setup UI, catalog browsing, and update decisions without paying
-the cost of policy resolution, and keeps "give me everything" out of the
-runtime lookup path entirely. Metadata exposes the default and overlay
-selectors, inherited/new intent names, subcommand hints, dependency IDs, and
-provenance, but not an unresolved or resolved policy body.
+`listCatalogEntries` and `getCatalogInfo` expose metadata without resolving
+policy bodies. Their signatures and
+[metadata types](mxc-policy-store-api.md#inspection-metadata) live in the API spec.
 
 ### 5.3 Consumer obligations
 
-A consumer that uses this API:
-
-1. Decides whether automatic lookup is enabled at all.
-2. When persisting an accepted policy, retains its `catalogRevision` and
-   contributing entry IDs/revisions from diagnostics, whether the policy
-   covers one tool or several.
-3. Keeps catalog-derived requirements in a layer separate from its own user,
-   learned, and invocation-specific policy.
-4. Applies its own authorization, elevation, and restrictive-composition
-   rules on top.
-5. Enforces its OS, enterprise, device, and backend ceilings regardless of
-   what the catalog returned.
-6. Fails closed when a required entry cannot be realized on the current
-   host/backend. It falls back to its own restrictive baseline and does not
-   run uncontained.
-7. Uses the diagnostics operation when attribution or audit is needed, and
-   records matched identities, catalog/entry revisions, warnings, and approval
-   state in its own audit trail.
-
-The catalog APIs never write a consumer's policy store. A consumer's own
-capability observation (see [§8](#8-relationship-to-learning-mode)) can produce
-candidate evidence for a future contribution to this catalog; it is not a
-mechanism for mutating the catalog at request time.
+Consumers own authorization, their policy layers, accepted-policy persistence,
+and execution. The [API responsibilities](mxc-policy-store-api.md#4-errors-and-consumer-responsibilities)
+define the contract; the [trust model](#9-trust-model) explains its rationale.
+Catalog APIs never write a consumer's store or mutate reviewed data at lookup.
 
 ## 6. Intended repository and packaging boundary
 
@@ -1205,48 +483,17 @@ common identity helpers. Rust calls it directly; Node/.NET use panic-contained
 `mxc_ffi` library exports, not launch/probe APIs. V1 data is embedded at build
 time, with no dynamic fetching; that is a possible V2 capability.
 
+
 ### 6.1 Library distribution and consumption
 
-The MXC SDKs expose requirements using their v1 request field types:
+Resolution and inspection ship through the existing TypeScript/JavaScript,
+Rust, and .NET SDKs. The [API spec](mxc-policy-store-api.md#1-operations) owns
+entry-point names, return types, and language conventions. SDK reference pages
+and package READMEs should link that contract rather than duplicate it.
 
-| Language | Existing MXC SDK | Requirements type |
-|---|---|---|
-| TypeScript / JavaScript | `@microsoft/mxc-sdk/v1` | `ContainerRequirements` (`Pick<ContainerRequest, ...>`) |
-| Rust | `mxc-sdk` | `mxc_sdk::v1::ContainerRequirements`, using v1 section types |
-| C# / .NET | `Microsoft.Mxc.Sdk.V1` | `ContainerRequirements`, using v1 section types |
-
-Returned requirements use the containing SDK's supported fields. Unsupported
-data must not be silently dropped to fit its types.
-
-A consumer:
-
-1. Installs an MXC SDK release with its bundled catalog.
-2. Inspects the catalog or resolves requirements using §5's APIs.
-3. Reviews access and coverage, preserving its restrictive baseline on absence
-   and applying [§5.3](#53-consumer-obligations).
-4. Supplies command/execution settings later, applies its restrictions, and
-   passes the resulting `ContainerRequest` to MXC.
-
-The SDK API reference and repository/package READMEs must state:
-
-> Returns a best-effort MXC policy baseline for representative tool workflows,
-> not authorization or a guarantee of success or safety. It may request broader
-> access. Callers and users review that access and may further constrain or
-> override the recommendation; enterprise and device restrictions remain
-> authoritative. Diagnostics explain the contributing requirements and changes.
-> A returned policy may cover only a subset of requested tools; inspect
-> per-input statuses to determine coverage.
-
-Lookup is local and does not download updates, contact a hosted service, or
-run the candidate tool. `ResolveContext.catalogRevision` selects a revision
-included in the installed SDK; an unavailable revision is an error, not a
-request to download or substitute data. An omitted revision uses the bundled
-default.
-
-V1 catalog updates ship with an MXC release. Revision metadata can identify the
-bundled data independently of the SDK package version without implying a
-separate artifact delivery channel. Installing an SDK update does not rewrite
-a consumer's previously accepted policies.
+V1 data updates ship with MXC releases; catalog revision metadata does not
+imply an independent download channel. A package update never rewrites a
+consumer's previously accepted requirements.
 
 ### 6.2 Cross-language consistency and support
 
@@ -1273,6 +520,50 @@ than independent implementations of the resolution rules.
 
 Policy Store is an ongoing SDK capability. Language parity,
 documentation, and maintenance belong to the MXC SDK release process.
+
+### 6.3 Catalog source layout and embedded data
+
+Catalog authors edit one JSON file per tool under
+`src/mxc-sdk/policy_store/catalog/entries/`. Each file contains that tool's full
+entry: identity, common default, intents, all platform/version variants,
+dependencies, and provenance. Do not split variants or intents into separate files.
+
+```text
+src/mxc-sdk/policy_store/
+  catalog/
+    contract.v1.json
+    manifest.json
+    entries/
+      git.json
+      node.json
+      npm.json
+    revisions/
+      <catalogRevision>.json       # generated release snapshot
+    views/
+      <catalogRevision>.md         # generated reviewer view
+      <catalogRevision>.requests.json  # generated validation requests
+  schema/
+    catalog.v1.schema.json
+    manifest.v1.schema.json
+  conformance/
+```
+
+Build tooling collects entry files recursively, validates globally unique
+`entryId` values and dependency references, and assembles the complete candidate
+revision in stable entry-ID order. CI checks generated snapshots/views against
+their editable inputs; authors do not maintain a second policy copy by hand.
+Optional category subdirectories are organizational only: paths and file order
+never affect identity, lookup, or composition.
+
+`manifest.json` selects the default revision and maps bundled revisions to
+generated snapshots. Published snapshots remain immutable; changing tool data
+produces a new catalog revision and the required entry revision changes.
+Generating a new revision never overwrites a published one. Moving an entry
+between category directories alone is not a semantic policy change.
+
+The build embeds validated snapshots into the native library. These are source
+and generated-artifact paths, not runtime lookup directories or files consumers
+edit. Consumer persistence remains separate from the read-only MXC catalog.
 
 ## 7. Contribution and review
 
@@ -1398,10 +689,12 @@ separate catalog digest or runtime checksum. Schema validation still applies.
   categories in all three languages without requiring identical message text
   or language-specific representations; each binding's error handling is
   consistent and uses the corresponding MXC error codes
-- failure cases use the primary-code mappings in [§5.1](#51-runtime-lookup);
+- failure cases use the [API error mappings](mxc-policy-store-api.md#4-errors-and-consumer-responsibilities);
   any supplied reason uses its listed value, and callers can handle the code alone
 - one-tool and one-element-array overloads produce equivalent requirements and
   diagnostics; the simple API yields the same requirements as the diagnostic API
+- a separate TypeScript consumer imports every public function and named type
+  from the v1 package entry point; same-file snippet checks are not sufficient
 - lookup is command-free and returns only §4.2's allowed fields; reject old
   UI names and caller execution fields rather than silently accepting them
 - Node resolution does not block the event loop; Rust/.NET preserve their
@@ -1461,8 +754,9 @@ separate catalog digest or runtime checksum. Schema validation still applies.
   option; intent selection does not bypass it
 - invocation names compare case-insensitively on Windows/macOS and exactly on
   Linux, without changing command spelling or package-identity matching
-- PURL type and namespace compare case-insensitively, names follow their
-  type's rules, and equivalent percent-encodings compare after parsing
+- PURL type compares case-insensitively; namespace and name follow type-specific
+  rules, independent of host OS; case-distinct Maven coordinates remain distinct
+  and equivalent percent-encodings compare after parsing
 - candidate PURL version/qualifiers/subpath are ignored with structured
   warnings; malformed components leave only that pair unmatched, with no
   invocation-name retry even when weak matching is enabled
@@ -1479,7 +773,7 @@ separate catalog digest or runtime checksum. Schema validation still applies.
 - a missing exact overlay falls back to the platform's neutral additions,
   otherwise to the common default; never use another architecture's overlay
 - successful host-derived selection and neutral fallback produce the
-  diagnostics specified in [§5.1](#51-runtime-lookup); host-architecture
+  [API diagnostics](mxc-policy-store-api.md#warnings); host-architecture
   detection failure produces a library error, not a guessed match
 - dependency chain resolution, including cycles (terminate, no duplication)
 - filesystem floor composition ([§4.5](#45-dependencies-and-composition)):
@@ -1527,6 +821,8 @@ separate catalog digest or runtime checksum. Schema validation still applies.
 - every default and materialized platform/architecture/version/intent
   combination passes the closed catalog checks, typed v1 builder, semantic
   validation, and exact schema validation; no backend/probe is needed
+- per-tool sources assemble deterministically across directories; duplicate
+  entry IDs, dangling dependencies, and generated-source drift fail validation
 - validation captures the exact request before normalization and never feeds
   the normalized restrictive copy back into floor composition
 - a newer SDK exact target revalidates all bundled catalog revisions using
@@ -1580,7 +876,7 @@ separate catalog digest or runtime checksum. Schema validation still applies.
 
 | Maintainer sign-off | Recommended answer |
 |---|---|
-| Approve the command-free requirements API surface? | `resolveToolRequirements` / `resolveToolRequirementsWithDiagnostics` return `ContainerRequirements` using existing v1 section types, with optional lookup context, Promise-based Node resolution, corresponding Rust/.NET bindings, and the documented partial-result contract. |
+| Approve the command-free requirements API surface? | Review the [API spec](mxc-policy-store-api.md) before implementation, including inputs, results, errors, and partial-result behavior. |
 
 ## 14. Related work
 
