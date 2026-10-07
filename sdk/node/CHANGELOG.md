@@ -1,11 +1,46 @@
 # Changelog
 
+> **Audience:** MXC consumers
+
 All notable changes to `@microsoft/mxc-sdk` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `spawnWithPty` supports ProcessContainer requests.
+
+### Changed
+
+- Public operations, request/result types, discovery, and telemetry are
+  exported only from `@microsoft/mxc-sdk/v1`.
+- Creation uses `ContainerRequest` with Promise-returning `run` or `spawn`.
+  Persistent operations use `provisionContainer`,
+  `startContainer`, `stopContainer`, and `deprovisionContainer`.
+  Use Promise-returning `spawnInContainer` for live execution or
+  `runInContainer` for captured output in an existing container.
+- Each operation takes its own options type. PTY operations take initial
+  dimensions in those options and return SDK-owned terminal process handles.
+- Backend discovery uses in-process `getAvailableBackends()` and returns
+  `AvailableBackend[]`, including tiers, capabilities, and warnings.
+- Telemetry consent uses `getTelemetryConsentStatus`,
+  `requestTelemetryConsent`, and `withdrawTelemetryConsent`.
+  Status queries return `TelemetryConsentStatus`.
+
+Entries below describe historical release APIs, not the current V1 surface.
+
 ## [0.9.0]
+
+### Changed (breaking)
+
+- Raised the raw exact-contract support floor to `0.9.0-alpha`; raw configs
+  declaring earlier published alpha contracts are now rejected as unsupported.
+- Removed `SandboxSpawnOptions.allowTestingFeatures` and its CLI forwarding.
+  The `network.proxy.builtinTestServer` wire form it enabled was retired;
+  use a caller-managed `runtimeConfig.networkProxy` with directional policy.
 
 ### Added
 
@@ -50,7 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   policy (`readwritePaths` / `readonlyPaths` / `deniedPaths`) is honored
   at provision and is immutable thereafter; `network` / `ui` / Entra
   `user` bundles are not honored on this backend. See
-  [`docs/windows-sandbox/windows-sandbox.md`](../../docs/windows-sandbox/windows-sandbox.md)
+  [`docs/backends/windows-sandbox/windows-sandbox.md`](../../docs/backends/windows-sandbox/windows-sandbox.md)
   for the full per-phase config matrix.
 
 ### Changed

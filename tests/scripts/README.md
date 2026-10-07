@@ -1,5 +1,7 @@
 # Test Scripts
 
+> **Audience:** MXC developers
+
 This directory contains convenience scripts for running MXC end-to-end tests
 locally and in CI. The primary Rust executor E2E path is
 `cargo test -p wxc_e2e_tests`, which invokes the MXC binaries directly instead
@@ -43,8 +45,8 @@ Linux / macOS (`.sh`):
 | `run_windows_sandbox_state_aware_tests.ps1` | Windows Sandbox state-aware lifecycle E2E (single VM held across provision/start/exec*/stop/deprovision) | Windows Sandbox enabled |
 | `run_isolation_session_tests.ps1` | IsolationSession one-shot E2E suite | Interactive local session; OS-side IsolationSession service |
 | `run_isolation_session_state_aware_tests.ps1` | IsolationSession provision/start/exec/stop/deprovision E2E suite | Interactive local session; OS-side IsolationSession service |
-| `run_wslc_all_tests.ps1` | All WSLC one-shot and state-aware E2E tests | WSL2, WSLC SDK, staged daemon, and network access for image setup (or pre-pulled images with `-SkipSetup`) |
-| `run_processcontainer_all_tests.ps1` | Process container (AppContainer / BaseContainer) primitives suite — tier probes, rw/ro/denied matrix, enumeration-only grants, UI mitigations, DACL restore, crash recovery, schema 0.8 networking. Dispatches to the per-area `run_processcontainer_*_test.ps1` scripts | `wxc-exec.exe`, `wxc-ui-probe.exe`, `plm.exe` and `winhttp-proxy-shim.exe` beside `wxc-exec.exe` |
+| `run_wslc_all_tests.ps1` | All WSLC one-shot and state-aware E2E tests | WSL2, WSLC SDK, staged daemon, and registry access for the image preflight (`-SkipSetup` skips it and needs an already-warm cache, because the state-aware fixtures deny egress) |
+| `run_processcontainer_all_tests.ps1` | Process container (AppContainer / BaseContainer) primitives suite — tier probes, rw/ro/denied matrix, enumeration-only grants, UI mitigations, DACL restore, crash recovery, directional networking. Dispatches to the per-area `run_processcontainer_*_test.ps1` scripts | `wxc-exec.exe`, `wxc-ui-probe.exe`, `plm.exe` and `winhttp-proxy-shim.exe` beside `wxc-exec.exe` |
 | `T3-Workloads.ps1` | Real workloads (pwsh, git, node, python, cmd) on top of the T3 primitives. A missing interpreter is reported as a skip, not a failure | `wxc-exec.exe`; `pwsh` / `git` / `node` / `python` each optional, gating their own cases |
 | `run_telemetry_consent_smoke_test.ps1` | Consent maintenance, presentation, policy, and exit-code smoke tests | Debug `wxc-exec.exe` built with `test-support` |
 | `run_telemetry_etw_smoke_test.ps1` | Isolated consent flow plus public-provider ETW capture | Debug `wxc-exec.exe` built with `test-support`; ETW tooling; Administrator, otherwise the test skips |
@@ -58,10 +60,22 @@ built tree, which is the fastest way to iterate on one area:
 tests\scripts\run_processcontainer_network_proxy_test.ps1 -RequireTier base-container
 ```
 
+When the host probe reports `baseContainerSupportsIdentitylessLoopbackProxy`,
+the proxy area requires workload launch and a successful proxied fetch on both
+PSEC 1.0-only hosts and hosts with PSEC 1.1 ingress support.
+A clean policy rejection is a failure on these hosts.
+Older binaries that omit this probe fact do not enable the capability-specific
+assertions; the existing proxy assertions still apply.
+
 Shared helpers live in `tests/scripts/lib/WinProcessContainer.Common.ps1`. It
 must be **dot-sourced, not imported as a module** — `Initialize-WpcContext`
 publishes the suite context into the calling script's scope, which only works
 because dot-sourcing merges scopes.
+
+The IsolationSession suites dot-source `tests/scripts/lib/LoopbackAnchor.ps1`
+for their positive network oracle: a host loopback listener an isolated session
+can reach, so the assertion covers the session's network posture rather than
+the runner's outbound internet access.
 
 T2 (`appcontainer-bfs`) is out of scope: it is off by default behind the
 `tier2_bfs` Cargo feature and is not in use, so the suite records no assertions
@@ -125,6 +139,28 @@ npm run test:integration    # SDK integration tests
 cd src
 cargo test --workspace       # Rust unit tests
 ```
+
+### Unix PTY SDK integration tests
+
+The caller-controlled PTY contract is directly runnable on a matching host:
+
+```bash
+# Linux with Bubblewrap installed
+cd src
+cargo test -p mxc-sdk --test streaming_bubblewrap bubblewrap_pty -- --nocapture
+
+# Linux with LXC installed; run as root
+sudo --preserve-env=PATH,HOME "$(command -v cargo)" \
+  test -p mxc-sdk --test streaming_lxc lxc_pty -- --nocapture
+
+# macOS
+cd src
+cargo test -p mxc-sdk --test streaming seatbelt_pty -- --nocapture
+```
+
+The local Bubblewrap and LXC tests report a prerequisite skip when their backend
+is unavailable. Provisioned CI hosts run the same tests in backend-specific
+lanes; strict mode turns a missing prerequisite into a failure.
 
 ## Running executor E2E via Cargo
 

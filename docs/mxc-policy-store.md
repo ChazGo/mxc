@@ -35,7 +35,7 @@ For caller-facing review, start with the [API spec](mxc-policy-store-api.md).
 
 This document does not restate general MXC sandboxing concepts already covered
 by the [v1 SDK reference](https://github.com/microsoft/mxc/blob/894f4c159705f5f470727e4fa1e363a2abec88f1/docs/reference/node/v1/README.md) or
-[`docs/versioning.md`](versioning.md). It covers only what a policy store adds.
+[versioning design](development/architecture/versioning.md). It covers only what a policy store adds.
 
 ### Non-goals
 
@@ -69,7 +69,7 @@ wire version selection.
 
 This is an MXC SDK API, not a command-line utility. Following the feature-impact
 checklist in
-[`docs/authoring-a-new-feature.md`](authoring-a-new-feature.md):
+[authoring a new feature](development/guides/authoring-a-new-feature.md):
 
 - **Policy changes:** None. Entries use the existing v1 request access fields.
 - **ContainerConfig changes:** None. The catalog does not add configuration
@@ -164,7 +164,7 @@ it is an exact registered stable target in the same major and the current
 build has revalidated its data successfully. Other revisions are not bundled.
 At lookup, select only those build-validated revisions; never dispatch their
 historical target or substitute another revision. The SDK owns wire version
-selection as described in [versioning.md](versioning.md).
+selection as described in the [versioning design](development/architecture/versioning.md).
 
 ### 4.2 Entry shape
 
@@ -620,7 +620,7 @@ productizing them as reviewed policy data.
 
 MXC's learning-mode capabilities (`learningModeLogging`,
 `permissiveLearningMode`, `captureDenials`; see
-[`docs/learning-mode/capabilities.md`](learning-mode/capabilities.md)) are the
+[logging access denied](logging-access-denied.md)) are the
 substrate a contributor can use to observe what a tool actually touches, the
 same way [#779 §5.1](https://github.com/microsoft/mxc/pull/779) describes for
 config floors. That observation workflow is unchanged by this document and
@@ -909,7 +909,7 @@ separate catalog digest or runtime checksum. Schema validation still applies.
 - [Node v1 types](https://github.com/microsoft/mxc/blob/894f4c159705f5f470727e4fa1e363a2abec88f1/docs/reference/node/v1/types.md) -
   `ContainerRequest` and its access sections. Rust and .NET use their
   corresponding v1 SDK types.
-- [`docs/versioning.md`](versioning.md) - the versioning model
+- [Versioning design](development/architecture/versioning.md) - the versioning model
   [§4.1](#41-versions) builds on.
 - [Package-URL VERS specification](https://github.com/package-url/vers-spec) -
   version-range syntax and supported version-type comparison references.
