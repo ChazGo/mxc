@@ -175,8 +175,9 @@ export interface ToolRequirementsResolution {
     catalogRevision: string;
     tools: Array<{
       inputIndex: number;
+      contributes: boolean;
       status: ToolResolutionStatus;
-      matches: Array<{
+      selection?: {
         entryId: string;
         entryRevision: number;
         matchedIdentities: Array<{
@@ -185,7 +186,7 @@ export interface ToolRequirementsResolution {
         }>;
         versionSelection: VersionSelection;
         intentSelection?: IntentSelection;
-      }>;
+      };
     }>;
     resolvedDependencies: Array<{
       entryId: string;
@@ -199,6 +200,14 @@ export interface ToolRequirementsResolution {
   };
 }
 ```
+
+Each binding carries the same selected-entry metadata and required contribution
+fact; selection presence alone never establishes contribution.
+
+| Per-input field | TypeScript | Rust | .NET |
+|---|---|---|---|
+| Contribution | `contributes: boolean` | `contributes: bool` | `bool Contributes` |
+| Selected-entry metadata | Optional `selection` | `selection: Option<...>` | Nullable `Selection` |
 
 ### Warnings
 
@@ -336,10 +345,13 @@ sources appear in diagnostics. A configuration-read failure is a library error,
 not permission to assume a default. An unresolved required symbol prevents
 requirements from being returned; it is not silently dropped.
 
-Discovery describes the current host/environment. Callers targeting another
-environment supply overrides. Re-resolve or supply appropriate values if the
-eventual execution environment differs. The catalog does not run tools to
-discover locations or versions. Definitions of supported symbols belong to the
+Discovery and filesystem identity checks describe locally inspectable host-side
+sources, not a remote or guest filesystem. Context overrides select catalog
+variants and symbol values; path strings alone do not make another environment's
+objects inspectable. Resolve on the host that owns those sources when necessary;
+unknown required identity follows the `filesystem_identity_unresolved` rules.
+The catalog does not run tools to discover locations or versions. Definitions
+of supported symbols belong to the
 [catalog contract](mxc-policy-store.md#42-entry-shape).
 
 Only bundled revisions are selectable. An unavailable explicit revision fails,
@@ -481,10 +493,32 @@ input yields absence, not an empty requirements object. Missing required symbols
 in otherwise selected requirements prevent output rather than silently dropping
 those requirements. Library failures remain distinct from these outcomes.
 
-Diagnostic tool records follow input order. `matches` has at most one selected
-entry. Unmatched inputs have an empty list and a warning: `purl_invalid` for an
-invalid candidate PURL, otherwise `tool_unmatched`. Version/intent failures can retain
-identity attribution without contributing requirements:
+Diagnostic tool records follow input order. `selection` contains the selected
+entry's metadata, or is absent when no entry was selected. An unmatched input
+has a warning: `purl_invalid` for an invalid candidate PURL, otherwise
+`tool_unmatched`. Version/intent failures retain their selected identity metadata
+without implying contribution.
+
+`contributes` is the SDK's authoritative per-input accounting: true means that
+input's complete resolved requirements, including selected dependencies, are
+included in the returned requirements. Shared or duplicate inputs may both be
+true even though shared layers are included once. This is not unique access,
+authorization, or a guarantee of execution success.
+
+In a validated result, output is defined exactly when at least one input
+contributes; absent output makes every flag false. A failed input leaves no
+orphan dependency contribution. Consequently, for a single input, defined output
+and that input's contribution are equivalent. Such callers need only check output
+presence. Multi-input callers use the flags when they need coverage information;
+the API and examples impose no all-tools-covered gate on a partial result.
+
+The SDK validates the result before exposing it; missing or malformed required
+fields, including a missing/non-boolean `contributes`, are library failures, not
+valid partial results. Status explains selection outcomes, rather than supplying
+a second coverage gate. Client settings still decide whether available
+requirements are used.
+
+Selection and dependency attribution remain available:
 
 - `versionSelection` records supplied version and status; `selectedVersionRange`
   appears only for `matched_version`.
@@ -599,10 +633,7 @@ export class ZavaAgentRequirements {
 
     // Keep warning fields, selections, and dependency attribution in the audit record.
     this.app.logResolution(tool, result.diagnostics);
-    const status = result.diagnostics.tools[0]?.status;
-    const covered = status === "matched_default" || status === "matched_version"
-      || status === "version_out_of_range";
-    if (result.requirements === undefined || !covered) {
+    if (result.requirements === undefined) {
       this.app.showUnpreparedTool(tool, result.diagnostics);
       return undefined;
     }
@@ -760,3 +791,27 @@ propagate to the application error boundary; execution failures use the runner's
 normal error handling, never an automatic expansion of access or uncontained
 retry. Sharing one container also shares its combined access, not separate
 permissions per tool.
+
+If this multi-tool caller also wants coverage, it can replace only the lookup
+with the diagnostics form below, then keep the same absence check, client
+settings, and request construction. For example, Node may report
+`contributes: false` while Git's returned requirements remain available.
+
+```ts
+import { resolveToolRequirementsWithDiagnostics } from "@microsoft/mxc-sdk/v1";
+import type { ResolveContext } from "@microsoft/mxc-sdk/v1";
+
+declare const context: ResolveContext; // The same workspace/tool-path context.
+const tools = ["git", "node"];
+const result = await resolveToolRequirementsWithDiagnostics(tools, {
+  ...context, allowWeakIdentityFallback: true,
+});
+for (const tool of result.diagnostics.tools) {
+  console.info({
+    tool: tools[tool.inputIndex], inputIndex: tool.inputIndex,
+    contributes: tool.contributes, status: tool.status,
+  });
+}
+const suggestion = result.requirements;
+// Continue with client settings whenever suggestion is defined, even if a flag is false.
+```

@@ -523,6 +523,11 @@ exercise installation, public API usage, and host-derived defaults on the
 supported platforms. Binding tests exercise the shared native resolver rather
 than independent implementations of the resolution rules.
 
+Every .NET Policy Store DTO crossing the JSON FFI boundary must be registered
+as a `[JsonSerializable]` root in `MxcJsonContext` and use the `MxcJson` helpers.
+Its serialize/deserialize paths must be covered by
+`Microsoft.Mxc.Sdk.AotSmokeTest`; reflection fallback is not permitted.
+
 Policy Store is an ongoing SDK capability. Language parity,
 documentation, and maintenance belong to the MXC SDK release process.
 
@@ -700,6 +705,23 @@ separate catalog digest or runtime checksum. Schema validation still applies.
   diagnostics; the simple API yields the same requirements as the diagnostic API
 - a separate TypeScript consumer imports every public function and named type
   from the v1 package entry point; same-file snippet checks are not sufficient
+- per-input records use optional `selection` and required boolean `contributes`
+  in all bindings; selected identity metadata survives version/intent failures
+  without implying contribution
+- validated output is defined exactly when at least one input contributes;
+  no output means all flags are false, including symbol-resolution failures;
+  a sole failed input leaves no dependency-only output
+- duplicate inputs and inputs sharing dependencies may both contribute;
+  flags report inclusion, not unique grants, authorization, or execution success
+- single-input callers use the requirements-presence check, including when a
+  validated result has an unfamiliar descriptive status; multi-input callers
+  can report flags without rejecting an available partial combined result
+- malformed result shapes and missing/non-boolean contribution flags fail at
+  the SDK boundary rather than becoming valid partial results
+- every .NET Policy Store JSON DTO is a `MxcJsonContext` source-generation root
+  and uses `MxcJson`; `Microsoft.Mxc.Sdk.AotSmokeTest` exercises serialization
+  and deserialization, including absent selection, retained failed selection,
+  true and false contribution flags, and rejected missing/non-boolean flags
 - lookup is command-free and returns only §4.2's allowed fields; reject old
   UI names and execution fields other than the optional timeout suggestion;
   leave `filesystem.clearPolicyOnExit` and `network.runtimeConfig` unset
@@ -753,6 +775,9 @@ separate catalog digest or runtime checksum. Schema validation still applies.
   defaults; only required symbols are resolved, with source/value diagnostics
 - failed configuration reads are errors, not default selection; another
   target environment does not inherit this host's discovered paths
+- context overrides do not provide remote/guest filesystem identity; only
+  locally inspectable host-side sources can satisfy the required identity checks,
+  and unavailable identity follows the existing per-input failure rules
 - pinned catalog revisions retain their shared symbol definitions and defaults;
   unsupported default templates and executable discovery data are rejected
 - package identity precedes invocation name, then declared intent specificity,
