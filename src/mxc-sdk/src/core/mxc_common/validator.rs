@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-use crate::mxc_common::models::{ExecutionRequest, NetworkAction, ScriptResponse};
+use crate::mxc_common::error::WxcError;
+use crate::mxc_common::models::{ExecutionRequest, NetworkAction, PortMapping, ScriptResponse};
 use crate::mxc_common::mxc_error::MxcError;
+use std::collections::HashSet;
 
 /// Declares which optional network policy features a backend enforces.
 ///
@@ -172,6 +174,46 @@ pub fn validate_exec_common(request: &ExecutionRequest) -> Result<(), MxcError> 
     Ok(())
 }
 
+/// Reject WSLC port mappings the WSLC runtime cannot apply.
+///
+/// The exact JSON contract rejects a zero port and a non-TCP protocol
+/// structurally, but a caller building the runtime config directly hands over
+/// a plain `u16` and `String`, so the checks have to live here too. The daemon
+/// wire format carries no protocol and the worker rebuilds every mapping as
+/// TCP, so accepting anything else here would silently apply a different
+/// mapping than the caller asked for.
+pub fn validate_port_mappings(field_path: &str, mappings: &[PortMapping]) -> Result<(), WxcError> {
+    for (index, mapping) in mappings.iter().enumerate() {
+        for (name, port) in [
+            ("windowsPort", mapping.windows_port),
+            ("containerPort", mapping.container_port),
+        ] {
+            if port == 0 {
+                return Err(WxcError::ConfigParse(format!(
+                    "{field_path}[{index}]: '{name}' must be > 0"
+                )));
+            }
+        }
+        if mapping.protocol != "tcp" {
+            return Err(WxcError::ConfigParse(format!(
+                "{field_path}[{index}]: 'protocol' must be 'tcp', got '{}'",
+                mapping.protocol
+            )));
+        }
+    }
+
+    let mut seen: HashSet<(u16, &str)> = HashSet::with_capacity(mappings.len());
+    for mapping in mappings {
+        if !seen.insert((mapping.windows_port, mapping.protocol.as_str())) {
+            return Err(WxcError::ConfigParse(format!(
+                "{field_path}: duplicate windowsPort {} for protocol '{}'",
+                mapping.windows_port, mapping.protocol
+            )));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,6 +230,84 @@ mod tests {
             ..Default::default()
         };
         assert!(validate_common(&req).is_err());
+    }
+
+    fn port_mapping(windows_port: u16, container_port: u16) -> PortMapping {
+        PortMapping {
+            windows_port,
+            container_port,
+            protocol: "tcp".to_string(),
+        }
+    }
+
+    #[test]
+    fn port_mapping_messages_name_the_caller_supplied_field_path() {
+        for field_path in ["wslc.portMappings", "wslc.provision.portMappings"] {
+            let zero = validate_port_mappings(field_path, &[port_mapping(0, 80)]).unwrap_err();
+            assert!(
+                zero.to_string()
+                    .ends_with(&format!("{field_path}[0]: 'windowsPort' must be > 0")),
+                "{zero}"
+            );
+
+            let duplicate =
+                validate_port_mappings(field_path, &[port_mapping(80, 8080), port_mapping(80, 81)])
+                    .unwrap_err();
+            assert!(
+                duplicate.to_string().ends_with(&format!(
+                    "{field_path}: duplicate windowsPort 80 for protocol 'tcp'"
+                )),
+                "{duplicate}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_zero_port_outranks_an_earlier_duplicate() {
+        // Both surfaces share this helper, so changing the order would reword a
+        // user-facing rejection on each of them.
+        let mappings = [
+            port_mapping(8080, 80),
+            port_mapping(8080, 81),
+            port_mapping(0, 82),
+        ];
+        let error = validate_port_mappings("wslc.portMappings", &mappings).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .ends_with("wslc.portMappings[2]: 'windowsPort' must be > 0"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn distinct_host_ports_and_an_empty_list_are_accepted() {
+        assert!(validate_port_mappings("wslc.portMappings", &[]).is_ok());
+        assert!(validate_port_mappings(
+            "wslc.portMappings",
+            &[port_mapping(8080, 80), port_mapping(8081, 80)]
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn a_protocol_the_daemon_cannot_carry_is_rejected() {
+        // The daemon wire format drops the protocol and the worker rebuilds
+        // every mapping as TCP, so anything else would be applied as something
+        // the caller did not ask for.
+        for protocol in ["udp", "UDP", "Tcp", "sctp", ""] {
+            let mapping = PortMapping {
+                windows_port: 8080,
+                container_port: 80,
+                protocol: protocol.to_string(),
+            };
+            let error = validate_port_mappings("wslc.portMappings", &[mapping])
+                .expect_err("only 'tcp' is applicable");
+            assert!(
+                error.to_string().contains("'protocol' must be 'tcp'"),
+                "{error}"
+            );
+        }
     }
 
     #[test]

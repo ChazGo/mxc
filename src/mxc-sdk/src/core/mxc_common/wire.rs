@@ -488,23 +488,17 @@ pub struct Wslc {
     pub provision: Option<WslcProvisionPhase>,
 }
 
-/// Per-phase WSLc **provision** normalization input, constructed from the exact
-/// `wslc.provision` contract. Carries only what the amortized daemon session
-/// honors: the container image (or a local tarball to import).
-///
-/// Filesystem mounts and network mode derive from the top-level `policy`
-/// section (readwrite / readonly paths, network), not from here. The
-/// one-shot-only sizing knobs (`cpuCount` / `memoryMb` / `gpu` / `storagePath`
-/// / `portMappings`) are deliberately absent: the daemon shares a single session
-/// across sandboxes and does not apply per-sandbox sizing. start / exec / stop /
-/// deprovision carry no backend-specific config (the exec command flows through
-/// the top-level `process` section), so they have no phase struct.
+/// Unused partial normalization shape for the WSLc **provision** phase: it
+/// carries only the image fields and does not track the exact contract, which
+/// also declares `portMappings`. State-aware provisioning builds
+/// `models::WslcProvisionConfig` directly, so nothing populates this struct.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WslcProvisionPhase {
     /// Container image reference (e.g. `alpine:latest`). Defaults to
     /// `alpine:latest` when omitted.
     pub image: Option<String>,
+
     /// Path to a local image tarball to import instead of pulling.
     pub image_tar_path: Option<String>,
 }

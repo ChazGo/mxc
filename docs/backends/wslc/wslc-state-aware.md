@@ -58,11 +58,56 @@ against different sandboxes are serialized — correct, just not concurrent. See
 
 Exact adapters construct `mxc_common::models::WslcProvisionConfig` directly from
 `wslc.provision`. Engine-side checked binding preserves an absent
-config, a present empty config, and supplied `image`/`imageTarPath` values
-without reparsing JSON. An omitted image remains `None` until the backend
-chooses its default. The exact contract type is converted once by its adapter;
-the backend's provision associated type is the runtime-owned model, not a wire
-deserialization DTO.
+config, a present empty config, and supplied
+`image`/`imageTarPath`/`portMappings` values without reparsing JSON. An omitted
+image remains `None` until the backend chooses its default. The exact contract
+type is converted once by its adapter; the backend's provision associated type
+is the runtime-owned model, not a wire deserialization DTO.
+
+### Port mappings
+
+`wslc.provision.portMappings` forwards host ports into the sandbox's container,
+using the same entry shape as the one-shot `wslc.portMappings` list:
+
+```json
+{
+    "version": "1.1.0-alpha",
+    "phase": "provision",
+    "containment": "wslc",
+    "network": {
+        "egress": { "default": "allow" },
+        "ingress": { "default": "allow", "hostLoopback": "allow" }
+    },
+    "wslc": {
+        "provision": {
+            "portMappings": [
+                { "windowsPort": 8080, "containerPort": 80 }
+            ]
+        }
+    }
+}
+```
+
+Port mappings require bridged networking. A request that leaves `network` out,
+or sets it to the all-`deny` isolated posture, is rejected at provision: the
+container has no networking for a forward to reach.
+
+The field requires development contract `1.1.0-alpha`. State-aware WSLC
+requests default to `0.9.0-alpha`, so the version has to be set explicitly.
+The daemon shares one session (VM) but creates a separate container for each
+provision, so a mapping applies only to the container that declared it, unlike
+the session-wide `cpuCount` / `memoryMb` / `gpu` / `storagePath` knobs that
+remain one-shot-only.
+
+The one-shot `wslc.portMappings` list and `wslc.provision.portMappings` share
+one duplicate check, so two entries claiming the same `windowsPort` are
+rejected identically. Zero ports and non-TCP protocols are rejected when the
+exact contract deserializes.
+
+The forward listens on `127.0.0.1` only, so a mapped port reaches the container
+from the host itself and not from other machines. WSLC installs it when the
+container starts rather than at provision, so a `windowsPort` that another
+process already holds on loopback fails the `start` phase, not `provision`.
 
 ## Sandbox IDs
 
@@ -262,3 +307,9 @@ fixtures **through the harness**, not by pointing `wxc-exec --config` at them di
   fix splits `exec` into an on-worker `ExecStart` (extract the thread-agnostic Win32 exit-event
   handle) + an off-thread wait + an on-worker `ExecReap`, with a per-container `in_flight` slot. This
   is tracked as follow-up work.
+
+- **No typed SDK can set port mappings yet.** The Rust, Node, and .NET v1 SDKs
+  all pin the published stable contract `1.0.0`, which does not declare the
+  field, and released schemas are immutable. Raw `1.1.0-alpha` JSON through the
+  FFI or `wxc-exec` is the only way to reach it today. Promoting `1.1.0-alpha`
+  to a stable release is what lets the three SDKs expose it together.
