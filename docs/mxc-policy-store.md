@@ -40,7 +40,7 @@ by the [v1 SDK reference](https://github.com/microsoft/mxc/blob/894f4c159705f5f4
 ### Non-goals
 
 - This does not change backend enforcement or the MXC 1.x request contract.
-  Catalog data uses the access fields of `ContainerRequest`; it does not
+  Catalog data uses a supported subset of `ContainerRequest`; it does not
   define a parallel policy vocabulary or supply commands.
 - This is not a trust or attestation mechanism, and it does not authorize
   anything. See [§9](#9-trust-model).
@@ -56,13 +56,14 @@ by the [v1 SDK reference](https://github.com/microsoft/mxc/blob/894f4c159705f5f4
 **MXC 1.0 alignment:** Command-free lookup and composition are unchanged.
 `ContainerRequirements` reuses the filesystem, network, UI, and timeout types
 from the [v1 request](https://github.com/microsoft/mxc/blob/894f4c159705f5f470727e4fa1e363a2abec88f1/sdk/node/src/v1/types.ts#L549-L597);
-the caller adds execution settings later. The SDK owns wire version selection.
+the caller supplies the command and final execution settings later. The SDK owns
+wire version selection.
 
 | Earlier spec | MXC 1.x alignment |
 |---|---|
 | `SandboxPolicy`, `resolveSandboxPolicy` | `ContainerRequirements`, `resolveToolRequirements` |
 | `SandboxConfigResolution.policy` | `ToolRequirementsResolution.requirements` |
-| `default.sandboxPolicy` and its `version` | Access-only `default.requirements`; catalog `sdkContractVersion` records validation target |
+| `default.sandboxPolicy` and its `version` | `default.requirements` subset; catalog `sdkContractVersion` records validation target |
 | `ui.allowWindows` | `ui.disable` with inverse meaning; `clipboard` and `allowInputInjection` retain their meanings |
 | Synchronous Node resolution | Promise-returning plain verbs, with no `Async` suffix |
 
@@ -255,9 +256,10 @@ selection as described in [versioning.md](versioning.md).
 
 Each entry has exactly one unversioned `default`, containing the conservative
 subset common to all tool versions and platforms, not the newest version's
-behavior. It contains minimal base access fields in `requirements` and intent
-additions. Neither stored nor resolved requirements contain execution settings.
-The caller supplies a command later when constructing a `ContainerRequest`.
+behavior. It contains base access fields and an optional timeout suggestion in
+`requirements`, plus intent additions. The timeout is advisory, not an access
+grant; the caller supplies the command and final execution settings when
+constructing a `ContainerRequest`.
 Unversioned means no tool-version selector, not a caller-selectable wire version.
 
 `versionVariants` is an optional list of non-overlapping VERS ranges using the
@@ -383,8 +385,11 @@ defines equality, precedence, and malformed-input behavior; the
 defines selection and diagnostic outcomes. Catalog indexing and validation
 must use those same rules, not introduce a second comparison policy.
 
-Validate complete catalog PURLs and reject invalid predicates. Validate VERS
-syntax, supported schemes, and non-overlapping ranges during authoring/build.
+Validate complete catalog PURLs and reject invalid predicates, including any
+version, qualifiers, or subpath; only type, optional namespace, and name are
+catalog identity predicates. Do not silently strip unsupported predicate
+components. Validate VERS syntax, supported schemes, and non-overlapping
+ranges during authoring/build.
 Neither predicate ordering nor file order may resolve an ambiguous match.
 
 ### 4.4 Platform variants
@@ -696,7 +701,10 @@ separate catalog digest or runtime checksum. Schema validation still applies.
 - a separate TypeScript consumer imports every public function and named type
   from the v1 package entry point; same-file snippet checks are not sufficient
 - lookup is command-free and returns only §4.2's allowed fields; reject old
-  UI names and caller execution fields rather than silently accepting them
+  UI names and execution fields other than the optional timeout suggestion;
+  leave `filesystem.clearPolicyOnExit` and `network.runtimeConfig` unset
+  (`undefined`/`None`/`null`), despite their presence in the reused SDK types;
+  reject those keys in catalog data even when their values are null
 - Node resolution does not block the event loop; Rust/.NET preserve their
   corresponding idiomatic result/error types
 - multiple input tools select one match each and compose their bases, selected
@@ -735,6 +743,10 @@ separate catalog digest or runtime checksum. Schema validation still applies.
 - omitted optional context fields use host platform and native system architecture, the
   installed catalog revision, no caller symbol overrides, and no weak-identity
   fallback
+- `projectRoot` alone and `symbols.project_root` alone bind the same symbol;
+  identical dual values are accepted and diagnosed as caller-supplied when used;
+  differing strings fail with `malformed_request`/`invalid_context` before
+  lookup, even with empty inputs or paths that refer to the same object
 - an unresolved required symbol prevents policy output, with diagnostics,
   rather than silently omitting selected requirements
 - caller symbol overrides precede discovery, which precedes documented
@@ -814,6 +826,11 @@ separate catalog digest or runtime checksum. Schema validation still applies.
 - incompatible SDK target metadata and network fields other than egress allow/deny rules,
   or other fields outside the supported composition rules, remain rejected
   rather than broadly approximated
+- a UI or timeout field from one deduplicated source is retained; omission in
+  another source adds no value; distinct sources supplying that field fail with
+  `policy_validation`/`composition_conflict`, for equal and unequal values alike
+- clients may omit or override the suggested timeout in their final request;
+  lookup does not start an execution timer or promise a minimum runtime
 - symbol resolution on Windows, Linux, and macOS
 
 **Data (CI)**
@@ -828,7 +845,10 @@ separate catalog digest or runtime checksum. Schema validation still applies.
 - a newer SDK exact target revalidates all bundled catalog revisions using
   its own schema; unchanged older-major-line revisions retain their IDs when
   revalidation passes, while unvalidated or cross-major data is not bundled
-- catalog PURLs pass complete syntax/type validation before identity indexing
+- catalog PURLs pass complete syntax/type validation before identity indexing;
+  version, qualifiers, and subpath are rejected rather than silently ignored,
+  including `pkg:npm/foo@1`, `pkg:npm/foo?arch=x64`, and `pkg:npm/foo#bin/cli.js`;
+  `pkg:npm/foo` is an accepted predicate when otherwise valid
 - exactly one unversioned default is required; missing/multiple defaults,
   version-only entries, and a version variant tagged as default are rejected
 - version ranges use the entry's scheme and do not overlap, including at

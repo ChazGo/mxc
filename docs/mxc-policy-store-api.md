@@ -102,18 +102,26 @@ export interface ResolveContext {
 
 `ContainerRequirements` reuses the SDK's existing nested types and optionality.
 Rust/.NET use equivalent four-field aggregates, not duplicate nested models.
-The resolver returns only catalog-supported fields:
+This is a resolver output view, not a closed catalog-authoring type. The nested
+SDK types are deliberately broader than the fields the resolver may return:
 
 | Field | Supported content |
 |---|---|
 | `filesystem` | `readonlyPaths`, `readwritePaths`, `deniedPaths` |
 | `network` | Directional `egress` and `ingress` policy |
 | `ui` | Required `disable` when UI is present; optional `clipboard` and `allowInputInjection` |
-| `timeoutMs` | Unsigned 32-bit integer |
+| `timeoutMs` | Optional execution-timeout suggestion in milliseconds, an unsigned 32-bit integer |
 
 `Pick` is not runtime validation or permission to return other nested settings.
+In particular, `filesystem.clearPolicyOnExit` and `network.runtimeConfig` are
+left unset by the resolver (`undefined` in Node, `None` in Rust, `null` in .NET),
+even though the reused SDK types permit callers to set them.
+`timeoutMs` is the only execution-setting suggestion in this aggregate, not an
+access grant or minimum-runtime guarantee. The client may omit or override it;
+copying it into a `ContainerRequest` applies the SDK's usual execution timeout.
 Commands, containment, name, working directory, environment, lifecycle/cleanup,
-runtime proxy configuration, telemetry and execution options remain caller-owned.
+runtime proxy configuration, telemetry and other execution settings remain
+caller-owned.
 No command is needed for lookup. Intent selects requirements, not a command.
 
 A string input means `{ invocationName: tool }`, with no package/version/intent
@@ -314,6 +322,13 @@ export interface CatalogEntryMetadata {
 | `packageUrl`, `detectedVersion` | No fabricated identity/version evidence |
 | `intent` | All intents of the effective policy, not of other version variants |
 
+`projectRoot` is shorthand for the `project_root` symbol. Either field can
+supply its caller value. When both `projectRoot` and `symbols.project_root`
+are present, they must be identical strings; otherwise reject the context with
+`malformed_request` (`invalid_context`) before resolving any inputs. This check
+does not normalize paths or compare filesystem objects. Either accepted form
+is reported as `source: "caller"` when that symbol is resolved.
+
 Only symbols required by selected entries and dependencies are resolved:
 caller value first, supported local discovery second, documented platform
 default third, otherwise unresolved. Discovered/defaulted values and their
@@ -348,6 +363,11 @@ Candidate version/qualifiers/subpath are ignored with `purl_components_ignored`.
 Only `detectedVersion` supplies version evidence. Invalid PURLs produce
 `tool_unmatched` with `purl_invalid` for that pair, without fuzzy repair or
 invocation-name retry. Invalid catalog PURLs are authoring errors.
+Catalog PURL predicates must contain only type, optional namespace, and name:
+reject any version, qualifiers, or subpath, even in an otherwise valid PURL.
+This is a catalog restriction, not a claim that those components violate PURL.
+For example, `pkg:npm/foo@1` is invalid catalog data, not a predicate for every
+version of `foo`. Version and platform selection use their explicit catalog fields.
 
 Invocation names compare case-insensitively and locale-independently on
 Windows/macOS, and exactly on Linux. Name-only matching requires
@@ -436,10 +456,17 @@ deny that overlaps a required allow after CIDR exclusions and protocol/port
 intersection; retain other denies. Report removed rules and full affected scope.
 Do not introduce unrestricted access or unselected overlay/intent additions.
 
-Allow-by-default, non-default ingress, proxy, UI, timeout, and other fields
-without composition rules fail when distinct selected policies require an
-undefined merge. Caller-owned restrictions are never removed. Access belongs
-to the combined sandbox, not separate permissions for each tool.
+For `ui` and `timeoutMs`, retain a field supplied by one deduplicated source;
+omission in another source supplies no value. Two distinct sources supplying
+the same field fail with `policy_validation` (`composition_conflict`), even
+when their values are equal. Repeated references to one source do not conflict.
+There is no minimum, maximum, or last-writer merge; overlays cannot add or
+replace these fields.
+
+Allow-by-default, non-default ingress, and other fields without composition
+rules likewise fail when distinct selected policies require an undefined merge.
+Caller-owned restrictions are never removed. Access belongs to the combined
+sandbox, not separate permissions for each tool.
 
 ### Results, coverage, and attribution
 
