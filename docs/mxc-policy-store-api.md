@@ -52,14 +52,53 @@ export declare function getCatalogInfo(): {
 Resolution is asynchronous in Node, with plain names and no `Async` suffix;
 it must not block the event loop. Inspection is synchronous.
 
-| SDK | Resolution operations | Return convention |
-|---|---|---|
-| Rust `mxc_sdk::v1` | `resolve_tool_requirements`, `resolve_tool_requirements_with_diagnostics` | `Result<Option<ContainerRequirements>, Error>` or `Result<ToolRequirementsResolution, Error>` |
-| .NET `Microsoft.Mxc.Sdk.V1` | `MxcContainer.ResolveToolRequirements`, `ResolveToolRequirementsWithDiagnostics`; corresponding `Async` forms | Nullable requirements or diagnostic result; asynchronous forms return Tasks |
-| Node `@microsoft/mxc-sdk/v1` | Signatures above | Promises; absence is `undefined` |
+**Rust (`mxc_sdk::v1`).** Resolution is synchronous and borrows a candidate
+slice and optional context. One tool uses a one-element slice; `None` selects
+the documented context defaults. Signature excerpts, with bodies omitted:
 
-Rust uses an idiomatic one-or-many input rather than overloads. A single-tool
-call equals a one-element array. Both resolution operations produce the same
+```rust
+pub fn resolve_tool_requirements(
+    tools: &[ToolCandidate], context: Option<&ResolveContext>,
+) -> Result<Option<ContainerRequirements>, Error>;
+pub fn resolve_tool_requirements_with_diagnostics(
+    tools: &[ToolCandidate], context: Option<&ResolveContext>,
+) -> Result<ToolRequirementsResolution, Error>;
+```
+
+**.NET (`Microsoft.Mxc.Sdk.V1.MxcContainer`).** The single/list overloads are
+equivalent. These are member signature excerpts, with bodies omitted:
+
+```csharp
+public static ContainerRequirements? ResolveToolRequirements(
+    ToolCandidate tool, ResolveContext? context = null);
+public static ContainerRequirements? ResolveToolRequirements(
+    IReadOnlyList<ToolCandidate> tools, ResolveContext? context = null);
+public static ToolRequirementsResolution ResolveToolRequirementsWithDiagnostics(
+    ToolCandidate tool, ResolveContext? context = null);
+public static ToolRequirementsResolution ResolveToolRequirementsWithDiagnostics(
+    IReadOnlyList<ToolCandidate> tools, ResolveContext? context = null);
+
+public static Task<ContainerRequirements?> ResolveToolRequirementsAsync(
+    ToolCandidate tool, ResolveContext? context = null,
+    CancellationToken cancellationToken = default);
+public static Task<ContainerRequirements?> ResolveToolRequirementsAsync(
+    IReadOnlyList<ToolCandidate> tools, ResolveContext? context = null,
+    CancellationToken cancellationToken = default);
+public static Task<ToolRequirementsResolution> ResolveToolRequirementsWithDiagnosticsAsync(
+    ToolCandidate tool, ResolveContext? context = null,
+    CancellationToken cancellationToken = default);
+public static Task<ToolRequirementsResolution> ResolveToolRequirementsWithDiagnosticsAsync(
+    IReadOnlyList<ToolCandidate> tools, ResolveContext? context = null,
+    CancellationToken cancellationToken = default);
+```
+
+Async cancellation follows the existing `MxcContainer`/`MxcLifecycle` convention:
+the token is last and cancellation stops awaiting the result, not a native call
+already in progress. The SDK retains cleanup responsibility for a late result.
+No container is created by lookup.
+
+In every binding, a single-tool call equals a one-element collection.
+Both resolution operations produce the same
 requirements; diagnostics come from that pass, not a second lookup or global
 "last result." Metadata inspection exposes selectors and provenance, not policy
 bodies, and reports the installed default catalog.
@@ -127,6 +166,77 @@ No command is needed for lookup. Intent selects requirements, not a command.
 A string input means `{ invocationName: tool }`, with no package/version/intent
 evidence. The library does not verify an installed tool's identity or discover
 its version from a supplied package URL.
+
+Rust preserves name-only input through `From<&str>`:
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolCandidate {
+    pub invocation_name: String,
+    pub package_url: Option<String>,
+    pub detected_version: Option<String>,
+    pub intent: Option<String>,
+}
+
+impl From<&str> for ToolCandidate {
+    fn from(name: &str) -> Self {
+        Self {
+            invocation_name: name.to_owned(),
+            package_url: None,
+            detected_version: None,
+            intent: None,
+        }
+    }
+}
+```
+
+.NET uses a name-taking constructor and implicit conversion:
+
+```csharp
+public sealed class ToolCandidate
+{
+    public ToolCandidate(string invocationName)
+    {
+        ArgumentNullException.ThrowIfNull(invocationName);
+        InvocationName = invocationName;
+    }
+
+    public string InvocationName { get; }
+    public string? PackageUrl { get; init; }
+    public string? DetectedVersion { get; init; }
+    public string? Intent { get; init; }
+
+    public static implicit operator ToolCandidate(string invocationName) =>
+        new(invocationName);
+}
+```
+
+Both conversions copy only the invocation name, verbatim. They do not parse
+commands or PURLs, trim names, infer versions, or enable weak matching. Converted
+and directly constructed candidates use the same resolver validation and
+matching rules. A null .NET name is rejected during construction, following
+the SDK's `ArgumentNullException` convention; it is never changed into an empty
+name or a missing match. Invalid inputs reaching a resolution operation use
+the shared error mapping.
+
+For example, with caller context that explicitly enables weak-name fallback:
+
+```rust
+let one = resolve_tool_requirements(&["git".into()], Some(&context))?;
+let many = resolve_tool_requirements(&["git".into(), "node".into()], Some(&context))?;
+```
+
+```csharp
+var one = MxcContainer.ResolveToolRequirements("git", context);
+var many = MxcContainer.ResolveToolRequirements(
+    new ToolCandidate[] { "git", "node" }, context);
+var details = await MxcContainer.ResolveToolRequirementsWithDiagnosticsAsync(
+    new ToolCandidate[] { "git", "node" }, context, cancellationToken);
+```
+
+A .NET `string[]` does not convert element-by-element to
+`IReadOnlyList<ToolCandidate>`; use a typed `ToolCandidate[]` as above, or a
+target-typed collection expression. No additional string-list overload is implied.
 
 ### Results and selections
 

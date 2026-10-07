@@ -705,6 +705,12 @@ separate catalog digest or runtime checksum. Schema validation still applies.
   diagnostics; the simple API yields the same requirements as the diagnostic API
 - a separate TypeScript consumer imports every public function and named type
   from the v1 package entry point; same-file snippet checks are not sufficient
+- Rust borrowed-slice calls and .NET single/list sync/async calls compile with
+  the documented context and cancellation parameters; name-only conversions
+  set only the invocation name and do not alter weak-matching opt-in or validation
+- converted and directly constructed candidates have identical matching and
+  invalid-input outcomes; .NET null-name construction rejects rather than
+  fabricating a default, and `string[]` is not a candidate-list overload
 - per-input records use optional `selection` and required boolean `contributes`
   in all bindings; selected identity metadata survives version/intent failures
   without implying contribution
