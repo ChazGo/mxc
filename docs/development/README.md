@@ -24,6 +24,7 @@ work. Consumer documentation remains under `docs/`; start with the
 - [Schema code generation](build-and-test/schema-codegen.md)
 - [Fuzzing](build-and-test/fuzzing.md)
 - [WSLC SDK bindings runbook](build-and-test/wslc-sdk-bindings.md)
+- [Host-dependent backend test suites](../../tests/scripts/README.md)
 
 ## Contributor guides
 
