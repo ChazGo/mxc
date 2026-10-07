@@ -614,10 +614,11 @@ export class ZavaAgentRequirements {
   }
 
   async createRequestForTool(
-    tool: ToolCandidate, command: string,
+    tool: ToolCandidate, command: string, workingDirectory: string,
   ): Promise<ContainerRequest | undefined> {
     const requirements = await this.prepareTool(tool);
-    return requirements === undefined ? undefined : { ...requirements, command };
+    return requirements === undefined ? undefined
+      : { ...requirements, command, workingDirectory };
   }
 
   private reportFailure(error: unknown): void {
@@ -667,17 +668,20 @@ an empty or uncontained fallback. Application-helper failures propagate to the
 application error handler rather than being disguised as an absent catalog match.
 
 The caller supplies workspace and target context when constructing the advisor,
-then calls `createRequestForTool(tool, command)` for an execution. Its private
-`prepareTool` helper obtains requirements and applies client settings. The command
-is added only to the returned `ContainerRequest`, never sent to the catalog API.
+then calls `createRequestForTool(tool, command, workingDirectory)` for an execution.
+Its private `prepareTool` helper obtains requirements and applies client settings.
+The command and working directory are caller-owned execution settings, added
+only to the returned `ContainerRequest`. `projectRoot` binds catalog symbols;
+it does not set the process cwd or choose it from the returned filesystem grants.
 Catalog inspection is optional; none of these methods creates a container.
 
 ```ts
 // Configure the advisor for this workspace, then prepare a Git push request.
 declare const app: ZavaAgentApp;
+const workspaceDirectory = String.raw`D:\work\repo`;
 const advisor = new ZavaAgentRequirements(app, {
   platform: "windows", architecture: "x64", allowWeakIdentityFallback: true,
-  projectRoot: String.raw`D:\work\repo`,
+  projectRoot: workspaceDirectory,
   symbols: {
     git_prefix: String.raw`D:\tools\git`,
     ssh_prefix: String.raw`D:\tools\ssh`,
@@ -689,7 +693,7 @@ const advisor = new ZavaAgentRequirements(app, {
 const catalogMetadata = advisor.inspectCatalog(); // Optional inspection; no UI is prescribed.
 const gitRequest = await advisor.createRequestForTool({
   invocationName: "git", detectedVersion: "2.45", intent: "push",
-}, "git push");
+}, "git push", workspaceDirectory);
 // Only a defined request goes to Zava Agent's normal MXC run/spawn path.
 ```
 
