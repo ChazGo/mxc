@@ -3,9 +3,10 @@
 > **PROTOTYPE, pending API review.** Not part of MXC 1.0; a later MXC SDK
 > release is targeted. API names and shapes may change before sign-off.
 
-The design spec is `docs/mxc-policy-store.md` in
-[microsoft/mxc#1309](https://github.com/microsoft/mxc/pull/1309). This
-prototype tracks spec head `f7a450c`. The spec is the source of truth; this
+The spec is in [microsoft/mxc#1309](https://github.com/microsoft/mxc/pull/1309),
+head `5c2ba8e`: `docs/mxc-policy-store-api.md` is the caller-facing API
+contract and `docs/mxc-policy-store.md` the catalog design. This prototype
+tracks both. The spec is the source of truth; this
 page is not a copy of it. It records only how the prototype implements the
 spec, the decisions it made where the spec leaves room, and its known gaps.
 The [README](README.md) describes the API and the catalog workflow.
@@ -16,7 +17,7 @@ The [README](README.md) describes the API and the catalog workflow.
   (`src/mxc-sdk/src/policy_store/`), with the V1 catalog compiled in from
   `src/mxc-sdk/policy_store/catalog/`. There is no separate crate, library,
   or CLI.
-- Catalog sources follow spec §6.3: one editable file per tool in
+- Catalog sources follow design §6.3: one editable file per tool in
   `catalog/entries/`. `assemble_revision` (a checked generator, like the
   reviewer views) builds the default revision snapshot in `entryId` order and
   rejects duplicate IDs and dangling dependencies; a cargo test fails when the

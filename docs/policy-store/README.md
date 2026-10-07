@@ -15,9 +15,11 @@ SDK's existing v1 container APIs. It is complementary to Learning Mode, not a
 replacement. Lookup never creates a container, contacts a network service,
 writes state, or downloads data.
 
-- The design spec is [`docs/mxc-policy-store.md` in
-  microsoft/mxc#1309](https://github.com/microsoft/mxc/pull/1309); this
-  prototype tracks its head `f7a450c`.
+- The spec is in [microsoft/mxc#1309](https://github.com/microsoft/mxc/pull/1309),
+  head `5c2ba8e`: `docs/mxc-policy-store-api.md` is the caller-facing API
+  contract (types, behavior, errors, examples), and
+  `docs/mxc-policy-store.md` the catalog design (data model, packaging,
+  source layout, contribution).
 - [design.md](design.md) records the prototype's implementation decisions and
   its known gaps against that spec.
 - [`catalog/views/`](../../src/mxc-sdk/policy_store/catalog/views/) holds the

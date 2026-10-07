@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Public request and result types (design §5). Every result type renders to
+//! Public request and result types (API spec §2). Every result type renders to
 //! the exact JSON shape the original TypeScript prototype produced, which the
 //! SDK bindings and conformance vectors rely on (`to_json`), with absent optional fields
 //! omitted rather than written as `null`.
@@ -70,7 +70,7 @@ impl fmt::Display for Architecture {
     }
 }
 
-/// Runtime lookup input (design §5.1). `package_url` is the strong
+/// Runtime lookup input (API spec §2). `package_url` is the strong
 /// identity and `invocation_name` the opt-in weak fallback. Version evidence
 /// comes only from `detected_version`; a version embedded in `package_url`
 /// is ignored. `intent` names a tool-defined intent such as Git's `push`;
@@ -238,7 +238,7 @@ impl<K: Into<String>, V: Into<String>> FromIterator<(K, V)> for SymbolMap {
     }
 }
 
-/// Runtime lookup context (design §5.1). `platform` and `architecture` are
+/// Runtime lookup context (API spec §2, §3). `platform` and `architecture` are
 /// the caller's raw strings so that an unsupported value is reported as
 /// `malformed_request` (`invalid_context`) exactly like the original TypeScript prototype.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -597,7 +597,7 @@ impl ToolWarningKind {
     }
 }
 
-/// A structured per-input warning (design §5.1 `ToolResolutionWarning`).
+/// A structured per-input warning (API spec §2 `ToolResolutionWarning`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolResolutionWarning {
     pub input_index: usize,
@@ -754,7 +754,7 @@ impl DetailWarningKind {
     }
 }
 
-/// A structured warning about shared resolution (design §5.1
+/// A structured warning about shared resolution (API spec §2
 /// `ResolutionDetailWarning`), scoped to sorted, distinct inputs and entries.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ResolutionDetailWarning {
@@ -994,7 +994,7 @@ impl Diagnostics {
     }
 }
 
-/// Result of a diagnostics lookup (design §5.1 `ToolRequirementsResolution`)
+/// Result of a diagnostics lookup (API spec §2 `ToolRequirementsResolution`)
 /// in the catalog's JSON model.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RequirementsResolution {
@@ -1014,7 +1014,7 @@ impl RequirementsResolution {
     }
 }
 
-/// Inspection metadata for one identity predicate (design §5.2).
+/// Inspection metadata for one identity predicate (API spec §2, inspection metadata).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CatalogIdentityMetadata {
     Purl { value: String },
@@ -1176,7 +1176,7 @@ impl CatalogEntryMetadata {
     }
 }
 
-/// Result of `get_catalog_info` (design §5.2).
+/// Result of `get_catalog_info` (API spec §2, inspection metadata).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogInfo {
     pub catalog_schema_version: String,

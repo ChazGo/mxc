@@ -77,6 +77,8 @@ export type {
   ContainerRequirements,
   CatalogPlatform,
   CatalogArchitecture,
+  PlatformVariantSelector,
+  EgressRule,
   ToolCandidate,
   ToolInput,
   ResolveContext,

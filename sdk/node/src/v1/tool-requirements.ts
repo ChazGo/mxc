@@ -43,6 +43,12 @@ export type CatalogPlatform = 'windows' | 'linux' | 'macos';
 /** Catalog architecture selector values. */
 export type CatalogArchitecture = 'x64' | 'arm64';
 
+/** The closed selector of a catalog platform variant. */
+export interface PlatformVariantSelector {
+  platform: CatalogPlatform;
+  architecture?: CatalogArchitecture;
+}
+
 /** A tool to look up, identified by invocation name and optional identity. */
 export interface ToolCandidate {
   /**
@@ -170,9 +176,12 @@ export interface PathRequirement {
   entryIds: string[];
 }
 
+/** An outbound rule the composed requirements carry. */
+export type EgressRule = NetworkRuleConfig;
+
 /** An egress rule with its source entries. */
 export interface NetworkRequirement {
-  rule: NetworkRuleConfig;
+  rule: EgressRule;
   entryIds: string[];
 }
 
@@ -276,7 +285,7 @@ export interface CatalogEntryMetadata {
     intents: CatalogIntentMetadata[];
   };
   platformVariants: Array<
-    CatalogAdditionsMetadata & { platform: CatalogPlatform; architecture?: CatalogArchitecture }
+    CatalogAdditionsMetadata & PlatformVariantSelector
   >;
   versionVariants: Array<CatalogAdditionsMetadata & { versionRange: string }>;
   provenance: { method: string; sourceRevision: string };

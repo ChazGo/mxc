@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! The public v1 surface (design §5): typed [`ContainerRequirements`] over
+//! The public v1 surface (API spec §1): typed [`ContainerRequirements`] over
 //! the bundled catalog, with failures mapped to the SDK's [`Error`].
 //!
 //! **Prototype, pending API review.** Rust `Error` carries no

@@ -10,6 +10,10 @@
 //! before sign-off. The feature is not part of MXC 1.0; it targets a later SDK
 //! release and builds the SDK's own v1 `ContainerRequest` types.
 //!
+//! References to "design §N" are to `docs/mxc-policy-store.md` (catalog
+//! design) and to "API spec §N" are to `docs/mxc-policy-store-api.md` (the
+//! caller-facing contract), both in microsoft/mxc#1309.
+//!
 //! The public surface is `crate::v1::resolve_tool_requirements` and
 //! `crate::v1::resolve_tool_requirements_with_diagnostics` (plus the
 //! metadata calls). The internal lookup ([`resolve_requirements`],

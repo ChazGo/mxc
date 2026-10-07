@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-//! Runtime lookup and inspection (design §4.3–§5.2): per input, match one
+//! Runtime lookup and inspection (design §4.3–§4.5; API spec §1, §3): per input, match one
 //! entry, select its version and intent, and compose every contributing
 //! (tool, intent) pair and its dependencies into one candidate floor.
 
@@ -174,7 +174,7 @@ impl PolicyCatalog {
     }
 
     // -----------------------------------------------------------------------
-    // Setup and inspection (design §5.2)
+    // Setup and inspection (API spec §1)
     // -----------------------------------------------------------------------
 
     pub fn get_catalog_info(&self) -> Result<CatalogInfo> {
@@ -243,7 +243,7 @@ impl PolicyCatalog {
     }
 
     // -----------------------------------------------------------------------
-    // Runtime lookup (design §5.1)
+    // Runtime lookup (API spec §1, §3)
     // -----------------------------------------------------------------------
 
     /// The composed requirements, or `None` when none can be resolved.
