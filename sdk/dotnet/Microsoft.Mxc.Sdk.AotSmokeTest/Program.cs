@@ -361,4 +361,49 @@ Check(probe.NeedsDaclAugmentation == true, "probe dacl augmentation parsed");
 Check(probe.Probes.BaseContainerApiPresent, "probe facts parsed");
 Check(probe.Probes.UiCapabilities.CanBlockClipboardRead, "probe ui capabilities parsed");
 
+// 11. Prototype policy store DTOs (pending API review): the lookup request
+//     writer, the diagnostics result with absent and retained selection and
+//     true/false contribution flags, rejected missing/non-boolean flags, and
+//     the inspection metadata roots.
+var lookupRequest = MxcContainer.ToolRequirementsRequest(
+    new ToolCandidate[] { "git", new("npm") { PackageUrl = "pkg:npm/npm", Intent = "install" } },
+    new ResolveContext { ProjectRoot = "C:\\repo", Symbols = new Dictionary<string, string> { ["npm_cache"] = "C:\\c" } });
+Check(lookupRequest[^1] == 0, "lookup request is NUL-terminated");
+const string resolutionJson = """
+{"requirements":{"filesystem":{"readwritePaths":["C:\\repo"]},"timeoutMs":5},
+ "diagnostics":{"catalogRevision":"r","tools":[
+  {"inputIndex":0,"contributes":true,"status":"matched_default","selection":{"entryId":"tool:git","entryRevision":1,
+   "matchedIdentities":[{"kind":"invocation-name","strength":"weak"}],"versionSelection":{"status":"matched_default"},
+   "intentSelection":{"mode":"all","selected":["fetch"]}}},
+  {"inputIndex":1,"contributes":false,"status":"version_unparseable","selection":{"entryId":"tool:npm","entryRevision":1,
+   "matchedIdentities":[{"kind":"purl","strength":"strong"}],"versionSelection":{"status":"version_unparseable","detectedVersion":"x"}}},
+  {"inputIndex":2,"contributes":false,"status":"tool_unmatched"}],
+  "resolvedDependencies":[],
+  "warnings":[{"code":"tool_unmatched","inputIndex":2,"invocationName":"nope","message":"m"},
+   {"code":"symbol_resolved","inputIndexes":[0],"entryIds":["tool:git"],"symbol":"project_root","value":"C:\\repo","source":"caller","message":"m"}]}}
+""";
+var lookup = MxcContainer.ParseToolRequirementsResolution(resolutionJson, requireDiagnostics: true);
+Check(lookup.Requirements?.TimeoutMs == 5, "policy store requirements parsed");
+Check(lookup.Diagnostics.Tools[0] is { Contributes: true, Selection.EntryId: "tool:git" }, "contributing selection parsed");
+Check(lookup.Diagnostics.Tools[1] is { Contributes: false, Selection.EntryId: "tool:npm" }, "failed selection retained");
+Check(lookup.Diagnostics.Tools[2] is { Contributes: false, Selection: null }, "absent selection parsed");
+Check(lookup.Diagnostics.Warnings.Count == 2, "structured warnings parsed");
+foreach (var flag in new[] { "", "\"contributes\":\"true\"," })
+{
+    var malformed = $$$"""{"diagnostics":{"catalogRevision":"r","tools":[{"inputIndex":0,{{{flag}}}"status":"tool_unmatched"}],"resolvedDependencies":[],"warnings":[]}}""";
+    try
+    {
+        MxcContainer.ParseToolRequirementsResolution(malformed, requireDiagnostics: true);
+        Check(false, "missing or non-boolean contributes is rejected");
+    }
+    catch (MxcException error) when (error.Code == ErrorCode.BackendError)
+    {
+    }
+}
+var catalogInfo = MxcJson.Deserialize<CatalogInfo>(
+    """{"catalogSchemaVersion":"1","catalogRevision":"r","sdkContractVersion":"1.0.0"}""",
+    MxcJson.PolicyStoreOptions);
+Check(catalogInfo?.SdkContractVersion == "1.0.0", "catalog info parsed");
+CheckRoundTrip(catalogInfo!, x => x.CatalogRevision == "r", "catalog info round-trips");
+
 Console.WriteLine("AOT smoke test passed: all JSON paths are reflection-free.");

@@ -63,12 +63,28 @@ public static class CatalogArchitectures
 /// <b>PROTOTYPE, pending API review.</b> A tool to look up. A plain string
 /// converts implicitly to a candidate with only <see cref="InvocationName"/>.
 /// </summary>
-/// <param name="InvocationName">
-/// The bare invocation name, for example <c>git</c>. A weak identity, used only
-/// when <see cref="ResolveContext.AllowWeakIdentityFallback"/> is set.
-/// </param>
-public sealed record ToolCandidate(string InvocationName)
+/// <remarks>
+/// A <c>string[]</c> does not convert element-by-element to
+/// <c>IReadOnlyList&lt;ToolCandidate&gt;</c>; use a typed
+/// <c>ToolCandidate[]</c> or a target-typed collection expression.
+/// </remarks>
+public sealed class ToolCandidate
 {
+    /// <summary>Creates a candidate identified only by its invocation name.</summary>
+    /// <param name="invocationName">The bare invocation name, for example <c>git</c>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="invocationName"/> is null.</exception>
+    public ToolCandidate(string invocationName)
+    {
+        ArgumentNullException.ThrowIfNull(invocationName);
+        InvocationName = invocationName;
+    }
+
+    /// <summary>
+    /// The bare invocation name, for example <c>git</c>. A weak identity, used
+    /// only when <see cref="ResolveContext.AllowWeakIdentityFallback"/> is set.
+    /// </summary>
+    public string InvocationName { get; }
+
     /// <summary>
     /// A Package URL, for example <c>pkg:npm/npm</c>. A strong identity matched
     /// on type, namespace, and name; a version, qualifiers, or subpath are
@@ -149,8 +165,11 @@ public sealed record IntentSelection(string Mode, IReadOnlyList<string> Selected
     public string? Requested { get; init; }
 }
 
-/// <summary>The entry matched by one input.</summary>
-public sealed record ToolMatch(
+/// <summary>
+/// Metadata about the catalog entry one input selected. It is retained when a
+/// version or intent failure stops the input contributing.
+/// </summary>
+public sealed record ToolSelection(
     string EntryId,
     int EntryRevision,
     IReadOnlyList<MatchedIdentity> MatchedIdentities,
@@ -163,8 +182,20 @@ public sealed record ToolMatch(
 /// The pair's version status, or <c>intent_unsupported</c>,
 /// <c>tool_unmatched</c>, or <c>filesystem_identity_unresolved</c>.
 /// </param>
-/// <param name="Matches">At most one entry; empty for <c>tool_unmatched</c>.</param>
-public sealed record ToolDiagnostics(int InputIndex, string Status, IReadOnlyList<ToolMatch> Matches);
+/// <param name="Contributes">
+/// Whether this input's complete resolved requirements, including its selected
+/// dependencies, are in the returned requirements. Not unique access,
+/// authorization, or an execution guarantee. Required in the native result.
+/// </param>
+/// <param name="Selection">
+/// The selected entry; <see langword="null"/> when no entry was selected. Its
+/// presence alone never means the input contributes.
+/// </param>
+public sealed record ToolDiagnostics(
+    int InputIndex,
+    [property: JsonRequired] bool Contributes,
+    string Status,
+    ToolSelection? Selection = null);
 
 /// <summary>A dependency pulled in by one or more inputs.</summary>
 /// <param name="EntryId">The dependency entry.</param>

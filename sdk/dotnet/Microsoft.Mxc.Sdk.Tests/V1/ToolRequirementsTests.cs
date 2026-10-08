@@ -118,8 +118,9 @@ public sealed class ToolRequirementsTests : IDisposable
         Assert.NotNull(resolution.Requirements);
         var tool = Assert.Single(resolution.Diagnostics.Tools);
         Assert.Equal(0, tool.InputIndex);
-        Assert.Equal("tool:git", tool.Matches[0].EntryId);
-        Assert.Equal("weak", tool.Matches[0].MatchedIdentities[0].Strength);
+        Assert.True(tool.Contributes);
+        Assert.Equal("tool:git", tool.Selection!.EntryId);
+        Assert.Equal("weak", tool.Selection.MatchedIdentities[0].Strength);
         var weak = Assert.IsType<ToolResolutionWarning>(
             Assert.Single(resolution.Diagnostics.Warnings, w => w.Code == "weak_identity"));
         Assert.Equal("git", weak.InvocationName);
@@ -135,10 +136,10 @@ public sealed class ToolRequirementsTests : IDisposable
 
         var tool = Assert.Single(push.Diagnostics.Tools);
         Assert.Equal("matched_version", tool.Status);
-        Assert.Equal("vers:intdot/>=2.40|<2.50", tool.Matches[0].VersionSelection.SelectedVersionRange);
-        Assert.Equal("named", tool.Matches[0].IntentSelection!.Mode);
-        Assert.Equal("push", tool.Matches[0].IntentSelection!.Requested);
-        Assert.Equal(new[] { "push" }, tool.Matches[0].IntentSelection!.Selected);
+        Assert.Equal("vers:intdot/>=2.40|<2.50", tool.Selection!.VersionSelection.SelectedVersionRange);
+        Assert.Equal("named", tool.Selection.IntentSelection!.Mode);
+        Assert.Equal("push", tool.Selection.IntentSelection.Requested);
+        Assert.Equal(new[] { "push" }, tool.Selection.IntentSelection.Selected);
         var ssh = Assert.Single(push.Diagnostics.ResolvedDependencies);
         Assert.Equal("tool:ssh", ssh.EntryId);
         Assert.Equal(new[] { 0 }, ssh.InputIndexes);
@@ -161,6 +162,8 @@ public sealed class ToolRequirementsTests : IDisposable
         var unparseable = MxcContainer.ResolveToolRequirementsWithDiagnostics(Git("banana", "fetch"), _context);
         Assert.Equal("version_unparseable", unparseable.Diagnostics.Tools[0].Status);
         Assert.Null(unparseable.Requirements);
+        Assert.False(unparseable.Diagnostics.Tools[0].Contributes);
+        Assert.Equal("tool:git", unparseable.Diagnostics.Tools[0].Selection!.EntryId);
 
         var unsupported = MxcContainer.ResolveToolRequirementsWithDiagnostics(Git(intent: "bundle-fetch"), _context);
         Assert.Equal("intent_unsupported", unsupported.Diagnostics.Tools[0].Status);
@@ -193,6 +196,71 @@ public sealed class ToolRequirementsTests : IDisposable
 
         Assert.Single(resolution.Requirements!.Network!.Egress!.Allow!);
         Assert.Equal("tool_unmatched", resolution.Diagnostics.Tools[2].Status);
+        Assert.Equal(new[] { true, true, false }, resolution.Diagnostics.Tools.Select(t => t.Contributes));
+        Assert.Null(resolution.Diagnostics.Tools[2].Selection);
+        var unmatched = Assert.IsType<ToolResolutionWarning>(
+            Assert.Single(resolution.Diagnostics.Warnings, w => w.Code == "tool_unmatched"));
+        Assert.Equal(2, unmatched.InputIndex);
+        Assert.Equal("no-such-tool", unmatched.InvocationName);
+    }
+
+    [Fact]
+    public void ProjectRoot_BindsThroughEitherContextFormAndRejectsDifferingValues()
+    {
+        var symbols = new Dictionary<string, string>(_context.Symbols!)
+        {
+            ["project_root"] = _context.ProjectRoot!,
+        };
+        var viaSymbol = MxcContainer.ResolveToolRequirements(
+            Git(intent: "local"),
+            _context with { ProjectRoot = null, Symbols = symbols });
+        var viaRoot = MxcContainer.ResolveToolRequirements(Git(intent: "local"), _context);
+        Assert.Equal(viaRoot!.Filesystem!.ReadwritePaths, viaSymbol!.Filesystem!.ReadwritePaths);
+        Assert.NotNull(MxcContainer.ResolveToolRequirements(
+            Git(intent: "local"),
+            _context with { Symbols = symbols }));
+
+        symbols["project_root"] = _context.ProjectRoot + "x";
+        var error = Assert.Throws<MxcException>(() => MxcContainer.ResolveToolRequirements(
+            Array.Empty<ToolCandidate>(),
+            _context with { Symbols = symbols }));
+        Assert.Equal(ErrorCode.MalformedRequest, error.Code);
+        Assert.Equal("invalid_context", error.Reason);
+    }
+
+    [Fact]
+    public void ToolCandidate_RejectsANullNameAndConvertsAPlainString()
+    {
+        Assert.Throws<ArgumentNullException>(() => new ToolCandidate(null!));
+        Assert.Throws<ArgumentNullException>(() => { ToolCandidate _ = (string)null!; });
+
+        ToolCandidate converted = "git";
+        Assert.Equal("git", converted.InvocationName);
+        Assert.Null(converted.PackageUrl);
+        Assert.Null(converted.DetectedVersion);
+        Assert.Null(converted.Intent);
+    }
+
+    [Theory]
+    [InlineData("""{"requirements":{},"diagnostics":{"catalogRevision":"r","tools":[{"inputIndex":0,"status":"matched_default"}],"resolvedDependencies":[],"warnings":[]}}""")]
+    [InlineData("""{"requirements":{},"diagnostics":{"catalogRevision":"r","tools":[{"inputIndex":0,"contributes":"true","status":"matched_default"}],"resolvedDependencies":[],"warnings":[]}}""")]
+    [InlineData("""{"diagnostics":{"catalogRevision":"r","tools":[{"inputIndex":0,"contributes":true,"status":"matched_default"}],"resolvedDependencies":[],"warnings":[]}}""")]
+    [InlineData("""{"requirements":{},"diagnostics":{"catalogRevision":"r","tools":[{"inputIndex":0,"contributes":false,"status":"matched_default"}],"resolvedDependencies":[],"warnings":[]}}""")]
+    [InlineData("""{"requirements":{},"diagnostics":{"catalogRevision":"r","tools":[{"inputIndex":1,"contributes":true,"status":"matched_default"}],"resolvedDependencies":[],"warnings":[]}}""")]
+    public void ParseToolRequirementsResolution_RejectsMalformedContribution(string json)
+    {
+        var error = Assert.Throws<MxcException>(
+            () => MxcContainer.ParseToolRequirementsResolution(json, requireDiagnostics: true));
+        Assert.Equal(ErrorCode.BackendError, error.Code);
+    }
+
+    [Fact]
+    public void ParseToolRequirementsResolution_AcceptsAnUnfamiliarStatus()
+    {
+        var resolution = MxcContainer.ParseToolRequirementsResolution(
+            """{"requirements":{},"diagnostics":{"catalogRevision":"r","tools":[{"inputIndex":0,"contributes":true,"status":"some_future_status"}],"resolvedDependencies":[],"warnings":[]}}""",
+            requireDiagnostics: true);
+        Assert.Equal("some_future_status", Assert.Single(resolution.Diagnostics.Tools).Status);
     }
 
     [Fact]

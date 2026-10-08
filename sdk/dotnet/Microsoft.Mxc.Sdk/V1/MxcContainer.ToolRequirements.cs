@@ -289,9 +289,57 @@ public static partial class MxcContainer
             throw new MxcException(ErrorCode.BackendError, "The policy store returned no diagnostics.");
         }
 
+        if (resolution.Diagnostics is { } diagnostics)
+        {
+            ValidateDiagnostics(resolution.Requirements, diagnostics);
+        }
+
         return new ToolRequirementsResolution(
             resolution.Requirements,
             resolution.Diagnostics ?? EmptyToolRequirementsDiagnostics);
+    }
+
+    /// <summary>
+    /// Rejects a diagnostics result whose shape the SDK cannot vouch for: input
+    /// records out of order, or output present unless at least one input
+    /// contributes. Unfamiliar status strings stay descriptive.
+    /// </summary>
+    private static void ValidateDiagnostics(
+        ContainerRequirements? requirements,
+        ToolRequirementsDiagnostics diagnostics)
+    {
+        string? problem = null;
+        if (diagnostics.CatalogRevision is null
+            || diagnostics.Tools is null
+            || diagnostics.ResolvedDependencies is null
+            || diagnostics.Warnings is null)
+        {
+            problem = "a required diagnostics field is missing";
+        }
+        else
+        {
+            for (var index = 0; problem is null && index < diagnostics.Tools.Count; index++)
+            {
+                var tool = diagnostics.Tools[index];
+                if (tool is null || tool.InputIndex != index || tool.Status is null)
+                {
+                    problem = $"tools[{index}] is malformed or out of input order";
+                }
+            }
+
+            if (problem is null
+                && (requirements is not null) != diagnostics.Tools.Any(tool => tool.Contributes))
+            {
+                problem = "requirements must be present exactly when at least one input contributes";
+            }
+        }
+
+        if (problem is not null)
+        {
+            throw new MxcException(
+                ErrorCode.BackendError,
+                $"The policy store result does not match the SDK v1 types: {problem}.");
+        }
     }
 
     private static T DeserializeStoreResult<T>(string json)
