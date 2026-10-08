@@ -460,8 +460,8 @@ contract.
 `resolveToolRequirements` resolves one tool or an array into command-free
 `ContainerRequirements`; `resolveToolRequirementsWithDiagnostics` also
 reports coverage, selections, dependencies, and warnings.
-See [operations](mxc-policy-store-api.md#1-operations),
-[types](mxc-policy-store-api.md#2-types-and-fields), and
+See [operation signatures](mxc-policy-store-api.md#6-language-bindings),
+[types](mxc-policy-store-api.md#3-types-and-fields), and
 [results/coverage](mxc-policy-store-api.md#results-coverage-and-attribution).
 
 ### 5.2 Setup and inspection
@@ -473,7 +473,7 @@ policy bodies. Their signatures and
 ### 5.3 Consumer obligations
 
 Consumers own authorization, their policy layers, accepted-policy persistence,
-and execution. The [API responsibilities](mxc-policy-store-api.md#4-errors-and-consumer-responsibilities)
+and execution. The [API responsibilities](mxc-policy-store-api.md#5-errors-and-consumer-responsibilities)
 define the contract; the [trust model](#9-trust-model) explains its rationale.
 Catalog APIs never write a consumer's store or mutate reviewed data at lookup.
 
@@ -492,7 +492,7 @@ time, with no dynamic fetching; that is a possible V2 capability.
 ### 6.1 Library distribution and consumption
 
 Resolution and inspection ship through the existing TypeScript/JavaScript,
-Rust, and .NET SDKs. The [API spec](mxc-policy-store-api.md#1-operations) owns
+Rust, and .NET SDKs. The [API spec](mxc-policy-store-api.md#6-language-bindings) owns
 entry-point names, return types, and language conventions. SDK reference pages
 and package READMEs should link that contract rather than duplicate it.
 
@@ -699,7 +699,7 @@ separate catalog digest or runtime checksum. Schema validation still applies.
   categories in all three languages without requiring identical message text
   or language-specific representations; each binding's error handling is
   consistent and uses the corresponding MXC error codes
-- failure cases use the [API error mappings](mxc-policy-store-api.md#4-errors-and-consumer-responsibilities);
+- failure cases use the [API error mappings](mxc-policy-store-api.md#5-errors-and-consumer-responsibilities);
   any supplied reason uses its listed value, and callers can handle the code alone
 - one-tool and one-element-array overloads produce equivalent requirements and
   diagnostics; the simple API yields the same requirements as the diagnostic API
