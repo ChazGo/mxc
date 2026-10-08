@@ -56,7 +56,7 @@ const { requirements, diagnostics } = await resolveToolRequirementsWithDiagnosti
   { invocationName: 'git', packageUrl: 'pkg:generic/git', detectedVersion: '2.45.1', intent: 'push' },
   { projectRoot: '/work/repo', symbols: { git_prefix: '/usr', ssh_prefix: '/usr' } },
 );
-// diagnostics.tools[0].status === 'matched_version'
+// diagnostics.tools[0] => { inputIndex: 0, contributes: true, status: 'matched_version', selection: { entryId: 'tool:git', ... } }
 // diagnostics.resolvedDependencies[0].entryId === 'tool:ssh'
 if (requirements) {
   const request: ContainerRequest = { ...requirements, command: 'git push' };
@@ -98,6 +98,17 @@ and `intent`), or a bare name.
   | No eligible entry | `tool_unmatched` | nothing |
 
   No intent selects the base plus every intent. Other inputs still resolve.
+- `diagnostics.tools[i]` is `{ inputIndex, contributes, status, selection? }`.
+  `contributes` is true only when that input added access to the returned
+  requirements, so every flag is false when no requirements are returned.
+  `selection` (entry, match kind, version selection, intent selection) is
+  present once an entry is chosen. The Node and C# SDKs reject a result whose
+  shape breaks these rules with `backend_error`; unfamiliar status strings
+  are passed through.
+- `projectRoot` and `symbols.project_root` both bind `${project_root}`. The
+  same non-empty value in both is accepted; different values fail with
+  `invalid_context` before lookup. A caller-supplied symbol is reported as
+  a `symbol_resolved` warning with `source: "caller"`.
 - Dependencies contribute their default plus platform base additions; a
   reference naming intents adds those intents. `resolvedDependencies` is
   de-duplicated and attributes each dependency to every requesting input
@@ -105,7 +116,10 @@ and `intent`), or a bare name.
 - Composition satisfies every contributing pair, and never more: paths are
   substituted, normalized, and de-duplicated per layer; read-write supersedes
   read-only; overlapping catalog denies are removed with structured
-  warnings. Alias paths are preserved as written. Paths whose filesystem
+  warnings. `ui` and `timeoutMs` come from at most one entry: omission
+  elsewhere adds nothing, and two distinct entries supplying either fails
+  with `composition_conflict`, even when the values are equal. Alias paths
+  are preserved as written. Paths whose filesystem
   object identity cannot be established fail closed for that pair. The
   composed result is validated as an exact MXC 1.0.0 request before it is
   returned.
