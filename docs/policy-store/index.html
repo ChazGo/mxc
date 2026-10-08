@@ -48,8 +48,8 @@
         <div class="hero-actions">
           <a class="button primary" href="#architecture">Explore the design</a>
           <a class="button secondary" href="./tool-scope/">View the initial tool scope</a>
-          <a class="button secondary" href="https://github.com/ChazGo/mxc/blob/5c2ba8e60ade041ca7893670985d61009a22b9ff/docs/mxc-policy-store-api.md">Read the API contract</a>
-          <a class="button secondary" href="https://github.com/ChazGo/mxc/blob/5c2ba8e60ade041ca7893670985d61009a22b9ff/docs/mxc-policy-store.md">Read the catalog design spec</a>
+          <a class="button secondary" href="https://github.com/ChazGo/mxc/blob/2c682f352d2acf6c70bb880e70dd643a17748770/docs/mxc-policy-store-api.md">Read the API contract</a>
+          <a class="button secondary" href="https://github.com/ChazGo/mxc/blob/2c682f352d2acf6c70bb880e70dd643a17748770/docs/mxc-policy-store.md">Read the catalog design spec</a>
         </div>
       </div>
       <aside class="principle-card">
@@ -81,8 +81,9 @@
               composed <code>ContainerRequirements</code> value, or <code>undefined</code>
               when no pair contributes. <code>ContainerRequirements</code> is
               <code>Pick&lt;ContainerRequest, "filesystem" | "network" | "ui" | "timeoutMs"&gt;</code>,
-              reusing the v1 section types. Lookup takes no command and returns no
-              execution settings; the caller adds its command later.
+              reusing the v1 section types. Lookup takes no command; apart from an optional advisory
+              <code>timeoutMs</code> suggestion it returns no execution settings, and the caller
+              adds its command and working directory later.
               <code>resolveToolRequirementsWithDiagnostics</code> adds attribution,
               per-input statuses, and typed warnings. Package URL is the strong identity;
               invocation name is the explicitly enabled fallback. Node resolution is
@@ -140,7 +141,8 @@ export declare function
               <code>if (suggestion === undefined) return undefined;</code>
               <code>// non-empty is not proof both tools matched</code>
               <code>const selected = await applySharedClientSettings(suggestion);</code>
-              <code>// later: { ...selected, command: "node build.js" }</code>
+              <code>// later: { ...selected, command: "node build.js",</code>
+              <code>//   workingDirectory: projectRoot }</code>
             </div>
             <div class="usage-note usage-example">
               <span>Language bindings</span>
@@ -417,7 +419,7 @@ export declare function
             <li>Proposed TypeScript, Rust, and .NET SDK APIs</li>
             <li>Lookup diagnostics and catalog inspection</li>
           </ul>
-          <p class="boundary-note">The APIs and static V1 data live in the MXC repository and ship in the existing SDK packages. One internal <code>policy_store</code> module in <code>mxc-sdk</code> performs resolution using the SDK's v1 types; Rust calls it directly, while Node and .NET use panic-contained <code>mxc_ffi</code> library exports. Catalog entries author access fields only, under <code>default.requirements</code>; the SDK owns wire version selection, and catalog <code>sdkContractVersion</code> records the validation target. The feature is not part of MXC 1.0, and no later release is committed. Lookup is an SDK API, not a hosted service or CLI. Failures reuse existing MXC error codes with an optional catalog-specific <code>details.reason</code>.</p>
+          <p class="boundary-note">The APIs and static V1 data live in the MXC repository and ship in the existing SDK packages. One internal <code>policy_store</code> module in <code>mxc-sdk</code> performs resolution using the SDK's v1 types; Rust calls it directly, while Node and .NET use panic-contained <code>mxc_ffi</code> library exports. Catalog entries author access fields and an optional advisory timeout suggestion under <code>default.requirements</code>; the SDK owns wire version selection, and catalog <code>sdkContractVersion</code> records the validation target. The feature is not part of MXC 1.0, and no later release is committed. Lookup is an SDK API, not a hosted service or CLI. Failures reuse existing MXC error codes with an optional catalog-specific <code>details.reason</code>.</p>
         </article>
 
         <article class="ownership-card agent">
@@ -554,7 +556,7 @@ export declare function
             <div><b><code>&gt;=2.50 &lt;3</code></b><span><code>newIntents</code> defines <code>bundle-fetch</code>, its cache path, and its HTTPS rule.</span></div>
           </div>
           <p>Git 2.45 + <code>push</code> includes the default, Windows path, push rule, and SSH dependency. Git 2.55 + <code>bundle-fetch</code> includes that newer intent but not the other range's SSH addition. With no version, <code>bundle-fetch</code> is unsupported and contributes no base policy.</p>
-          <p>Overlays use <code>policyAdditions</code> for base access, <code>intentAdditions</code> only for intents declared by the default, and <code>newIntents</code> only for new names. Publication materializes every platform × architecture × version × intent combination, enforces the closed access-only field set of <code>default.requirements</code>, validates the exact pre-normalization request against the SDK's v1 target schema, rejects overlapping ranges or narrowing operations, and produces a rendered view for reviewers.</p>
+          <p>Overlays use <code>policyAdditions</code> for base access, <code>intentAdditions</code> only for intents declared by the default, and <code>newIntents</code> only for new names. Publication materializes every platform × architecture × version × intent combination, enforces the closed field set of <code>default.requirements</code> (filesystem path lists, directional network policy, UI, and <code>timeoutMs</code>), validates the exact pre-normalization request against the SDK's v1 target schema, rejects overlapping ranges or narrowing operations, and produces a rendered view for reviewers.</p>
         </article>
       </div>
 
@@ -665,7 +667,7 @@ export declare function
           <span class="kicker">Caller samples</span>
           <h2>An advisor that reviews before it prepares</h2>
         </div>
-        <p>Zava Agent is an illustrative agent client. Its requirements advisor queries the read-only catalog; it never manages catalog files. Samples follow the <a href="https://github.com/ChazGo/mxc/blob/5c2ba8e60ade041ca7893670985d61009a22b9ff/docs/mxc-policy-store-api.md#5-usage-examples">API contract's usage examples</a>.</p>
+        <p>Zava Agent is an illustrative agent client. Its requirements advisor queries the read-only catalog; it never manages catalog files. Samples follow the <a href="https://github.com/ChazGo/mxc/blob/2c682f352d2acf6c70bb880e70dd643a17748770/docs/mxc-policy-store-api.md#2-usage-examples">API contract's usage examples</a>.</p>
       </div>
 
       <div class="resolution-grid">
@@ -689,11 +691,8 @@ export declare function
     return undefined;
   }
   this.app.logResolution(tool, result.diagnostics);
-  const status = result.diagnostics.tools[0]?.status;
-  const covered = status === "matched_default"
-    || status === "matched_version"
-    || status === "version_out_of_range";
-  if (result.requirements === undefined || !covered) {
+  // One input: available requirements are enough to reach client policy.
+  if (result.requirements === undefined) {
     this.app.showUnpreparedTool(tool, result.diagnostics);
     return undefined;
   }
@@ -703,13 +702,14 @@ export declare function
     tool, result.requirements, relevantWarnings);
 }
 
-async createRequestForTool(tool: ToolCandidate, command: string) {
+async createRequestForTool(
+  tool: ToolCandidate, command: string, workingDirectory: string) {
   const requirements = await this.prepareTool(tool);
   return requirements === undefined
-    ? undefined : { ...requirements, command };
+    ? undefined : { ...requirements, command, workingDirectory };
 }</code></pre>
           </div>
-          <p class="status-note">Saved tool/intent settings take precedence even when catalog lookup is disabled; the enablement check is a Zava Agent preference, not an MXC API. <code>applyClientSettings</code> may accept, further restrict, or decline requirements, including applying client-wide "never allow" restrictions, and may prompt if configured. The command is added only to the returned <code>ContainerRequest</code>, never sent to the catalog.</p>
+          <p class="status-note">Saved tool/intent settings take precedence even when catalog lookup is disabled; the enablement check is a Zava Agent preference, not an MXC API. <code>applyClientSettings</code> may accept, further restrict, or decline requirements, including applying client-wide "never allow" restrictions, and may prompt if configured. The command and working directory are caller-owned and added only to the returned <code>ContainerRequest</code>, never sent to the catalog.</p>
         </article>
 
         <article class="git-example">
@@ -719,10 +719,10 @@ async createRequestForTool(tool: ToolCandidate, command: string) {
             <table>
               <thead><tr><th>Diagnostic</th><th>Client behavior</th></tr></thead>
               <tbody>
-                <tr><td><code>symbol_resolved</code>; successful selections</td><td>Log; use the result according to client settings</td></tr>
-                <tr><td>Architecture default/fallback, assumed casing, ignored PURL components, weak identity, out-of-range version</td><td>Pass the uncertainty to <code>applyClientSettings</code></td></tr>
-                <tr><td>Superseded read-only access, removed filesystem/network denies</td><td>Pass the full changed scope and source entries to the same helper</td></tr>
-                <tr><td>Unmatched/invalid identity, unparseable version, unsupported intent, unresolved filesystem identity or symbol</td><td>Return no prepared requirements; show corrective context</td></tr>
+                <tr><td><code>symbol_resolved</code>; successful default/version selections</td><td>Log; use the result according to client settings</td></tr>
+                <tr><td>Architecture defaults/fallbacks, assumed casing, ignored PURL components, weak identity, out-of-range version</td><td>Pass the uncertainty to <code>applyClientSettings</code></td></tr>
+                <tr><td>Superseded read-only access or removed filesystem/network denies</td><td>Pass the full changed scope and source entries to the same helper</td></tr>
+                <tr><td>Unmatched/invalid identity, unparseable version, unsupported intent, unresolved filesystem identity or required symbol</td><td>Return no prepared requirements; show corrective context</td></tr>
                 <tr><td>Library failure</td><td>Report by primary MXC code; no retry, revision substitution, or uncontained fallback</td></tr>
               </tbody>
             </table>
@@ -742,16 +742,16 @@ async createRequestForTool(tool: ToolCandidate, command: string) {
       </div>
 
       <div class="question-grid single">
-        <article><span>API sign-off</span><h3>Review the <a href="https://github.com/ChazGo/mxc/blob/5c2ba8e60ade041ca7893670985d61009a22b9ff/docs/mxc-policy-store-api.md">API contract</a> before implementation: approve the command-free <code>resolveToolRequirements</code> / <code>resolveToolRequirementsWithDiagnostics</code> surface returning <code>ContainerRequirements</code>, with Promise-based Node resolution and matching Rust/.NET bindings?</h3></article>
+        <article><span>API sign-off</span><h3>Review the <a href="https://github.com/ChazGo/mxc/blob/2c682f352d2acf6c70bb880e70dd643a17748770/docs/mxc-policy-store-api.md">API contract</a> before implementation: approve the command-free <code>resolveToolRequirements</code> / <code>resolveToolRequirementsWithDiagnostics</code> surface returning <code>ContainerRequirements</code>, with Promise-based Node resolution and matching Rust/.NET bindings?</h3></article>
       </div>
 
       <div class="status-table-shell alignment-table">
         <table>
-          <thead><tr><th>Earlier draft (was)</th><th>Spec 5c2ba8e (now)</th></tr></thead>
+          <thead><tr><th>Earlier draft (was)</th><th>Spec 2c682f3 (now)</th></tr></thead>
           <tbody>
             <tr><td><code>SandboxPolicy</code>, <code>resolveSandboxPolicy</code></td><td><code>ContainerRequirements</code>, <code>resolveToolRequirements</code></td></tr>
             <tr><td><code>SandboxConfigResolution.policy</code></td><td><code>ToolRequirementsResolution.requirements</code></td></tr>
-            <tr><td><code>default.sandboxPolicy</code> and its <code>version</code></td><td>Access-only <code>default.requirements</code>; catalog <code>sdkContractVersion</code> records the validation target; the SDK owns the wire version</td></tr>
+            <tr><td><code>default.sandboxPolicy</code> and its <code>version</code></td><td><code>default.requirements</code> subset; catalog <code>sdkContractVersion</code> records the validation target; the SDK owns the wire version</td></tr>
             <tr><td><code>ui.allowWindows</code></td><td><code>ui.disable</code> (inverse meaning); <code>clipboard</code> and <code>allowInputInjection</code> unchanged</td></tr>
             <tr><td>Synchronous Node resolution</td><td>Promise-returning plain verbs, no <code>Async</code> suffix</td></tr>
             <tr><td>Separate <code>mxc_policy_store</code> crate</td><td>Internal <code>policy_store</code> module in <code>mxc-sdk</code></td></tr>
@@ -770,15 +770,15 @@ async createRequestForTool(tool: ToolCandidate, command: string) {
       </div>
 
       <div class="source-list">
-        <a href="https://github.com/ChazGo/mxc/blob/5c2ba8e60ade041ca7893670985d61009a22b9ff/docs/mxc-policy-store-api.md">
+        <a href="https://github.com/ChazGo/mxc/blob/2c682f352d2acf6c70bb880e70dd643a17748770/docs/mxc-policy-store-api.md">
           <span>API contract</span>
           <strong>microsoft/mxc#1309 - Policy Store API</strong>
-          <small>Authoritative caller contract: operations, types, behavior, errors, diagnostics, and usage examples. Pinned to revision 5c2ba8e.</small>
+          <small>Authoritative caller contract: operations, types, behavior, errors, diagnostics, and usage examples. Pinned to revision 2c682f3.</small>
         </a>
-        <a href="https://github.com/ChazGo/mxc/blob/5c2ba8e60ade041ca7893670985d61009a22b9ff/docs/mxc-policy-store.md">
+        <a href="https://github.com/ChazGo/mxc/blob/2c682f352d2acf6c70bb880e70dd643a17748770/docs/mxc-policy-store.md">
           <span>Design spec</span>
           <strong>microsoft/mxc#1309 - Known-tool policy floors</strong>
-          <small>Catalog data model, authoring and source layout, implementation, and test plan. Pinned to revision 5c2ba8e.</small>
+          <small>Catalog data model, authoring and source layout, implementation, and test plan. Pinned to revision 2c682f3.</small>
         </a>
         <a href="https://github.com/microsoft/mxc/pull/779">
           <span>Design proposal</span>
@@ -798,14 +798,14 @@ async createRequestForTool(tool: ToolCandidate, command: string) {
       </div>
 
       <p class="as-of">
-        Design status as of October 6, 2026, reflecting spec revision 5c2ba8e, which splits the
-        API contract from the catalog design and adopts the one-file-per-tool catalog
-        layout. The APIs
+        Design status as of October 8, 2026, reflecting spec revision 2c682f3. Revision
+        5c2ba8e split the API contract from the catalog design and adopted the
+        one-file-per-tool catalog layout. The APIs
         remain pending review and are not part of MXC 1.0; no later release is committed.
         <span id="prototype-status">The
         <a href="https://github.com/ChazGo/mxc/tree/1103de89cf83736179ce207a6096ac0e69b86dc3/docs/policy-store">draft prototype at 1103de8</a>
-        (<a href="https://github.com/ChazGo/mxc/pull/1">ChazGo/mxc#1</a>) implements this
-        contract revision: the same API names in Node, Rust, and .NET, catalog revision
+        (<a href="https://github.com/ChazGo/mxc/pull/1">ChazGo/mxc#1</a>) was reconciled with
+        spec 5c2ba8e: the same API names in Node, Rust, and .NET, catalog revision
         <code>2026-10-06.1</code> validated against <code>sdkContractVersion</code>
         <code>1.0.0</code>, and the Git version, intent, and partial-coverage examples
         shown above. Its catalog source already uses one file per tool under <code>entries/</code>, assembled into the generated revision.</span>

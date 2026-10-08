@@ -87,7 +87,7 @@ const details = {
     owner: "SDK output",
     heading: "Requirements floor",
     summary:
-      "The returned floor is a candidate ContainerRequirements value combining the known minimum requirements of every contributing tool-plus-intent pair and dependency. It carries access fields only, no command or execution settings. It is compatibility input, not authorization or a guarantee of workflow success.",
+      "The returned floor is a candidate ContainerRequirements value combining the known minimum requirements of every contributing tool-plus-intent pair and dependency. It carries access fields and at most an advisory timeoutMs suggestion; no command or other execution settings. It is compatibility input, not authorization or a guarantee of workflow success.",
     code: "ContainerRequirements | undefined",
     items: [
       "Filesystem and scoped network requirements combine to satisfy every contributing pair",
@@ -100,7 +100,7 @@ const details = {
     owner: "MXC SDK",
     heading: "Read reviewed floor",
     summary:
-      "The SDK reads a local, immutable catalog revision embedded in the native library at build time, inheriting MXC package signing. Authors edit one JSON file per tool (identity, default, intents, all variants, dependencies, provenance); an assembler checks unique entryIds and dependency references, then emits the revision sorted by entryId. Entries author access fields only under default.requirements, revalidated against the SDK's exact v1 target at build. Lookup never downloads updates or contacts a service.",
+      "The SDK reads a local, immutable catalog revision embedded in the native library at build time, inheriting MXC package signing. Authors edit one JSON file per tool (identity, default, intents, all variants, dependencies, provenance); an assembler checks unique entryIds and dependency references, then emits the revision sorted by entryId. Entries author access fields and an optional advisory timeout under default.requirements, revalidated against the SDK's exact v1 target at build. Lookup never downloads updates or contacts a service.",
     code: "ctx.catalogRevision ?? installed default",
     items: [
       "Overlays use policyAdditions, intentAdditions for default intents, and newIntents for new names",
