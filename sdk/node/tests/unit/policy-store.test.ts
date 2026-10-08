@@ -18,6 +18,7 @@ import {
   type ResolveContext,
   type ToolCandidate,
 } from '../../src/v1/index.js';
+import { validateResolution } from '../../src/v1/tool-requirements.js';
 
 // The policy store runs in-process through mxc_ffi. Skip, rather than fail,
 // where the native library has not been built.
@@ -128,8 +129,9 @@ describe('policy store (prototype)', { skip }, () => {
     assert.ok(withOptIn.requirements !== undefined);
     const [tool] = withOptIn.diagnostics.tools;
     assert.strictEqual(tool.inputIndex, 0);
-    assert.strictEqual(tool.matches[0].entryId, 'tool:git');
-    assert.strictEqual(tool.matches[0].matchedIdentities[0].strength, 'weak');
+    assert.strictEqual(tool.contributes, true);
+    assert.strictEqual(tool.selection?.entryId, 'tool:git');
+    assert.strictEqual(tool.selection?.matchedIdentities[0].strength, 'weak');
     const weak = withOptIn.diagnostics.warnings.find((w) => w.code === 'weak_identity');
     assert.ok(weak !== undefined && weak.code === 'weak_identity');
     assert.strictEqual(weak.invocationName, 'git');
@@ -140,10 +142,10 @@ describe('policy store (prototype)', { skip }, () => {
     const [tool] = push.diagnostics.tools;
     assert.strictEqual(tool.status, 'matched_version');
     assert.strictEqual(
-      tool.matches[0].versionSelection.selectedVersionRange,
+      tool.selection?.versionSelection.selectedVersionRange,
       'vers:intdot/>=2.40|<2.50',
     );
-    assert.deepStrictEqual(tool.matches[0].intentSelection, {
+    assert.deepStrictEqual(tool.selection?.intentSelection, {
       requested: 'push',
       mode: 'named',
       selected: ['push'],
@@ -169,6 +171,9 @@ describe('policy store (prototype)', { skip }, () => {
     const unparseable = await resolveToolRequirementsWithDiagnostics(git('banana', 'fetch'), context);
     assert.strictEqual(unparseable.diagnostics.tools[0].status, 'version_unparseable');
     assert.strictEqual(unparseable.requirements, undefined);
+    // Selection metadata survives the failure without implying contribution.
+    assert.strictEqual(unparseable.diagnostics.tools[0].contributes, false);
+    assert.strictEqual(unparseable.diagnostics.tools[0].selection?.entryId, 'tool:git');
 
     const unsupported = await resolveToolRequirementsWithDiagnostics(git(undefined, 'bundle-fetch'), context);
     assert.strictEqual(unsupported.diagnostics.tools[0].status, 'intent_unsupported');
@@ -201,6 +206,15 @@ describe('policy store (prototype)', { skip }, () => {
     );
     assert.strictEqual(resolution.requirements?.network?.egress?.allow?.length, 1);
     assert.strictEqual(resolution.diagnostics.tools[2].status, 'tool_unmatched');
+    assert.deepStrictEqual(
+      resolution.diagnostics.tools.map((tool) => tool.contributes),
+      [true, true, false],
+    );
+    assert.strictEqual(resolution.diagnostics.tools[2].selection, undefined);
+    const unmatched = resolution.diagnostics.warnings.find((w) => w.code === 'tool_unmatched');
+    assert.ok(unmatched !== undefined && unmatched.code === 'tool_unmatched');
+    assert.strictEqual(unmatched.inputIndex, 2);
+    assert.strictEqual(unmatched.invocationName, 'no-such-tool');
   });
 
   it('rejects with MxcError and a stable reason for an invalid context', async () => {
@@ -217,5 +231,63 @@ describe('policy store (prototype)', { skip }, () => {
       resolveToolRequirements(git(undefined, ''), context),
       (error: unknown) => error instanceof MxcError && error.details?.reason === 'invalid_context',
     );
+  });
+
+  it('binds project_root through either context form and rejects differing values', async () => {
+    const { projectRoot, ...rest } = context;
+    const viaSymbol = await resolveToolRequirements(git(undefined, 'local'), {
+      ...rest,
+      symbols: { ...rest.symbols, project_root: projectRoot ?? '' },
+    });
+    assert.deepStrictEqual(viaSymbol, await resolveToolRequirements(git(undefined, 'local'), context));
+    await assert.rejects(
+      resolveToolRequirements([], {
+        ...context,
+        symbols: { ...context.symbols, project_root: `${paths.project}x` },
+      }),
+      (error: unknown) =>
+        error instanceof MxcError &&
+        error.code === 'malformed_request' &&
+        error.details?.reason === 'invalid_context',
+    );
+  });
+});
+
+describe('policy store diagnostics boundary validation (prototype)', () => {
+  const valid = () => ({
+    requirements: {},
+    diagnostics: {
+      catalogRevision: 'r',
+      tools: [{ inputIndex: 0, contributes: true, status: 'matched_default' }],
+      resolvedDependencies: [],
+      warnings: [],
+    },
+  });
+
+  it('accepts a well-formed result, including an unfamiliar status', () => {
+    validateResolution(valid());
+    const result = valid();
+    result.diagnostics.tools[0].status = 'some_future_status';
+    validateResolution(result);
+  });
+
+  it('rejects a missing or non-boolean contribution flag', () => {
+    for (const contributes of [undefined, 'true', 1]) {
+      const result = valid() as { diagnostics: { tools: Array<Record<string, unknown>> } };
+      result.diagnostics.tools[0].contributes = contributes;
+      assert.throws(
+        () => validateResolution(result),
+        (error: unknown) => error instanceof MxcError && error.code === 'backend_error',
+      );
+    }
+  });
+
+  it('rejects output that disagrees with the contribution flags', () => {
+    const withoutOutput = valid() as Record<string, unknown>;
+    delete withoutOutput.requirements;
+    assert.throws(() => validateResolution(withoutOutput), MxcError);
+    const noContributor = valid();
+    noContributor.diagnostics.tools[0].contributes = false;
+    assert.throws(() => validateResolution(noContributor), MxcError);
   });
 });

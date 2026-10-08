@@ -29,6 +29,7 @@
  */
 
 import { callPolicyStoreAsync, inspectPolicyStore } from '../bindings/policy-store.js';
+import { MxcError } from './errors.js';
 import type { ContainerRequest, NetworkRuleConfig } from './types.js';
 
 /** The access fields of a {@link ContainerRequest}, without a command. */
@@ -220,17 +221,28 @@ export type PolicyResolutionWarning = ToolResolutionWarning | ResolutionDetailWa
 export interface ToolRequirementsDiagnostics {
   catalogRevision: string;
   tools: Array<{
+    /** Position in the original input list, including repeated inputs. */
     inputIndex: number;
+    /**
+     * Whether this input's complete resolved requirements, including its
+     * selected dependencies, are in the returned requirements. Not unique
+     * access, authorization, or an execution guarantee.
+     */
+    contributes: boolean;
     status: ToolResolutionStatus;
-    /** At most one entry; empty for `tool_unmatched`. */
-    matches: Array<{
+    /**
+     * The selected entry; absent when no entry was selected. It survives a
+     * version or intent failure, so its presence alone never means the input
+     * contributes.
+     */
+    selection?: {
       entryId: string;
       entryRevision: number;
       matchedIdentities: Array<{ kind: string; strength: 'strong' | 'weak' }>;
       versionSelection: VersionSelection;
       /** Absent when the version could not be parsed. */
       intentSelection?: IntentSelection;
-    }>;
+    };
   }>;
   resolvedDependencies: Array<{
     entryId: string;
@@ -351,7 +363,70 @@ export async function resolveToolRequirementsWithDiagnostics(
     'mxc_resolve_tool_requirements_with_diagnostics_json',
     { tools, context },
   )) as { requirements?: ContainerRequirements; diagnostics: ToolRequirementsDiagnostics };
+  validateResolution(result);
   return { requirements: result.requirements, diagnostics: result.diagnostics };
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * Validates a diagnostics result before it is exposed (API spec §4): a
+ * missing or malformed required field, including a missing or non-boolean
+ * `contributes`, is a library failure rather than a valid partial result.
+ * Unfamiliar status strings remain descriptive and are not rejected.
+ *
+ * @internal Exported for tests; not part of the `v1` index.
+ */
+export function validateResolution(result: unknown): void {
+  const fail = (problem: string): never => {
+    throw new MxcError(
+      'backend_error',
+      `native policy store returned a malformed diagnostics result: ${problem}`,
+    );
+  };
+  if (!isObject(result)) fail('the result is not an object');
+  const { requirements, diagnostics } = result as Record<string, unknown>;
+  if (requirements !== undefined && !isObject(requirements)) {
+    fail('requirements is not an object');
+  }
+  if (!isObject(diagnostics)) return fail('diagnostics is not an object');
+  if (typeof diagnostics.catalogRevision !== 'string') fail('catalogRevision is not a string');
+  if (!Array.isArray(diagnostics.tools)) return fail('tools is not an array');
+  let anyContributes = false;
+  diagnostics.tools.forEach((tool: unknown, index: number) => {
+    const at = `tools[${index}]`;
+    if (!isObject(tool)) return fail(`${at} is not an object`);
+    if (tool.inputIndex !== index) fail(`${at}.inputIndex is not ${index}`);
+    if (typeof tool.contributes !== 'boolean') fail(`${at}.contributes is not a boolean`);
+    if (typeof tool.status !== 'string') fail(`${at}.status is not a string`);
+    const selection = tool.selection;
+    if (selection !== undefined) {
+      if (
+        !isObject(selection) ||
+        typeof selection.entryId !== 'string' ||
+        typeof selection.entryRevision !== 'number' ||
+        !Array.isArray(selection.matchedIdentities) ||
+        !isObject(selection.versionSelection) ||
+        (selection.intentSelection !== undefined && !isObject(selection.intentSelection))
+      ) {
+        fail(`${at}.selection is malformed`);
+      }
+    }
+    anyContributes ||= tool.contributes === true;
+  });
+  if (!Array.isArray(diagnostics.resolvedDependencies)) fail('resolvedDependencies is not an array');
+  if (
+    !Array.isArray(diagnostics.warnings) ||
+    !diagnostics.warnings.every(
+      (w: unknown) => isObject(w) && typeof w.code === 'string' && typeof w.message === 'string',
+    )
+  ) {
+    fail('warnings are malformed');
+  }
+  if ((requirements !== undefined) !== anyContributes) {
+    fail('requirements must be present exactly when at least one input contributes');
+  }
 }
 
 /**
