@@ -854,9 +854,11 @@ separate catalog digest or runtime checksum. Schema validation still applies.
   required allow rule is removed in full, within one entry or across entries,
   without failing the request; non-overlapping deny rules remain; warnings
   identify the rule, its full scope, and source entries
-- incompatible SDK target metadata and network fields other than egress allow/deny rules,
-  or other fields outside the supported composition rules, remain rejected
-  rather than broadly approximated
+- a single network-requiring component retains its supported egress and ingress
+  settings; components requiring no network do not introduce a network merge
+- incompatible SDK target metadata and undefined cross-source composition,
+  including unsupported non-default ingress merges, remain rejected rather
+  than broadly approximated; this is not a blanket rejection of ingress
 - a UI or timeout field from one deduplicated source is retained; omission in
   another source adds no value; distinct sources supplying that field fail with
   `policy_validation`/`composition_conflict`, for equal and unequal values alike

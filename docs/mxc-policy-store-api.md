@@ -42,11 +42,7 @@ export declare function resolveToolRequirementsWithDiagnostics(
 ): Promise<ToolRequirementsResolution>;
 
 export declare function listCatalogEntries(): CatalogEntryMetadata[];
-export declare function getCatalogInfo(): {
-  catalogSchemaVersion: string;
-  catalogRevision: string;
-  sdkContractVersion: string;
-};
+export declare function getCatalogInfo(): CatalogInfo;
 ```
 
 Resolution is asynchronous in Node, with plain names and no `Async` suffix;
@@ -63,6 +59,8 @@ pub fn resolve_tool_requirements(
 pub fn resolve_tool_requirements_with_diagnostics(
     tools: &[ToolCandidate], context: Option<&ResolveContext>,
 ) -> Result<ToolRequirementsResolution, Error>;
+pub fn list_catalog_entries() -> Result<Vec<CatalogEntryMetadata>, Error>;
+pub fn get_catalog_info() -> Result<CatalogInfo, Error>;
 ```
 
 **.NET (`Microsoft.Mxc.Sdk.V1.MxcContainer`).** The single/list overloads are
@@ -90,6 +88,9 @@ public static Task<ToolRequirementsResolution> ResolveToolRequirementsWithDiagno
 public static Task<ToolRequirementsResolution> ResolveToolRequirementsWithDiagnosticsAsync(
     IReadOnlyList<ToolCandidate> tools, ResolveContext? context = null,
     CancellationToken cancellationToken = default);
+
+public static IReadOnlyList<CatalogEntryMetadata> ListCatalogEntries();
+public static CatalogInfo GetCatalogInfo();
 ```
 
 Async cancellation follows the existing `MxcContainer`/`MxcLifecycle` convention:
@@ -102,6 +103,9 @@ Both resolution operations produce the same
 requirements; diagnostics come from that pass, not a second lookup or global
 "last result." Metadata inspection exposes selectors and provenance, not policy
 bodies, and reports the installed default catalog.
+The inspection methods are synchronous in all bindings and take no arguments.
+Rust reports failures through `Result`; .NET uses the existing SDK exception
+path. They return the shared `CatalogInfo` and `CatalogEntryMetadata` shapes below.
 
 ## 2. Types and fields
 
@@ -387,6 +391,12 @@ not just the overlap. Other grants may apply throughout the removed scope.
 ### Inspection metadata
 
 ```ts
+export interface CatalogInfo {
+  catalogSchemaVersion: string;
+  catalogRevision: string;
+  sdkContractVersion: string;
+}
+
 export type CatalogIdentityMetadata =
   | { kind: "purl"; value: string }
   | { kind: "invocation-name"; names: string[] };
@@ -425,6 +435,12 @@ export interface CatalogEntryMetadata {
   };
 }
 ```
+
+`CatalogInfo` and `CatalogEntryMetadata` are SDK-owned metadata records in each
+versioned binding. Rust uses snake_case field names and owned strings; .NET uses
+PascalCase properties and strings. `CatalogInfo` contains exactly the three
+non-optional version/revision fields above; neither inspection operation returns
+requirements or requires filesystem symbol resolution.
 
 ## 3. Behavior
 
@@ -571,7 +587,8 @@ Unknown necessary identity excludes affected pairs with
 unresolved restrictive side. Runner enforcement remains authoritative.
 
 A no-network tool does not veto another tool's network requirement. One
-network-requiring component retains its supported settings. Multiple scoped
+network-requiring component retains its supported egress and ingress settings.
+This does not define a cross-source ingress merge. Multiple scoped
 egress requirements union whole allow/deny rules under deny-by-default,
 preserving destination/exclusion/protocol/port pairings. Remove an entire catalog
 deny that overlaps a required allow after CIDR exclusions and protocol/port
