@@ -91,6 +91,11 @@ internal sealed class CamelCaseJsonStringEnumConverter<TEnum>
 [JsonSerializable(typeof(LifecycleResult))]
 [JsonSerializable(typeof(ProvisionResult))]
 [JsonSerializable(typeof(ContainerId))]
+// Prototype policy store results (pending API review).
+[JsonSerializable(typeof(ContainerRequirements))]
+[JsonSerializable(typeof(NativeToolRequirementsResolution))]
+[JsonSerializable(typeof(CatalogInfo))]
+[JsonSerializable(typeof(CatalogEntryMetadata[]))]
 // Primitive and collection shapes resolved by the custom converters and helpers.
 [JsonSerializable(typeof(string[]))]
 [JsonSerializable(typeof(List<string>))]
@@ -121,6 +126,13 @@ internal static class MxcJson
     /// rejected rather than silently ignored.
     /// </summary>
     internal static readonly JsonSerializerOptions ProbeOptions = CreateProbeOptions();
+
+    /// <summary>
+    /// Options for the prototype policy store's results: strict like
+    /// <see cref="ProbeOptions"/>, so a field the v1 types cannot hold is
+    /// rejected rather than silently dropped.
+    /// </summary>
+    internal static readonly JsonSerializerOptions PolicyStoreOptions = CreateProbeOptions();
 
     private static JsonSerializerOptions CreateOptions()
     {

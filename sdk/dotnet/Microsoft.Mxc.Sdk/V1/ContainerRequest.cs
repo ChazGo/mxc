@@ -18,6 +18,23 @@ public sealed class ContainerRequest
         Command = command;
     }
 
+    /// <summary>
+    /// <b>PROTOTYPE, pending API review.</b> Create a request for
+    /// <paramref name="command"/> carrying reviewed
+    /// <paramref name="requirements"/>. The sections are shared, not copied.
+    /// </summary>
+    public static ContainerRequest FromRequirements(ContainerRequirements requirements, string command)
+    {
+        ArgumentNullException.ThrowIfNull(requirements);
+        return new ContainerRequest(command)
+        {
+            Filesystem = requirements.Filesystem,
+            Network = requirements.Network,
+            Ui = requirements.Ui,
+            TimeoutMs = requirements.TimeoutMs,
+        };
+    }
+
     /// <summary>The command line to run.</summary>
     [JsonPropertyName("command")]
     public string Command { get; }

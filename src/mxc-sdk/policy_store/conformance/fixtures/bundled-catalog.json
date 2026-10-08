@@ -1,0 +1,3065 @@
+{
+  "$comment": "Language-neutral conformance cases against the bundled catalog. Every binding (Rust, the C ABI, Node, .NET) must produce the same `expect` for each case from resolveToolRequirementsWithDiagnostics(tools, context), and resolveToolRequirements must return `expect.requirements` (absent when no requirements are resolved). `expectError` cases must fail with that code and reason. Expectations are recorded with `MXC_POLICY_STORE_UPDATE_FIXTURES=<dir> cargo test -p mxc-sdk --test policy_store_conformance` and reviewed by hand. An optional `host` describes the fixed test host (platform, nativeArchitecture, symbols, discovered, aliases, unknownPaths); bindings that run on the real host skip cases that set host facts other than platform and architecture.",
+  "catalog": "bundled",
+  "cases": [
+    {
+      "name": "git by string shorthand with weak fallback on windows",
+      "tools": "git.exe",
+      "context": {
+        "platform": "windows",
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "projectRoot": "C:\\work\\repo",
+        "symbols": {
+          "git_prefix": "C:\\Program Files\\Git\\cmd",
+          "programData": "C:\\ProgramData"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "C:\\Program Files\\Git\\cmd",
+              "C:\\ProgramData\\Git"
+            ],
+            "readwritePaths": [
+              "C:\\work\\repo"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                },
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 22
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "fetch",
+                    "local",
+                    "push"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:git",
+              "invocationName": "git.exe",
+              "message": "input 0 ('git.exe') matched tool:git only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "C:\\Program Files\\Git\\cmd",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to 'C:\\Program Files\\Git\\cmd' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "C:\\work\\repo",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to 'C:\\work\\repo' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "programData",
+              "value": "C:\\ProgramData",
+              "source": "caller",
+              "message": "symbol 'programData' resolved to 'C:\\ProgramData' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "node on linux with omitted architecture reports the native-architecture default",
+      "host": {
+        "platform": "linux",
+        "nativeArchitecture": "arm64"
+      },
+      "tools": [
+        {
+          "invocationName": "node"
+        }
+      ],
+      "context": {
+        "platform": "linux",
+        "allowWeakIdentityFallback": true,
+        "symbols": {
+          "node_prefix": "/usr/local/bin"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/usr/local/bin"
+            ]
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:node",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:node",
+              "invocationName": "node",
+              "message": "input 0 ('node') matched tool:node only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/usr/local/bin",
+              "source": "caller",
+              "message": "symbol 'node_prefix' resolved to '/usr/local/bin' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "npm by package URL composes the node dependency on macos, with both npm predicates attributed; a purl-embedded version is ignored",
+      "tools": {
+        "invocationName": "npx",
+        "packageUrl": "pkg:npm/npm@10.9.0"
+      },
+      "context": {
+        "platform": "macos",
+        "architecture": "arm64",
+        "allowWeakIdentityFallback": true,
+        "projectRoot": "/Users/dev/app/",
+        "symbols": {
+          "npm_prefix": "/opt/homebrew/bin",
+          "npm_cache": "/Users/dev/.npm",
+          "node_prefix": "/opt/homebrew/bin"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/opt/homebrew/bin"
+            ],
+            "readwritePaths": [
+              "/Users/dev/app",
+              "/Users/dev/.npm"
+            ]
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:npm",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:node",
+              "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            }
+          ],
+          "warnings": [
+            {
+              "code": "purl_components_ignored",
+              "inputIndex": 0,
+              "packageUrl": "pkg:npm/npm@10.9.0",
+              "ignoredComponents": [
+                "version"
+              ],
+              "message": "input 0 ('npx'): packageUrl version ignored for matching; it is not version evidence (supply detectedVersion)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:npm"
+              ],
+              "symbol": "npm_prefix",
+              "value": "/opt/homebrew/bin",
+              "source": "caller",
+              "message": "symbol 'npm_prefix' resolved to '/opt/homebrew/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:npm"
+              ],
+              "symbol": "project_root",
+              "value": "/Users/dev/app/",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/Users/dev/app/' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:npm"
+              ],
+              "symbol": "npm_cache",
+              "value": "/Users/dev/.npm",
+              "source": "caller",
+              "message": "symbol 'npm_cache' resolved to '/Users/dev/.npm' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/opt/homebrew/bin",
+              "source": "caller",
+              "message": "symbol 'node_prefix' resolved to '/opt/homebrew/bin' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "an array of tools composes once per entry: shared dependency and repeated input contribute once",
+      "tools": [
+        "git",
+        "npm",
+        "node",
+        "npm"
+      ],
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin",
+          "npm_prefix": "/opt/node/bin",
+          "npm_cache": "/home/u/.npm",
+          "node_prefix": "/opt/node/bin"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/usr/bin",
+              "/opt/node/bin"
+            ],
+            "readwritePaths": [
+              "/w",
+              "/home/u/.npm"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                },
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 22
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "fetch",
+                    "local",
+                    "push"
+                  ]
+                }
+              }
+            },
+            {
+              "inputIndex": 1,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:npm",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
+                }
+              }
+            },
+            {
+              "inputIndex": 2,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:node",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
+                }
+              }
+            },
+            {
+              "inputIndex": 3,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:npm",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:node",
+              "entryRevision": 2,
+              "inputIndexes": [
+                1,
+                3
+              ],
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            }
+          ],
+          "warnings": [
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:git",
+              "invocationName": "git",
+              "message": "input 0 ('git') matched tool:git only by invocation name (weak identity)"
+            },
+            {
+              "code": "weak_identity",
+              "inputIndex": 1,
+              "entryId": "tool:npm",
+              "invocationName": "npm",
+              "message": "input 1 ('npm') matched tool:npm only by invocation name (weak identity)"
+            },
+            {
+              "code": "weak_identity",
+              "inputIndex": 2,
+              "entryId": "tool:node",
+              "invocationName": "node",
+              "message": "input 2 ('node') matched tool:node only by invocation name (weak identity)"
+            },
+            {
+              "code": "weak_identity",
+              "inputIndex": 3,
+              "entryId": "tool:npm",
+              "invocationName": "npm",
+              "message": "input 3 ('npm') matched tool:npm only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0,
+                1,
+                3
+              ],
+              "entryIds": [
+                "tool:git",
+                "tool:npm"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1,
+                3
+              ],
+              "entryIds": [
+                "tool:npm"
+              ],
+              "symbol": "npm_prefix",
+              "value": "/opt/node/bin",
+              "source": "caller",
+              "message": "symbol 'npm_prefix' resolved to '/opt/node/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1,
+                3
+              ],
+              "entryIds": [
+                "tool:npm"
+              ],
+              "symbol": "npm_cache",
+              "value": "/home/u/.npm",
+              "source": "caller",
+              "message": "symbol 'npm_cache' resolved to '/home/u/.npm' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1,
+                2,
+                3
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/opt/node/bin",
+              "source": "caller",
+              "message": "symbol 'node_prefix' resolved to '/opt/node/bin' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "known and unknown inputs: the known requirement composes and the unknown one is reported",
+      "tools": [
+        "cargo",
+        "git"
+      ],
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/usr/bin"
+            ],
+            "readwritePaths": [
+              "/w"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                },
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 22
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": false,
+              "status": "tool_unmatched"
+            },
+            {
+              "inputIndex": 1,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "fetch",
+                    "local",
+                    "push"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "tool_unmatched",
+              "inputIndex": 0,
+              "invocationName": "cargo",
+              "message": "input 0 ('cargo') matched no eligible catalog entry"
+            },
+            {
+              "code": "weak_identity",
+              "inputIndex": 1,
+              "entryId": "tool:git",
+              "invocationName": "git",
+              "message": "input 1 ('git') matched tool:git only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "invocation name alone is not accepted without opt-in",
+      "tools": "npm",
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "npm_prefix": "/p",
+          "npm_cache": "/c",
+          "node_prefix": "/n"
+        }
+      },
+      "expect": {
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": false,
+              "status": "tool_unmatched"
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "tool_unmatched",
+              "inputIndex": 0,
+              "invocationName": "npm",
+              "message": "input 0 ('npm') matched no eligible catalog entry: tool:npm matched only by invocation name and allowWeakIdentityFallback is not enabled"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "empty input array produces no policy and no per-input records",
+      "tools": [],
+      "context": {
+        "platform": "linux",
+        "architecture": "x64"
+      },
+      "expect": {
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [],
+          "resolvedDependencies": [],
+          "warnings": []
+        }
+      }
+    },
+    {
+      "name": "unresolved required symbol prevents policy output, with diagnostics",
+      "tools": "git",
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "symbols": {
+          "git_prefix": "/usr/bin"
+        }
+      },
+      "expect": {
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": false,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "fetch",
+                    "local",
+                    "push"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:git",
+              "invocationName": "git",
+              "message": "input 0 ('git') matched tool:git only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_unresolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "message": "required symbol 'project_root' (needed by tool:git) is unresolved; supply ResolveContext.projectRoot; no requirements were returned"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "unavailable explicit revision is an error, not a substitution",
+      "tools": "git",
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "catalogRevision": "2099-01-01.1"
+      },
+      "expectError": {
+        "code": "backend_error",
+        "reason": "revision_unavailable"
+      }
+    },
+    {
+      "name": "relative symbol value is rejected",
+      "tools": "node",
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "symbols": {
+          "node_prefix": "bin"
+        }
+      },
+      "expectError": {
+        "code": "malformed_request",
+        "reason": "invalid_context"
+      }
+    },
+    {
+      "name": "read-write supersedes read-only when symbol values make access classes overlap",
+      "tools": [
+        "git",
+        "node"
+      ],
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "projectRoot": "/opt",
+        "symbols": {
+          "git_prefix": "/usr/bin",
+          "node_prefix": "/opt/node"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/usr/bin"
+            ],
+            "readwritePaths": [
+              "/opt"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                },
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 22
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "fetch",
+                    "local",
+                    "push"
+                  ]
+                }
+              }
+            },
+            {
+              "inputIndex": 1,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:node",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:git",
+              "invocationName": "git",
+              "message": "input 0 ('git') matched tool:git only by invocation name (weak identity)"
+            },
+            {
+              "code": "weak_identity",
+              "inputIndex": 1,
+              "entryId": "tool:node",
+              "invocationName": "node",
+              "message": "input 1 ('node') matched tool:node only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/opt",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/opt' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/opt/node",
+              "source": "caller",
+              "message": "symbol 'node_prefix' resolved to '/opt/node' from the caller"
+            },
+            {
+              "code": "readonly_superseded",
+              "inputIndexes": [
+                0,
+                1
+              ],
+              "entryIds": [
+                "tool:git",
+                "tool:node"
+              ],
+              "removed": {
+                "path": "/opt/node",
+                "access": "readonly",
+                "entryIds": [
+                  "tool:node"
+                ]
+              },
+              "requiredBy": [
+                {
+                  "path": "/opt",
+                  "access": "readwrite",
+                  "entryIds": [
+                    "tool:git"
+                  ]
+                }
+              ],
+              "message": "read-only '/opt/node' (tool:node) is covered by read-write '/opt' (tool:git); the read-only entry was omitted"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "git push without a detected version uses the default and the push intent",
+      "tools": {
+        "invocationName": "git",
+        "packageUrl": "pkg:generic/git",
+        "intent": "push"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin",
+          "ssh_prefix": "/usr/lib/ssh",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/usr/bin"
+            ],
+            "readwritePaths": [
+              "/w"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 22
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "push",
+                  "mode": "named",
+                  "selected": [
+                    "push"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "git push inside a version range adds the ssh dependency",
+      "tools": {
+        "invocationName": "git",
+        "packageUrl": "pkg:generic/git",
+        "detectedVersion": "2.45.1",
+        "intent": "push"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin",
+          "ssh_prefix": "/usr/lib/ssh",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/usr/bin",
+              "/usr/lib/ssh"
+            ],
+            "readwritePaths": [
+              "/w"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 22
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_version",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_version",
+                  "detectedVersion": "2.45.1",
+                  "selectedVersionRange": "vers:intdot/>=2.40|<2.50"
+                },
+                "intentSelection": {
+                  "requested": "push",
+                  "mode": "named",
+                  "selected": [
+                    "push"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:ssh",
+              "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            }
+          ],
+          "warnings": [
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:ssh"
+              ],
+              "symbol": "ssh_prefix",
+              "value": "/usr/lib/ssh",
+              "source": "caller",
+              "message": "symbol 'ssh_prefix' resolved to '/usr/lib/ssh' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "git bundle-fetch is defined by the 2.50 range",
+      "tools": {
+        "invocationName": "git",
+        "packageUrl": "pkg:generic/git",
+        "detectedVersion": "2.51.0",
+        "intent": "bundle-fetch"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin",
+          "ssh_prefix": "/usr/lib/ssh",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/usr/bin"
+            ],
+            "readwritePaths": [
+              "/w",
+              "/tmp/git-bundles"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "198.51.100.20/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_version",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_version",
+                  "detectedVersion": "2.51.0",
+                  "selectedVersionRange": "vers:intdot/>=2.50|<3"
+                },
+                "intentSelection": {
+                  "requested": "bundle-fetch",
+                  "mode": "named",
+                  "selected": [
+                    "bundle-fetch"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "temp_dir",
+              "value": "/tmp",
+              "source": "caller",
+              "message": "symbol 'temp_dir' resolved to '/tmp' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "git bundle-fetch below 2.50 is intent_unsupported and contributes nothing",
+      "tools": {
+        "invocationName": "git",
+        "packageUrl": "pkg:generic/git",
+        "detectedVersion": "2.45.1",
+        "intent": "bundle-fetch"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin",
+          "ssh_prefix": "/usr/lib/ssh",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": false,
+              "status": "intent_unsupported",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_version",
+                  "detectedVersion": "2.45.1",
+                  "selectedVersionRange": "vers:intdot/>=2.40|<2.50"
+                },
+                "intentSelection": {
+                  "requested": "bundle-fetch",
+                  "mode": "unsupported",
+                  "selected": []
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "intent_unsupported",
+              "inputIndex": 0,
+              "entryId": "tool:git",
+              "intent": "bundle-fetch",
+              "message": "input 0 ('git'): intent 'bundle-fetch' is not defined for the selected policy of tool:git (available: fetch, local, push); the input contributes nothing"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "git out-of-range version with an unsupported intent keeps version_out_of_range in versionSelection",
+      "tools": {
+        "invocationName": "git",
+        "packageUrl": "pkg:generic/git",
+        "detectedVersion": "2.30.0",
+        "intent": "bundle-fetch"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin",
+          "ssh_prefix": "/usr/lib/ssh",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": false,
+              "status": "intent_unsupported",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "version_out_of_range",
+                  "detectedVersion": "2.30.0"
+                },
+                "intentSelection": {
+                  "requested": "bundle-fetch",
+                  "mode": "unsupported",
+                  "selected": []
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "version_out_of_range",
+              "inputIndex": 0,
+              "entryId": "tool:git",
+              "detectedVersion": "2.30.0",
+              "message": "input 0 ('git'): detected version '2.30.0' is outside every reviewed version range for tool:git; its unversioned default applies"
+            },
+            {
+              "code": "intent_unsupported",
+              "inputIndex": 0,
+              "entryId": "tool:git",
+              "intent": "bundle-fetch",
+              "message": "input 0 ('git'): intent 'bundle-fetch' is not defined for the selected policy of tool:git (available: fetch, local, push); the input contributes nothing"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "git unparseable version contributes nothing",
+      "tools": {
+        "invocationName": "git",
+        "packageUrl": "pkg:generic/git",
+        "detectedVersion": "banana",
+        "intent": "fetch"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin",
+          "ssh_prefix": "/usr/lib/ssh",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": false,
+              "status": "version_unparseable",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "version_unparseable",
+                  "detectedVersion": "banana"
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "version_unparseable",
+              "inputIndex": 0,
+              "entryId": "tool:git",
+              "detectedVersion": "banana",
+              "message": "input 0 ('git'): detected version 'banana' is not a valid intdot version for tool:git; the input contributes nothing"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "git without an intent includes base access and every intent of the effective policy",
+      "tools": {
+        "invocationName": "git",
+        "packageUrl": "pkg:generic/git",
+        "detectedVersion": "2.51.0"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin",
+          "ssh_prefix": "/usr/lib/ssh",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/usr/bin"
+            ],
+            "readwritePaths": [
+              "/w",
+              "/tmp/git-bundles"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "198.51.100.20/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                },
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                },
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 22
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_version",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_version",
+                  "detectedVersion": "2.51.0",
+                  "selectedVersionRange": "vers:intdot/>=2.50|<3"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "bundle-fetch",
+                    "fetch",
+                    "local",
+                    "push"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "temp_dir",
+              "value": "/tmp",
+              "source": "caller",
+              "message": "symbol 'temp_dir' resolved to '/tmp' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "git local intent on windows adds the programData overlay",
+      "tools": {
+        "invocationName": "git",
+        "packageUrl": "pkg:generic/git",
+        "intent": "local"
+      },
+      "context": {
+        "platform": "windows",
+        "architecture": "x64",
+        "projectRoot": "C:\\work",
+        "symbols": {
+          "git_prefix": "C:\\Program Files\\Git",
+          "programData": "C:\\ProgramData"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "C:\\Program Files\\Git",
+              "C:\\ProgramData\\Git"
+            ],
+            "readwritePaths": [
+              "C:\\work"
+            ]
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "local",
+                  "mode": "named",
+                  "selected": [
+                    "local"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "C:\\Program Files\\Git",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to 'C:\\Program Files\\Git' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "C:\\work",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to 'C:\\work' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "programData",
+              "value": "C:\\ProgramData",
+              "source": "caller",
+              "message": "symbol 'programData' resolved to 'C:\\ProgramData' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "pairs compose: local does not veto fetch or push network needs; an unmatched tool resolves alongside",
+      "tools": [
+        {
+          "invocationName": "git",
+          "packageUrl": "pkg:generic/git",
+          "intent": "local"
+        },
+        {
+          "invocationName": "git",
+          "packageUrl": "pkg:generic/git",
+          "intent": "fetch"
+        },
+        {
+          "invocationName": "git",
+          "packageUrl": "pkg:generic/git",
+          "intent": "push"
+        },
+        "cargo"
+      ],
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin",
+          "ssh_prefix": "/usr/lib/ssh",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/usr/bin"
+            ],
+            "readwritePaths": [
+              "/w"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                },
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 22
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "local",
+                  "mode": "named",
+                  "selected": [
+                    "local"
+                  ]
+                }
+              }
+            },
+            {
+              "inputIndex": 1,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "fetch",
+                  "mode": "named",
+                  "selected": [
+                    "fetch"
+                  ]
+                }
+              }
+            },
+            {
+              "inputIndex": 2,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "push",
+                  "mode": "named",
+                  "selected": [
+                    "push"
+                  ]
+                }
+              }
+            },
+            {
+              "inputIndex": 3,
+              "contributes": false,
+              "status": "tool_unmatched"
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "tool_unmatched",
+              "inputIndex": 3,
+              "invocationName": "cargo",
+              "message": "input 3 ('cargo') matched no eligible catalog entry"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0,
+                1,
+                2
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0,
+                1,
+                2
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "an empty intent is invalid",
+      "tools": {
+        "invocationName": "git",
+        "packageUrl": "pkg:generic/git",
+        "intent": ""
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin",
+          "ssh_prefix": "/usr/lib/ssh",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expectError": {
+        "code": "malformed_request",
+        "reason": "invalid_context"
+      }
+    },
+    {
+      "name": "an invalid candidate package URL leaves the pair unmatched, with no invocation-name retry",
+      "tools": [
+        {
+          "invocationName": "git",
+          "packageUrl": "pkg:generic"
+        },
+        {
+          "invocationName": "node"
+        }
+      ],
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin",
+          "node_prefix": "/opt/node/bin"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/opt/node/bin"
+            ]
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": false,
+              "status": "tool_unmatched"
+            },
+            {
+              "inputIndex": 1,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:node",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "purl_invalid",
+              "inputIndex": 0,
+              "packageUrl": "pkg:generic",
+              "message": "input 0 ('git'): 'pkg:generic' is not a valid package URL; the input was not matched by invocation name either"
+            },
+            {
+              "code": "weak_identity",
+              "inputIndex": 1,
+              "entryId": "tool:node",
+              "invocationName": "node",
+              "message": "input 1 ('node') matched tool:node only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/opt/node/bin",
+              "source": "caller",
+              "message": "symbol 'node_prefix' resolved to '/opt/node/bin' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "package URL version, qualifiers, and subpath are ignored for matching, in that order",
+      "tools": {
+        "invocationName": "git",
+        "packageUrl": "pkg:generic/git@2.45.1?arch=x64#bin",
+        "intent": "local"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/usr/bin"
+            ],
+            "readwritePaths": [
+              "/w"
+            ]
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "local",
+                  "mode": "named",
+                  "selected": [
+                    "local"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "purl_components_ignored",
+              "inputIndex": 0,
+              "packageUrl": "pkg:generic/git@2.45.1?arch=x64#bin",
+              "ignoredComponents": [
+                "version",
+                "qualifiers",
+                "subpath"
+              ],
+              "message": "input 0 ('git'): packageUrl version, qualifiers, subpath ignored for matching; it is not version evidence (supply detectedVersion)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a caller symbol falls back to discovery, then to the platform default, each reported",
+      "tools": {
+        "invocationName": "npm",
+        "packageUrl": "pkg:npm/npm"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w"
+      },
+      "host": {
+        "platform": "linux",
+        "symbols": {
+          "user_home": "/home/u"
+        },
+        "discovered": {
+          "npm_prefix": "/usr/lib/node_modules/npm/bin",
+          "node_prefix": "/usr/bin"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/usr/lib/node_modules/npm/bin",
+              "/usr/bin"
+            ],
+            "readwritePaths": [
+              "/w",
+              "/home/u/.npm"
+            ]
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:npm",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:node",
+              "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            }
+          ],
+          "warnings": [
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:npm"
+              ],
+              "symbol": "npm_prefix",
+              "value": "/usr/lib/node_modules/npm/bin",
+              "source": "discovery",
+              "message": "symbol 'npm_prefix' resolved to '/usr/lib/node_modules/npm/bin' from host-local discovery"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:npm"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:npm"
+              ],
+              "symbol": "npm_cache",
+              "value": "/home/u/.npm",
+              "source": "default",
+              "message": "symbol 'npm_cache' resolved to '/home/u/.npm' from the contract's platform default"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/usr/bin",
+              "source": "discovery",
+              "message": "symbol 'node_prefix' resolved to '/usr/bin' from host-local discovery"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "unknown filesystem identity drops every pair owning either side; other pairs still resolve",
+      "tools": [
+        {
+          "invocationName": "git",
+          "packageUrl": "pkg:generic/git",
+          "intent": "local"
+        },
+        "node",
+        "ssh"
+      ],
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin",
+          "node_prefix": "/opt/node/bin",
+          "ssh_prefix": "/usr/lib/ssh"
+        }
+      },
+      "host": {
+        "platform": "linux",
+        "unknownPaths": [
+          "/opt/node/bin"
+        ]
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/usr/lib/ssh"
+            ]
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": false,
+              "status": "filesystem_identity_unresolved",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "local",
+                  "mode": "named",
+                  "selected": [
+                    "local"
+                  ]
+                }
+              }
+            },
+            {
+              "inputIndex": 1,
+              "contributes": false,
+              "status": "filesystem_identity_unresolved",
+              "selection": {
+                "entryId": "tool:node",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
+                }
+              }
+            },
+            {
+              "inputIndex": 2,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:ssh",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "weak_identity",
+              "inputIndex": 1,
+              "entryId": "tool:node",
+              "invocationName": "node",
+              "message": "input 1 ('node') matched tool:node only by invocation name (weak identity)"
+            },
+            {
+              "code": "weak_identity",
+              "inputIndex": 2,
+              "entryId": "tool:ssh",
+              "invocationName": "ssh",
+              "message": "input 2 ('ssh') matched tool:ssh only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/opt/node/bin",
+              "source": "caller",
+              "message": "symbol 'node_prefix' resolved to '/opt/node/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                2
+              ],
+              "entryIds": [
+                "tool:ssh"
+              ],
+              "symbol": "ssh_prefix",
+              "value": "/usr/lib/ssh",
+              "source": "caller",
+              "message": "symbol 'ssh_prefix' resolved to '/usr/lib/ssh' from the caller"
+            },
+            {
+              "code": "filesystem_identity_unresolved",
+              "inputIndexes": [
+                0,
+                1
+              ],
+              "entryIds": [
+                "tool:git",
+                "tool:node"
+              ],
+              "paths": [
+                "/opt/node/bin",
+                "/w"
+              ],
+              "platform": "linux",
+              "message": "filesystem object identity of '/opt/node/bin' and '/w' could not be established on linux; the requesting tools contribute nothing"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a read-only alias of an object required read-write is retained with read-write access",
+      "tools": [
+        {
+          "invocationName": "git",
+          "packageUrl": "pkg:generic/git",
+          "intent": "local"
+        },
+        "node"
+      ],
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/usr/bin",
+          "node_prefix": "/srv/alias-of-w"
+        }
+      },
+      "host": {
+        "platform": "linux",
+        "aliases": [
+          [
+            "/srv/alias-of-w",
+            "/w"
+          ]
+        ]
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/usr/bin"
+            ],
+            "readwritePaths": [
+              "/w",
+              "/srv/alias-of-w"
+            ]
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "local",
+                  "mode": "named",
+                  "selected": [
+                    "local"
+                  ]
+                }
+              }
+            },
+            {
+              "inputIndex": 1,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:node",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "weak_identity",
+              "inputIndex": 1,
+              "entryId": "tool:node",
+              "invocationName": "node",
+              "message": "input 1 ('node') matched tool:node only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/srv/alias-of-w",
+              "source": "caller",
+              "message": "symbol 'node_prefix' resolved to '/srv/alias-of-w' from the caller"
+            },
+            {
+              "code": "readonly_superseded",
+              "inputIndexes": [
+                0,
+                1
+              ],
+              "entryIds": [
+                "tool:git",
+                "tool:node"
+              ],
+              "removed": {
+                "path": "/srv/alias-of-w",
+                "access": "readonly",
+                "entryIds": [
+                  "tool:node"
+                ]
+              },
+              "requiredBy": [
+                {
+                  "path": "/w",
+                  "access": "readwrite",
+                  "entryIds": [
+                    "tool:git"
+                  ]
+                }
+              ],
+              "message": "read-only '/srv/alias-of-w' (tool:node) names the same filesystem object as read-write '/w' (tool:git) or one beneath it; the alias pathname was retained with read-write access"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a foreign target platform cannot establish filesystem identity and fails closed",
+      "tools": [
+        {
+          "invocationName": "git",
+          "packageUrl": "pkg:generic/git",
+          "intent": "local"
+        }
+      ],
+      "context": {
+        "platform": "windows",
+        "architecture": "x64",
+        "projectRoot": "C:\\w",
+        "symbols": {
+          "git_prefix": "C:\\Git\\cmd",
+          "programData": "C:\\ProgramData"
+        }
+      },
+      "host": {
+        "platform": "linux"
+      },
+      "expect": {
+        "diagnostics": {
+          "catalogRevision": "2026-10-06.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": false,
+              "status": "filesystem_identity_unresolved",
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "local",
+                  "mode": "named",
+                  "selected": [
+                    "local"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "C:\\Git\\cmd",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to 'C:\\Git\\cmd' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "C:\\w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to 'C:\\w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "programData",
+              "value": "C:\\ProgramData",
+              "source": "caller",
+              "message": "symbol 'programData' resolved to 'C:\\ProgramData' from the caller"
+            },
+            {
+              "code": "filesystem_identity_unresolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "paths": [
+                "C:\\Git\\cmd",
+                "C:\\w"
+              ],
+              "platform": "windows",
+              "message": "filesystem object identity of 'C:\\Git\\cmd' and 'C:\\w' could not be established on windows; the requesting tools contribute nothing"
+            },
+            {
+              "code": "filesystem_identity_unresolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "paths": [
+                "C:\\ProgramData\\Git",
+                "C:\\w"
+              ],
+              "platform": "windows",
+              "message": "filesystem object identity of 'C:\\ProgramData\\Git' and 'C:\\w' could not be established on windows; the requesting tools contribute nothing"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

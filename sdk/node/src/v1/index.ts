@@ -66,6 +66,42 @@ export type { MxcPtySize } from './mxc-pty-process.js';
 
 export * as policy from './policy/index.js';
 
+// PROTOTYPE, pending API review: the policy store's tool-requirements lookup.
+export {
+  resolveToolRequirements,
+  resolveToolRequirementsWithDiagnostics,
+  getCatalogInfo,
+  listCatalogEntries,
+} from './tool-requirements.js';
+export type {
+  ContainerRequirements,
+  CatalogPlatform,
+  CatalogArchitecture,
+  PlatformVariantSelector,
+  EgressRule,
+  ToolCandidate,
+  ToolInput,
+  ResolveContext,
+  VersionStatus,
+  ToolResolutionStatus,
+  VersionSelection,
+  IntentSelection,
+  InputWarning,
+  ToolResolutionWarning,
+  WarningScope,
+  PathRequirement,
+  NetworkRequirement,
+  ResolutionDetailWarning,
+  PolicyResolutionWarning,
+  ToolRequirementsDiagnostics,
+  ToolRequirementsResolution,
+  CatalogIdentityMetadata,
+  CatalogIntentMetadata,
+  CatalogAdditionsMetadata,
+  CatalogEntryMetadata,
+  CatalogInfo,
+} from './tool-requirements.js';
+
 export {
   SDK_CONTRACT_VERSION,
   LifecycleContainmentKind,

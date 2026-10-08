@@ -645,6 +645,25 @@ pub(crate) struct ContainerPolicy {
     pub timeout_ms: Option<u32>,
 }
 
+/// The command-free access fields of a [`ContainerRequest`]: filesystem,
+/// network, UI, and timeout, using the same section types.
+///
+/// **Prototype, pending API review.** Returned by the policy store
+/// ([`crate::v1::resolve_tool_requirements`]) as a best-effort floor that
+/// callers review, constrain, and then combine with a command through
+/// [`ContainerRequest::from_requirements`].
+#[derive(Debug, Clone, Default)]
+pub struct ContainerRequirements {
+    /// Cross-backend filesystem restrictions.
+    pub filesystem: Option<FilesystemPolicy>,
+    /// Cross-backend network restrictions.
+    pub network: Option<NetworkPolicy>,
+    /// Cross-backend UI restrictions.
+    pub ui: Option<UiPolicy>,
+    /// Execution timeout in milliseconds.
+    pub timeout_ms: Option<u32>,
+}
+
 /// A complete one-shot request with shared restrictions and backend settings.
 #[derive(Debug, Clone)]
 pub struct ContainerRequest {
@@ -687,6 +706,66 @@ impl ContainerRequest {
             inherit_default_environment: None,
         }
     }
+
+    /// Create a one-shot request for `command` with the given access fields,
+    /// without converting their nested types.
+    pub fn from_requirements(
+        requirements: ContainerRequirements,
+        command: impl Into<String>,
+    ) -> Self {
+        Self {
+            filesystem: requirements.filesystem,
+            network: requirements.network,
+            ui: requirements.ui,
+            timeout_ms: requirements.timeout_ms,
+            ..Self::new(command)
+        }
+    }
+}
+
+/// Validates requirements against the SDK target contract (design §4.2 of the
+/// policy store): the typed sections build the exact `OneShotRequest`
+/// through the SDK hook, a disposable copy is normalized, and the independent
+/// exact JSON serialization `wire` must parse under its declared version to
+/// the same normalized request.
+pub(crate) fn check_requirements_exact(
+    requirements: &ContainerRequirements,
+    wire: &str,
+    command: &str,
+    container_id: &str,
+) -> Result<(), String> {
+    use crate::mxc_common::config_parser::load_mxc_request_from_json;
+    use crate::mxc_common::state_aware_request::MxcRequest;
+    let policy = ContainerPolicy {
+        filesystem: requirements.filesystem.clone(),
+        network: requirements.network.clone(),
+        ui: requirements.ui.clone(),
+        timeout_ms: requirements.timeout_ms,
+    };
+    let exact = exact::build_exact_one_shot(&policy, &Containment::Process, command, container_id)
+        .map_err(|e| format!("the SDK cannot build the exact request: {e}"))?;
+    let built = exact::normalize_exact_one_shot(exact)
+        .map_err(|e| format!("the exact request fails normalization: {e}"))?;
+    let mut logger =
+        crate::mxc_common::logger::Logger::new(crate::mxc_common::logger::Mode::Buffer);
+    let parsed = match load_mxc_request_from_json(wire, &mut logger) {
+        Ok(MxcRequest::OneShot(request)) => request,
+        Ok(_) => return Err("the exact serialization is not a one-shot request".to_string()),
+        Err(e) => return Err(format!("the exact serialization is rejected: {e:?}")),
+    };
+    let intent = |request: &ExecutionRequest| {
+        let mut value = serde_json::to_value(request).map_err(|e| e.to_string())?;
+        if let Some(object) = value.as_object_mut() {
+            object.remove("source_contract");
+        }
+        Ok::<_, String>(value)
+    };
+    if intent(&built)? != intent(&parsed)? {
+        return Err(
+            "the exact serialization and the typed SDK request normalize differently".to_string(),
+        );
+    }
+    Ok(())
 }
 
 /// Internal normalized request consumed by the execution engine.

@@ -54,6 +54,10 @@
 //!   `wxc-wslc-daemon.exe` for the state-aware lifecycle, must sit beside this
 //!   library rather than beside the application host, because both resolve
 //!   against the loaded module.
+//! - **Policy store** (`policy_store` module, PROTOTYPE pending API review) —
+//!   [`mxc_resolve_tool_requirements_json`] and its diagnostics variant look
+//!   tools up in the bundled catalog and return command-free container
+//!   requirements; the request is a lookup, not policy ingress.
 //! - **Telemetry consent** — [`mxc_telemetry_get_consent`],
 //!   [`mxc_telemetry_get_consent_status`], [`mxc_telemetry_request_consent`],
 //!   [`mxc_telemetry_withdraw_consent`], [`mxc_telemetry_needs_consent_prompt`],
@@ -83,10 +87,12 @@ use mxc_sdk::v1::{probe, ProbeOutput};
 use mxc_sdk::v1::{ExecutionResult, WaitResult};
 
 mod error_detail;
+mod policy_store;
 mod pty;
 mod state_aware;
 mod streaming;
 pub use error_detail::*;
+pub use policy_store::*;
 pub use pty::*;
 pub use state_aware::*;
 pub use streaming::*;

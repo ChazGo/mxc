@@ -1,0 +1,28 @@
+{
+  "entryId": "tool:node",
+  "entryRevision": 2,
+  "displayName": "Node.js",
+  "versionScheme": "semver",
+  "identity": [
+    {
+      "kind": "invocation-name",
+      "names": [
+        "node",
+        "node.exe"
+      ]
+    }
+  ],
+  "default": {
+    "requirements": {
+      "filesystem": {
+        "readonlyPaths": [
+          "${node_prefix}"
+        ]
+      }
+    }
+  },
+  "provenance": {
+    "method": "prototype-migration",
+    "sourceRevision": "ChazGo/mxc@17070fb:sdk/node/src/config-floors/catalog.json"
+  }
+}

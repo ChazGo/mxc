@@ -1,0 +1,1997 @@
+{
+  "$comment": "Language-neutral conformance cases against an inline synthetic catalog revision (not published). Covers strong and weak identity, ambiguity, version selection (matched, out of range, unparseable), intent selection, native-architecture defaults, exact vs neutral overlays, dependency records, platform-cased invocation names, and floor composition. See bundled-catalog.json for the case format. `host` overrides the simulated host (default linux/x64).",
+  "catalog": {
+    "catalogSchemaVersion": "1",
+    "catalogRevision": "2000-01-01.1",
+    "sdkContractVersion": "1.0.0",
+    "entries": [
+      {
+        "entryId": "tool:base",
+        "entryRevision": 2,
+        "displayName": "Base runtime",
+        "versionScheme": "semver",
+        "identity": [
+          {
+            "kind": "invocation-name",
+            "names": [
+              "base"
+            ]
+          }
+        ],
+        "default": {
+          "requirements": {
+            "filesystem": {
+              "readonlyPaths": [
+                "${git_prefix}/share"
+              ]
+            }
+          }
+        },
+        "platformVariants": [
+          {
+            "when": {
+              "platform": "linux"
+            },
+            "policyAdditions": {
+              "filesystem": {
+                "readonlyPaths": [
+                  "${git_prefix}/lib"
+                ]
+              }
+            }
+          },
+          {
+            "when": {
+              "platform": "windows",
+              "architecture": "arm64"
+            },
+            "policyAdditions": {
+              "filesystem": {
+                "readonlyPaths": [
+                  "${git_prefix}\\arm64"
+                ]
+              }
+            }
+          },
+          {
+            "when": {
+              "platform": "windows",
+              "architecture": "x64"
+            },
+            "policyAdditions": {
+              "filesystem": {
+                "readonlyPaths": [
+                  "${git_prefix}\\x64"
+                ]
+              }
+            }
+          }
+        ],
+        "provenance": {
+          "method": "fixture",
+          "sourceRevision": "fixture"
+        }
+      },
+      {
+        "entryId": "tool:app-plugin",
+        "entryRevision": 1,
+        "displayName": "App plugin host",
+        "versionScheme": "semver",
+        "identity": [
+          {
+            "kind": "invocation-name",
+            "names": [
+              "app"
+            ]
+          }
+        ],
+        "default": {
+          "requirements": {
+            "filesystem": {
+              "readonlyPaths": [
+                "${git_prefix}/plugins"
+              ]
+            }
+          }
+        },
+        "provenance": {
+          "method": "fixture",
+          "sourceRevision": "fixture"
+        }
+      },
+      {
+        "entryId": "tool:app",
+        "entryRevision": 5,
+        "displayName": "App",
+        "versionScheme": "npm",
+        "identity": [
+          {
+            "kind": "purl",
+            "value": "pkg:npm/app"
+          },
+          {
+            "kind": "invocation-name",
+            "names": [
+              "app",
+              "app.cmd"
+            ]
+          }
+        ],
+        "default": {
+          "requirements": {
+            "filesystem": {
+              "readwritePaths": [
+                "${project_root}"
+              ]
+            }
+          },
+          "dependencies": [
+            {
+              "entryId": "tool:base"
+            }
+          ],
+          "intents": {
+            "build": {
+              "exampleSubcommands": [
+                "build"
+              ],
+              "policyAdditions": {
+                "filesystem": {
+                  "readonlyPaths": [
+                    "${git_prefix}/tools"
+                  ]
+                }
+              }
+            },
+            "serve": {
+              "exampleSubcommands": [
+                "serve"
+              ],
+              "policyAdditions": {
+                "network": {
+                  "egress": {
+                    "allow": [
+                      {
+                        "to": [
+                          {
+                            "cidr": "192.0.2.0/24"
+                          }
+                        ],
+                        "ports": [
+                          {
+                            "protocol": "tcp",
+                            "port": 443
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "platformVariants": [
+          {
+            "when": {
+              "platform": "linux",
+              "architecture": "arm64"
+            },
+            "policyAdditions": {
+              "filesystem": {
+                "readonlyPaths": [
+                  "${git_prefix}/lib-arm64"
+                ]
+              }
+            }
+          }
+        ],
+        "versionVariants": [
+          {
+            "versionRange": "vers:npm/>=2.0.0|<3.0.0",
+            "dependencies": [
+              {
+                "entryId": "tool:base",
+                "versionRange": "vers:semver/>=22.0.0"
+              }
+            ],
+            "intentAdditions": {
+              "serve": {
+                "policyAdditions": {
+                  "network": {
+                    "egress": {
+                      "allow": [
+                        {
+                          "to": [
+                            {
+                              "cidr": "198.51.100.0/24"
+                            }
+                          ],
+                          "ports": [
+                            {
+                              "protocol": "tcp",
+                              "port": 443
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "versionRange": "vers:npm/>=3.0.0",
+            "newIntents": {
+              "publish": {
+                "exampleSubcommands": [
+                  "publish"
+                ],
+                "policyAdditions": {
+                  "filesystem": {
+                    "readwritePaths": [
+                      "${temp_dir}/app-publish"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "provenance": {
+          "method": "fixture",
+          "sourceRevision": "fixture"
+        }
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "version inside a range on an arm64 overlay, build intent, with the range's dependency record",
+      "tools": {
+        "invocationName": "app",
+        "packageUrl": "pkg:npm/app",
+        "detectedVersion": "2.4.1",
+        "intent": "build"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "arm64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/g/share",
+              "/g/lib",
+              "/g/lib-arm64",
+              "/g/tools"
+            ],
+            "readwritePaths": [
+              "/w"
+            ]
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_version",
+              "selection": {
+                "entryId": "tool:app",
+                "entryRevision": 5,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_version",
+                  "detectedVersion": "2.4.1",
+                  "selectedVersionRange": "vers:npm/>=2.0.0|<3.0.0"
+                },
+                "intentSelection": {
+                  "requested": "build",
+                  "mode": "named",
+                  "selected": [
+                    "build"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:base",
+              "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            },
+            {
+              "entryId": "tool:base",
+              "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
+              "requiredVersionRange": "vers:semver/>=22.0.0",
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            }
+          ],
+          "warnings": [
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app",
+                "tool:base"
+              ],
+              "symbol": "git_prefix",
+              "value": "/g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/g' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "no detected version and no intent: default base plus all default intents",
+      "tools": {
+        "invocationName": "app",
+        "packageUrl": "pkg:npm/app"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/g/share",
+              "/g/lib",
+              "/g/tools"
+            ],
+            "readwritePaths": [
+              "/w"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.0/24"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:app",
+                "entryRevision": 5,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "build",
+                    "serve"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:base",
+              "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            }
+          ],
+          "warnings": [
+            {
+              "code": "architecture_fallback",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "platform": "linux",
+              "architecture": "x64",
+              "selected": "default",
+              "message": "tool:app has no x64-specific linux overlay; its architecture-neutral default data was used"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app",
+                "tool:base"
+              ],
+              "symbol": "git_prefix",
+              "value": "/g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/g' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "valid version outside every range uses the default with a structured warning",
+      "tools": {
+        "invocationName": "app",
+        "packageUrl": "pkg:npm/app",
+        "detectedVersion": "1.0.0",
+        "intent": "serve"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/g/share",
+              "/g/lib"
+            ],
+            "readwritePaths": [
+              "/w"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.0/24"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "version_out_of_range",
+              "selection": {
+                "entryId": "tool:app",
+                "entryRevision": 5,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "version_out_of_range",
+                  "detectedVersion": "1.0.0"
+                },
+                "intentSelection": {
+                  "requested": "serve",
+                  "mode": "named",
+                  "selected": [
+                    "serve"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:base",
+              "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            }
+          ],
+          "warnings": [
+            {
+              "code": "version_out_of_range",
+              "inputIndex": 0,
+              "entryId": "tool:app",
+              "detectedVersion": "1.0.0",
+              "message": "input 0 ('app'): detected version '1.0.0' is outside every reviewed version range for tool:app; its unversioned default applies"
+            },
+            {
+              "code": "architecture_fallback",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "platform": "linux",
+              "architecture": "x64",
+              "selected": "default",
+              "message": "tool:app has no x64-specific linux overlay; its architecture-neutral default data was used"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:base"
+              ],
+              "symbol": "git_prefix",
+              "value": "/g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/g' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "unparseable version contributes nothing",
+      "tools": {
+        "invocationName": "app",
+        "packageUrl": "pkg:npm/app",
+        "detectedVersion": "not a version",
+        "intent": "serve"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": false,
+              "status": "version_unparseable",
+              "selection": {
+                "entryId": "tool:app",
+                "entryRevision": 5,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "version_unparseable",
+                  "detectedVersion": "not a version"
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "version_unparseable",
+              "inputIndex": 0,
+              "entryId": "tool:app",
+              "detectedVersion": "not a version",
+              "message": "input 0 ('app'): detected version 'not a version' is not a valid npm version for tool:app; the input contributes nothing"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "intent added by the 3.x range",
+      "tools": {
+        "invocationName": "app",
+        "packageUrl": "pkg:npm/app",
+        "detectedVersion": "3.1.0",
+        "intent": "publish"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/g/share",
+              "/g/lib"
+            ],
+            "readwritePaths": [
+              "/w",
+              "/tmp/app-publish"
+            ]
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_version",
+              "selection": {
+                "entryId": "tool:app",
+                "entryRevision": 5,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_version",
+                  "detectedVersion": "3.1.0",
+                  "selectedVersionRange": "vers:npm/>=3.0.0"
+                },
+                "intentSelection": {
+                  "requested": "publish",
+                  "mode": "named",
+                  "selected": [
+                    "publish"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:base",
+              "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            }
+          ],
+          "warnings": [
+            {
+              "code": "architecture_fallback",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "platform": "linux",
+              "architecture": "x64",
+              "selected": "default",
+              "message": "tool:app has no x64-specific linux overlay; its architecture-neutral default data was used"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:base"
+              ],
+              "symbol": "git_prefix",
+              "value": "/g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/g' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "symbol": "temp_dir",
+              "value": "/tmp",
+              "source": "caller",
+              "message": "symbol 'temp_dir' resolved to '/tmp' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "intent the 2.x effective policy does not define is intent_unsupported",
+      "tools": {
+        "invocationName": "app",
+        "packageUrl": "pkg:npm/app",
+        "detectedVersion": "2.4.1",
+        "intent": "publish"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": false,
+              "status": "intent_unsupported",
+              "selection": {
+                "entryId": "tool:app",
+                "entryRevision": 5,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_version",
+                  "detectedVersion": "2.4.1",
+                  "selectedVersionRange": "vers:npm/>=2.0.0|<3.0.0"
+                },
+                "intentSelection": {
+                  "requested": "publish",
+                  "mode": "unsupported",
+                  "selected": []
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "intent_unsupported",
+              "inputIndex": 0,
+              "entryId": "tool:app",
+              "intent": "publish",
+              "message": "input 0 ('app'): intent 'publish' is not defined for the selected policy of tool:app (available: build, serve); the input contributes nothing"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "intentAdditions extend an existing intent inside the range",
+      "tools": {
+        "invocationName": "app",
+        "packageUrl": "pkg:npm/app",
+        "detectedVersion": "2.4.1",
+        "intent": "serve"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/g/share",
+              "/g/lib"
+            ],
+            "readwritePaths": [
+              "/w"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.0/24"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                },
+                {
+                  "to": [
+                    {
+                      "cidr": "198.51.100.0/24"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_version",
+              "selection": {
+                "entryId": "tool:app",
+                "entryRevision": 5,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_version",
+                  "detectedVersion": "2.4.1",
+                  "selectedVersionRange": "vers:npm/>=2.0.0|<3.0.0"
+                },
+                "intentSelection": {
+                  "requested": "serve",
+                  "mode": "named",
+                  "selected": [
+                    "serve"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:base",
+              "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            },
+            {
+              "entryId": "tool:base",
+              "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
+              "requiredVersionRange": "vers:semver/>=22.0.0",
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            }
+          ],
+          "warnings": [
+            {
+              "code": "architecture_fallback",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "platform": "linux",
+              "architecture": "x64",
+              "selected": "default",
+              "message": "tool:app has no x64-specific linux overlay; its architecture-neutral default data was used"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:base"
+              ],
+              "symbol": "git_prefix",
+              "value": "/g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/g' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a version embedded in packageUrl is ignored with a warning",
+      "tools": {
+        "invocationName": "app",
+        "packageUrl": "pkg:npm/app@2.4.1",
+        "intent": "build"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/g/share",
+              "/g/lib",
+              "/g/tools"
+            ],
+            "readwritePaths": [
+              "/w"
+            ]
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:app",
+                "entryRevision": 5,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "build",
+                  "mode": "named",
+                  "selected": [
+                    "build"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:base",
+              "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            }
+          ],
+          "warnings": [
+            {
+              "code": "purl_components_ignored",
+              "inputIndex": 0,
+              "packageUrl": "pkg:npm/app@2.4.1",
+              "ignoredComponents": [
+                "version"
+              ],
+              "message": "input 0 ('app'): packageUrl version ignored for matching; it is not version evidence (supply detectedVersion)"
+            },
+            {
+              "code": "architecture_fallback",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "platform": "linux",
+              "architecture": "x64",
+              "selected": "default",
+              "message": "tool:app has no x64-specific linux overlay; its architecture-neutral default data was used"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app",
+                "tool:base"
+              ],
+              "symbol": "git_prefix",
+              "value": "/g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/g' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "equal-rank weak matches to different entries are ambiguous",
+      "tools": "app",
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        },
+        "allowWeakIdentityFallback": true
+      },
+      "expectError": {
+        "code": "policy_validation",
+        "reason": "ambiguous_match"
+      }
+    },
+    {
+      "name": "omitted architecture on an ARM64 host selects the native ARM64 overlay",
+      "host": {
+        "platform": "windows",
+        "nativeArchitecture": "arm64"
+      },
+      "tools": "base",
+      "context": {
+        "allowWeakIdentityFallback": true,
+        "symbols": {
+          "git_prefix": "C:\\g"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "C:\\g\\share",
+              "C:\\g\\arm64"
+            ]
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:base",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:base",
+              "invocationName": "base",
+              "message": "input 0 ('base') matched tool:base only by invocation name (weak identity)"
+            },
+            {
+              "code": "architecture_default",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:base"
+              ],
+              "platform": "windows",
+              "architecture": "arm64",
+              "message": "architecture was not specified; overlays were selected for the native system architecture 'arm64'; the tool's architecture was not verified"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:base"
+              ],
+              "symbol": "git_prefix",
+              "value": "C:\\g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to 'C:\\g' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "explicit x64 on the same ARM64 host selects the x64 overlay",
+      "host": {
+        "platform": "windows",
+        "nativeArchitecture": "arm64"
+      },
+      "tools": "base",
+      "context": {
+        "architecture": "x64",
+        "allowWeakIdentityFallback": true,
+        "symbols": {
+          "git_prefix": "C:\\g"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "C:\\g\\share",
+              "C:\\g\\x64"
+            ]
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:base",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:base",
+              "invocationName": "base",
+              "message": "input 0 ('base') matched tool:base only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:base"
+              ],
+              "symbol": "git_prefix",
+              "value": "C:\\g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to 'C:\\g' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "invocation names are case-insensitive on windows",
+      "tools": "APP.CMD",
+      "context": {
+        "platform": "windows",
+        "architecture": "arm64",
+        "allowWeakIdentityFallback": true,
+        "projectRoot": "C:\\p",
+        "symbols": {
+          "git_prefix": "C:\\g"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "C:\\g\\share",
+              "C:\\g\\arm64",
+              "C:\\g\\tools"
+            ],
+            "readwritePaths": [
+              "C:\\p"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.0/24"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:app",
+                "entryRevision": 5,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "build",
+                    "serve"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:base",
+              "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            }
+          ],
+          "warnings": [
+            {
+              "code": "weak_identity",
+              "inputIndex": 0,
+              "entryId": "tool:app",
+              "invocationName": "APP.CMD",
+              "message": "input 0 ('APP.CMD') matched tool:app only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "symbol": "project_root",
+              "value": "C:\\p",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to 'C:\\p' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app",
+                "tool:base"
+              ],
+              "symbol": "git_prefix",
+              "value": "C:\\g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to 'C:\\g' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "invocation names are case-sensitive on linux",
+      "tools": "BASE",
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        },
+        "allowWeakIdentityFallback": true
+      },
+      "expect": {
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": false,
+              "status": "tool_unmatched"
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "tool_unmatched",
+              "inputIndex": 0,
+              "invocationName": "BASE",
+              "message": "input 0 ('BASE') matched no eligible catalog entry"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a tool without network does not veto another tool's network needs",
+      "tools": [
+        {
+          "invocationName": "app",
+          "packageUrl": "pkg:npm/app",
+          "intent": "serve"
+        },
+        {
+          "invocationName": "app",
+          "packageUrl": "pkg:npm/app",
+          "intent": "build"
+        }
+      ],
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "/g/share",
+              "/g/lib",
+              "/g/tools"
+            ],
+            "readwritePaths": [
+              "/w"
+            ]
+          },
+          "network": {
+            "egress": {
+              "default": "deny",
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.0/24"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:app",
+                "entryRevision": 5,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "serve",
+                  "mode": "named",
+                  "selected": [
+                    "serve"
+                  ]
+                }
+              }
+            },
+            {
+              "inputIndex": 1,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:app",
+                "entryRevision": 5,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "build",
+                  "mode": "named",
+                  "selected": [
+                    "build"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:base",
+              "entryRevision": 2,
+              "inputIndexes": [
+                0,
+                1
+              ],
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            }
+          ],
+          "warnings": [
+            {
+              "code": "architecture_fallback",
+              "inputIndexes": [
+                0,
+                1
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "platform": "linux",
+              "architecture": "x64",
+              "selected": "default",
+              "message": "tool:app has no x64-specific linux overlay; its architecture-neutral default data was used"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0,
+                1
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0,
+                1
+              ],
+              "entryIds": [
+                "tool:app",
+                "tool:base"
+              ],
+              "symbol": "git_prefix",
+              "value": "/g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/g' from the caller"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "read-write supersedes read-only when symbol values overlap",
+      "tools": {
+        "invocationName": "app",
+        "packageUrl": "pkg:npm/app",
+        "intent": "build"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/g",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "requirements": {
+          "filesystem": {
+            "readwritePaths": [
+              "/g"
+            ]
+          }
+        },
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": true,
+              "status": "matched_default",
+              "selection": {
+                "entryId": "tool:app",
+                "entryRevision": 5,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
+                  }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "build",
+                  "mode": "named",
+                  "selected": [
+                    "build"
+                  ]
+                }
+              }
+            }
+          ],
+          "resolvedDependencies": [
+            {
+              "entryId": "tool:base",
+              "entryRevision": 2,
+              "inputIndexes": [
+                0
+              ],
+              "versionSelection": {
+                "status": "matched_default"
+              },
+              "intentSelection": {
+                "mode": "none",
+                "selected": []
+              }
+            }
+          ],
+          "warnings": [
+            {
+              "code": "architecture_fallback",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "platform": "linux",
+              "architecture": "x64",
+              "selected": "default",
+              "message": "tool:app has no x64-specific linux overlay; its architecture-neutral default data was used"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "symbol": "project_root",
+              "value": "/g",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/g' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app",
+                "tool:base"
+              ],
+              "symbol": "git_prefix",
+              "value": "/g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/g' from the caller"
+            },
+            {
+              "code": "readonly_superseded",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app",
+                "tool:base"
+              ],
+              "removed": {
+                "path": "/g/share",
+                "access": "readonly",
+                "entryIds": [
+                  "tool:base"
+                ]
+              },
+              "requiredBy": [
+                {
+                  "path": "/g",
+                  "access": "readwrite",
+                  "entryIds": [
+                    "tool:app"
+                  ]
+                }
+              ],
+              "message": "read-only '/g/share' (tool:base) is covered by read-write '/g' (tool:app); the read-only entry was omitted"
+            },
+            {
+              "code": "readonly_superseded",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app",
+                "tool:base"
+              ],
+              "removed": {
+                "path": "/g/lib",
+                "access": "readonly",
+                "entryIds": [
+                  "tool:base"
+                ]
+              },
+              "requiredBy": [
+                {
+                  "path": "/g",
+                  "access": "readwrite",
+                  "entryIds": [
+                    "tool:app"
+                  ]
+                }
+              ],
+              "message": "read-only '/g/lib' (tool:base) is covered by read-write '/g' (tool:app); the read-only entry was omitted"
+            },
+            {
+              "code": "readonly_superseded",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:app"
+              ],
+              "removed": {
+                "path": "/g/tools",
+                "access": "readonly",
+                "entryIds": [
+                  "tool:app"
+                ]
+              },
+              "requiredBy": [
+                {
+                  "path": "/g",
+                  "access": "readwrite",
+                  "entryIds": [
+                    "tool:app"
+                  ]
+                }
+              ],
+              "message": "read-only '/g/tools' (tool:app) is covered by read-write '/g' (tool:app); the read-only entry was omitted"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "a candidate without packageUrl needs the weak-identity opt-in",
+      "tools": {
+        "invocationName": "app",
+        "intent": "build"
+      },
+      "context": {
+        "platform": "linux",
+        "architecture": "x64",
+        "projectRoot": "/w",
+        "symbols": {
+          "git_prefix": "/g",
+          "temp_dir": "/tmp"
+        }
+      },
+      "expect": {
+        "diagnostics": {
+          "catalogRevision": "2000-01-01.1",
+          "tools": [
+            {
+              "inputIndex": 0,
+              "contributes": false,
+              "status": "tool_unmatched"
+            }
+          ],
+          "resolvedDependencies": [],
+          "warnings": [
+            {
+              "code": "tool_unmatched",
+              "inputIndex": 0,
+              "invocationName": "app",
+              "message": "input 0 ('app') matched no eligible catalog entry: tool:app matched only by invocation name and allowWeakIdentityFallback is not enabled; tool:app-plugin matched only by invocation name and allowWeakIdentityFallback is not enabled"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

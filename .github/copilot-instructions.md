@@ -21,6 +21,7 @@ MXC (Microsoft eXecution Container) is a cross-platform sandboxed code execution
 - Use `#[cfg(target_os = "...")]` and existing Cargo feature gates for platform-specific code.
 - Preserve the distinction between run-to-completion, streaming, and state-aware lifecycle APIs.
 - Unsupported policy must fail closed. Do not accept a field that the selected backend cannot enforce.
+- The `mxc-sdk` `policy_store` module (prototype, pending API review) is the single tool-requirements resolver and owns the bundled catalog data in `src/mxc-sdk/policy_store/`. `mxc_ffi` exposes it to the Node and C# SDKs; do not reimplement resolution per language or move it into `mxc_engine`. See [`docs/policy-store/README.md`](../docs/policy-store/README.md).
 
 See:
 

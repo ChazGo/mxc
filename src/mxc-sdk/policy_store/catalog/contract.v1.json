@@ -1,0 +1,51 @@
+{
+  "$comment": "Catalog contract v1: the symbol vocabulary entries may reference. Entries embed command-free MXC 1.0 request access fields; each revision records its SDK validation target (sdkContractVersion). 'context' symbols come only from ResolveContext.projectRoot; 'caller' symbols come from ResolveContext.symbols, then host-local discovery, then a platform default; 'host' symbols are OS well-known folders derived for the current host, which ResolveContext.symbols may override. A 'defaults' map gives a per-platform path template that may reference only host symbols.",
+  "catalogSchemaVersion": "1",
+  "symbols": {
+    "project_root": {
+      "source": "context",
+      "description": "The consumer's project root, supplied through ResolveContext.projectRoot."
+    },
+    "git_prefix": {
+      "source": "caller",
+      "description": "Directory containing the git executable (discovered on PATH when omitted)."
+    },
+    "node_prefix": {
+      "source": "caller",
+      "description": "Directory containing the node executable (discovered on PATH when omitted)."
+    },
+    "npm_prefix": {
+      "source": "caller",
+      "description": "Directory containing the npm and npx launchers (discovered on PATH when omitted)."
+    },
+    "npm_cache": {
+      "source": "caller",
+      "description": "The npm cache directory in effect for the invocation (discovered from npm_config_cache or ~/.npmrc when omitted).",
+      "defaults": {
+        "linux": "${user_home}/.npm",
+        "macos": "${user_home}/.npm",
+        "windows": "${localAppData}/npm-cache"
+      }
+    },
+    "user_home": {
+      "source": "host",
+      "description": "The current user's home directory."
+    },
+    "temp_dir": {
+      "source": "host",
+      "description": "The current user's temporary directory."
+    },
+    "ssh_prefix": {
+      "source": "caller",
+      "description": "Directory containing the ssh executable (discovered on PATH when omitted)."
+    },
+    "programData": {
+      "source": "host",
+      "description": "The Windows common application-data directory (%ProgramData%). Derived only on a Windows host."
+    },
+    "localAppData": {
+      "source": "host",
+      "description": "The Windows per-user local application-data directory (%LOCALAPPDATA%). Derived only on a Windows host."
+    }
+  }
+}

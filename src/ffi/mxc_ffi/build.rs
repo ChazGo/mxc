@@ -21,6 +21,7 @@ fn main() {
 
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=src/error_detail.rs");
+    println!("cargo:rerun-if-changed=src/policy_store.rs");
     println!("cargo:rerun-if-changed=src/pty.rs");
     println!("cargo:rerun-if-changed=src/streaming.rs");
     println!("cargo:rerun-if-changed=src/state_aware.rs");
@@ -53,6 +54,7 @@ fn generate_csharp_bindings() {
     if let Err(e) = csbindgen::Builder::default()
         .input_extern_file("src/lib.rs")
         .input_extern_file("src/error_detail.rs")
+        .input_extern_file("src/policy_store.rs")
         .input_extern_file("src/pty.rs")
         .input_extern_file("src/streaming.rs")
         .input_extern_file("src/state_aware.rs")

@@ -1,0 +1,267 @@
+{
+  "catalogSchemaVersion": "1",
+  "catalogRevision": "2026-10-06.1",
+  "sdkContractVersion": "1.0.0",
+  "entries": [
+    {
+      "entryId": "tool:git",
+      "entryRevision": 3,
+      "displayName": "Git",
+      "versionScheme": "intdot",
+      "identity": [
+        {
+          "kind": "purl",
+          "value": "pkg:generic/git"
+        },
+        {
+          "kind": "invocation-name",
+          "names": [
+            "git",
+            "git.exe"
+          ]
+        }
+      ],
+      "default": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "${git_prefix}"
+            ],
+            "readwritePaths": [
+              "${project_root}"
+            ]
+          }
+        },
+        "intents": {
+          "local": {
+            "exampleSubcommands": [
+              "status",
+              "diff"
+            ],
+            "policyAdditions": {}
+          },
+          "fetch": {
+            "exampleSubcommands": [
+              "fetch",
+              "pull"
+            ],
+            "policyAdditions": {
+              "network": {
+                "egress": {
+                  "allow": [
+                    {
+                      "to": [
+                        {
+                          "cidr": "192.0.2.10/32"
+                        }
+                      ],
+                      "ports": [
+                        {
+                          "protocol": "tcp",
+                          "port": 443
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "push": {
+            "exampleSubcommands": [
+              "push"
+            ],
+            "policyAdditions": {
+              "network": {
+                "egress": {
+                  "allow": [
+                    {
+                      "to": [
+                        {
+                          "cidr": "192.0.2.10/32"
+                        }
+                      ],
+                      "ports": [
+                        {
+                          "protocol": "tcp",
+                          "port": 22
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "platformVariants": [
+        {
+          "when": {
+            "platform": "windows"
+          },
+          "policyAdditions": {
+            "filesystem": {
+              "readonlyPaths": [
+                "${programData}/Git"
+              ]
+            }
+          }
+        }
+      ],
+      "versionVariants": [
+        {
+          "versionRange": "vers:intdot/>=2.40|<2.50",
+          "intentAdditions": {
+            "push": {
+              "dependencies": [
+                {
+                  "entryId": "tool:ssh"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "versionRange": "vers:intdot/>=2.50|<3",
+          "newIntents": {
+            "bundle-fetch": {
+              "exampleSubcommands": [
+                "clone --bundle-uri=<uri>"
+              ],
+              "policyAdditions": {
+                "filesystem": {
+                  "readwritePaths": [
+                    "${temp_dir}/git-bundles"
+                  ]
+                },
+                "network": {
+                  "egress": {
+                    "allow": [
+                      {
+                        "to": [
+                          {
+                            "cidr": "198.51.100.20/32"
+                          }
+                        ],
+                        "ports": [
+                          {
+                            "protocol": "tcp",
+                            "port": 443
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "provenance": {
+        "method": "design-example",
+        "sourceRevision": "docs/mxc-policy-store.md (Policy Store design, git example)"
+      }
+    },
+    {
+      "entryId": "tool:node",
+      "entryRevision": 2,
+      "displayName": "Node.js",
+      "versionScheme": "semver",
+      "identity": [
+        {
+          "kind": "invocation-name",
+          "names": [
+            "node",
+            "node.exe"
+          ]
+        }
+      ],
+      "default": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "${node_prefix}"
+            ]
+          }
+        }
+      },
+      "provenance": {
+        "method": "prototype-migration",
+        "sourceRevision": "ChazGo/mxc@17070fb:sdk/node/src/config-floors/catalog.json"
+      }
+    },
+    {
+      "entryId": "tool:npm",
+      "entryRevision": 2,
+      "displayName": "npm / npx",
+      "versionScheme": "npm",
+      "identity": [
+        {
+          "kind": "purl",
+          "value": "pkg:npm/npm"
+        },
+        {
+          "kind": "invocation-name",
+          "names": [
+            "npm",
+            "npm.cmd",
+            "npx",
+            "npx.cmd"
+          ]
+        }
+      ],
+      "default": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "${npm_prefix}"
+            ],
+            "readwritePaths": [
+              "${project_root}",
+              "${npm_cache}"
+            ]
+          }
+        },
+        "dependencies": [
+          {
+            "entryId": "tool:node"
+          }
+        ]
+      },
+      "provenance": {
+        "method": "prototype-migration",
+        "sourceRevision": "ChazGo/mxc@17070fb:sdk/node/src/config-floors/catalog.json"
+      }
+    },
+    {
+      "entryId": "tool:ssh",
+      "entryRevision": 2,
+      "displayName": "OpenSSH client",
+      "versionScheme": "intdot",
+      "identity": [
+        {
+          "kind": "invocation-name",
+          "names": [
+            "ssh",
+            "ssh.exe"
+          ]
+        }
+      ],
+      "default": {
+        "requirements": {
+          "filesystem": {
+            "readonlyPaths": [
+              "${ssh_prefix}"
+            ]
+          }
+        }
+      },
+      "provenance": {
+        "method": "design-example",
+        "sourceRevision": "docs/mxc-policy-store.md (Policy Store design, git example)"
+      }
+    }
+  ]
+}

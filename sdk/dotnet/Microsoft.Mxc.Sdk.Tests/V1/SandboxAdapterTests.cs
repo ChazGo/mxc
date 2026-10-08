@@ -70,6 +70,19 @@ public class SandboxAdapterTests
         Assert.Equal(ErrorCode.MalformedId, exception.Code);
     }
 
+    // The prototype policy-store lookup (pending API review) lives on
+    // MxcContainer per the spec but is a pure catalog lookup, not container
+    // execution, so it is not part of the injectable runner contract.
+    private static readonly HashSet<string> PolicyStoreLookups = new()
+    {
+        nameof(MxcContainer.ResolveToolRequirements),
+        nameof(MxcContainer.ResolveToolRequirementsAsync),
+        nameof(MxcContainer.ResolveToolRequirementsWithDiagnostics),
+        nameof(MxcContainer.ResolveToolRequirementsWithDiagnosticsAsync),
+        nameof(MxcContainer.GetCatalogInfo),
+        nameof(MxcContainer.ListCatalogEntries),
+    };
+
     [Theory]
     [InlineData(typeof(MxcContainer), typeof(IContainerRunner))]
     [InlineData(typeof(MxcLifecycle), typeof(IContainerLifecycle))]
@@ -81,7 +94,8 @@ public class SandboxAdapterTests
         foreach (var facadeMethod in staticFacade
             .GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
             .Where(method => !method.IsSpecialName)
-            .Where(method => staticFacade != typeof(MxcContainer) || method.Name != nameof(MxcContainer.Probe)))
+            .Where(method => staticFacade != typeof(MxcContainer) || method.Name != nameof(MxcContainer.Probe))
+            .Where(method => staticFacade != typeof(MxcContainer) || !PolicyStoreLookups.Contains(method.Name)))
         {
             var parameterTypes = facadeMethod.GetParameters()
                 .Select(parameter => parameter.ParameterType)

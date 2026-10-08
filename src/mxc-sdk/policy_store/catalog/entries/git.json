@@ -1,0 +1,161 @@
+{
+  "entryId": "tool:git",
+  "entryRevision": 3,
+  "displayName": "Git",
+  "versionScheme": "intdot",
+  "identity": [
+    {
+      "kind": "purl",
+      "value": "pkg:generic/git"
+    },
+    {
+      "kind": "invocation-name",
+      "names": [
+        "git",
+        "git.exe"
+      ]
+    }
+  ],
+  "default": {
+    "requirements": {
+      "filesystem": {
+        "readonlyPaths": [
+          "${git_prefix}"
+        ],
+        "readwritePaths": [
+          "${project_root}"
+        ]
+      }
+    },
+    "intents": {
+      "local": {
+        "exampleSubcommands": [
+          "status",
+          "diff"
+        ],
+        "policyAdditions": {}
+      },
+      "fetch": {
+        "exampleSubcommands": [
+          "fetch",
+          "pull"
+        ],
+        "policyAdditions": {
+          "network": {
+            "egress": {
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 443
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      },
+      "push": {
+        "exampleSubcommands": [
+          "push"
+        ],
+        "policyAdditions": {
+          "network": {
+            "egress": {
+              "allow": [
+                {
+                  "to": [
+                    {
+                      "cidr": "192.0.2.10/32"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "protocol": "tcp",
+                      "port": 22
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "platformVariants": [
+    {
+      "when": {
+        "platform": "windows"
+      },
+      "policyAdditions": {
+        "filesystem": {
+          "readonlyPaths": [
+            "${programData}/Git"
+          ]
+        }
+      }
+    }
+  ],
+  "versionVariants": [
+    {
+      "versionRange": "vers:intdot/>=2.40|<2.50",
+      "intentAdditions": {
+        "push": {
+          "dependencies": [
+            {
+              "entryId": "tool:ssh"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "versionRange": "vers:intdot/>=2.50|<3",
+      "newIntents": {
+        "bundle-fetch": {
+          "exampleSubcommands": [
+            "clone --bundle-uri=<uri>"
+          ],
+          "policyAdditions": {
+            "filesystem": {
+              "readwritePaths": [
+                "${temp_dir}/git-bundles"
+              ]
+            },
+            "network": {
+              "egress": {
+                "allow": [
+                  {
+                    "to": [
+                      {
+                        "cidr": "198.51.100.20/32"
+                      }
+                    ],
+                    "ports": [
+                      {
+                        "protocol": "tcp",
+                        "port": 443
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "provenance": {
+    "method": "design-example",
+    "sourceRevision": "docs/mxc-policy-store.md (Policy Store design, git example)"
+  }
+}

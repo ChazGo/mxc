@@ -16,7 +16,7 @@ namespace Microsoft.Mxc.Sdk.V1;
 /// <c>mxc_ffi</c> library and runs or spawns a complete
 /// <see cref="ContainerRequest"/>.
 /// </summary>
-public static class MxcContainer
+public static partial class MxcContainer
 {
     static MxcContainer()
     {

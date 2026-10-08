@@ -93,6 +93,36 @@ pub(super) fn build_request(
     })
 }
 
+/// The SDK target's exact `OneShotRequest` before normalization: the
+/// validation hook catalog tooling uses (`build_request` returns
+/// normalized data).
+pub(super) fn build_exact_one_shot(
+    policy: &ContainerPolicy,
+    containment: &Containment,
+    script: &str,
+    container_id: &str,
+) -> Result<crate::mxc_contract::published::v1_0_0::OneShotRequest, MxcError> {
+    if script.is_empty() {
+        return Err(error("script parameter is required"));
+    }
+    v1_0::build(&PreparedInput {
+        policy,
+        containment,
+        script,
+        container_id: container_id.to_string(),
+    })
+}
+
+/// Runs shared semantic normalization on an exact request, which the caller
+/// passes by value so the original stays untouched.
+pub(super) fn normalize_exact_one_shot(
+    request: crate::mxc_contract::published::v1_0_0::OneShotRequest,
+) -> Result<crate::mxc_common::models::ExecutionRequest, MxcError> {
+    let mut logger = Logger::new(Mode::Buffer);
+    load_one_shot_request_from_contract(ExactOneShotContract::V1_0(Box::new(request)), &mut logger)
+        .map_err(|error| MxcError::malformed_request(error.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::configs::ProcessContainerNetwork;

@@ -202,6 +202,7 @@ pub use core_modules::process_security_environment_spec;
 mod configs;
 mod options;
 mod policy;
+mod policy_store;
 mod sandbox;
 mod state_aware_sdk;
 
@@ -296,9 +297,29 @@ pub mod v1 {
         }
     }
 
+    /// **Prototype, pending API review.** Policy-store lookup inputs,
+    /// diagnostics, and catalog metadata for [`resolve_tool_requirements`].
+    pub mod tool_requirements {
+        pub use crate::policy_store::{
+            Architecture, ArchitectureFallback, CatalogAdditionsMetadata, CatalogEntryMetadata,
+            CatalogIdentityMetadata, CatalogInfo, CatalogIntentMetadata, DefaultMetadata,
+            DependencyRecord, DetailWarningKind, Diagnostics, IdentityStrength, IntentMode,
+            IntentSelection, MatchedIdentity, NetworkRequirement, PathAccess, PathRequirement,
+            Platform, PlatformVariantMetadata, Provenance, PurlComponent, ResolutionDetailWarning,
+            ResolveContext, SymbolMap, SymbolValueSource, ToolCandidate, ToolRecord,
+            ToolResolutionStatus, ToolResolutionWarning, ToolSelection, ToolWarningKind,
+            VersionScheme, VersionSelection, VersionStatus, VersionVariantMetadata, Warning,
+        };
+    }
+
+    pub use crate::policy_store::sdk::{
+        get_catalog_info, list_catalog_entries, resolve_tool_requirements,
+        resolve_tool_requirements_with_diagnostics, ToolRequirementsResolution,
+    };
+
     pub use crate::policy::{
-        ClipboardPolicy, ContainerRequest, Containment, FilesystemPolicy, NetworkAction,
-        NetworkEgressPolicy, NetworkIngressPolicy, NetworkPeerPolicy, NetworkPolicy,
+        ClipboardPolicy, ContainerRequest, ContainerRequirements, Containment, FilesystemPolicy,
+        NetworkAction, NetworkEgressPolicy, NetworkIngressPolicy, NetworkPeerPolicy, NetworkPolicy,
         NetworkPortPolicy, NetworkProtocol, NetworkRulePolicy, NetworkRuntimeConfig, UiPolicy,
     };
     pub use crate::sandbox::{
@@ -372,6 +393,13 @@ pub mod v1 {
             assert!(output.error.is_some() || output.tier.is_some());
         }
     }
+}
+
+/// **Prototype, pending API review.** Internal policy-store surface for the C
+/// ABI and the catalog contribution tests; not an SDK authoring API.
+#[doc(hidden)]
+pub mod __policy_store {
+    pub use crate::policy_store::*;
 }
 
 /// Internal adapters for the C ABI and native contract tests, not SDK authoring APIs.

@@ -43,6 +43,15 @@ public class MxcExceptionTests
     }
 
     [Fact]
+    public void Reason_IsAbsentOutsideThePolicyStoreAndNotPubliclySettable()
+    {
+        Assert.Null(new MxcException(ErrorCode.BackendError, "x").Reason);
+        var setter = typeof(MxcException).GetProperty(nameof(MxcException.Reason))!.SetMethod;
+        Assert.NotNull(setter);
+        Assert.False(setter!.IsPublic);
+    }
+
+    [Fact]
     public void ApiDetail_IsCarriedAlongsideTheCodeAndMessage()
     {
         var ex = new MxcException(
