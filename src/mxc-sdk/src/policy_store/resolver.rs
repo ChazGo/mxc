@@ -25,11 +25,11 @@ use crate::policy_store::json::cmp_utf16;
 use crate::policy_store::model::{
     Architecture, ArchitectureFallback, CatalogAdditionsMetadata, CatalogEntryMetadata,
     CatalogIdentityMetadata, CatalogInfo, CatalogIntentMetadata, DefaultMetadata,
-    DetailWarningKind, Diagnostics, EntryMatchRecord, IntentMode, IntentSelection, MatchedIdentity,
-    Platform, PlatformVariantMetadata, Provenance, PurlComponent, Requirements,
-    RequirementsResolution, ResolutionDetailWarning, ResolveContext, SymbolValueSource,
-    ToolCandidate, ToolInputs, ToolRecord, ToolResolutionStatus, ToolResolutionWarning,
-    ToolWarningKind, VersionSelection, VersionStatus, VersionVariantMetadata, Warning,
+    DetailWarningKind, Diagnostics, IntentMode, IntentSelection, MatchedIdentity, Platform,
+    PlatformVariantMetadata, Provenance, PurlComponent, Requirements, RequirementsResolution,
+    ResolutionDetailWarning, ResolveContext, SymbolValueSource, ToolCandidate, ToolInputs,
+    ToolRecord, ToolResolutionStatus, ToolResolutionWarning, ToolSelection, ToolWarningKind,
+    VersionSelection, VersionStatus, VersionVariantMetadata, Warning,
 };
 use crate::policy_store::paths::{case_key, is_absolute_path, normalize_path};
 use crate::policy_store::purl::{parse_purl, ParsedPurl};
@@ -300,8 +300,9 @@ impl PolicyCatalog {
             let unmatched = |records: &mut Vec<ToolRecord>| {
                 records.push(ToolRecord {
                     input_index,
+                    contributes: false,
                     status: ToolResolutionStatus::ToolUnmatched,
-                    matches: Vec::new(),
+                    selection: None,
                 });
             };
             // Identity (design §4.3): an invalid candidate PURL leaves the
@@ -406,7 +407,7 @@ impl PolicyCatalog {
                     strength: p.strength(),
                 })
                 .collect();
-            let mut record = EntryMatchRecord {
+            let mut record = ToolSelection {
                 entry_id: entry.entry_id.clone(),
                 entry_revision: entry.entry_revision,
                 matched_identities,
@@ -439,10 +440,11 @@ impl PolicyCatalog {
                         ));
                         tool_records.push(ToolRecord {
                             input_index,
+                            contributes: false,
                             status: ToolResolutionStatus::Version(
                                 VersionStatus::VersionUnparseable,
                             ),
-                            matches: vec![record],
+                            selection: Some(record),
                         });
                         continue;
                     }
@@ -513,8 +515,9 @@ impl PolicyCatalog {
                 ));
                 tool_records.push(ToolRecord {
                     input_index,
+                    contributes: false,
                     status: ToolResolutionStatus::IntentUnsupported,
-                    matches: vec![record],
+                    selection: Some(record),
                 });
                 continue;
             };
@@ -528,10 +531,12 @@ impl PolicyCatalog {
                 selected: selected.intent_names.clone(),
             });
             let status = ToolResolutionStatus::Version(record.version_selection.status);
+            // Provisional; settled once the composed output is known.
             tool_records.push(ToolRecord {
                 input_index,
+                contributes: true,
                 status,
-                matches: vec![record],
+                selection: Some(record),
             });
             match roots.iter_mut().find(|(e, _, _)| std::ptr::eq(*e, entry)) {
                 Some((_, _, owners)) => owners.push(input_index),
@@ -547,6 +552,10 @@ impl PolicyCatalog {
             warnings: Vec::new(),
         };
         if set.is_empty() {
+            diagnostics
+                .tools
+                .iter_mut()
+                .for_each(|t| t.contributes = false);
             diagnostics.warnings = warnings;
             return Ok(RequirementsResolution {
                 requirements: None,
@@ -642,6 +651,10 @@ impl PolicyCatalog {
             &mut warnings,
         )?
         else {
+            diagnostics
+                .tools
+                .iter_mut()
+                .for_each(|t| t.contributes = false);
             diagnostics.resolved_dependencies = closure.sorted_records();
             diagnostics.warnings = warnings;
             return Ok(RequirementsResolution {
@@ -692,6 +705,7 @@ impl PolicyCatalog {
         for record in &mut diagnostics.tools {
             if excluded.contains(&record.input_index) {
                 record.status = ToolResolutionStatus::FilesystemIdentityUnresolved;
+                record.contributes = false;
             }
         }
         diagnostics.resolved_dependencies = closure
@@ -715,6 +729,12 @@ impl PolicyCatalog {
                 Some(composed.requirements)
             }
         };
+        if requirements.is_none() {
+            diagnostics
+                .tools
+                .iter_mut()
+                .for_each(|t| t.contributes = false);
+        }
         diagnostics.warnings = warnings;
         Ok(RequirementsResolution {
             requirements,
@@ -843,16 +863,27 @@ impl PolicyCatalog {
             ));
         }
         let contract = self.store.contract();
-        for (name, _) in ctx.symbols.iter().flat_map(|s| s.iter()) {
+        for (name, value) in ctx.symbols.iter().flat_map(|s| s.iter()) {
             let Some(definition) = contract.symbol(name) else {
                 return Err(invalid_context(format!(
                     "ResolveContext.symbols.{name} is not a catalog symbol"
                 )));
             };
+            // `projectRoot` is shorthand for this symbol (API spec §4): either
+            // form may supply it, and both must then be identical strings.
             if definition.source == SymbolSource::Context {
-                return Err(invalid_context(format!(
-                    "symbol '{name}' is supplied through ResolveContext.projectRoot, not symbols"
-                )));
+                if value.is_empty() {
+                    return Err(invalid_context(format!(
+                        "ResolveContext.symbols.{name} must be a non-empty string when present"
+                    )));
+                }
+                if let Some(root) = ctx.project_root.as_deref() {
+                    if root != value {
+                        return Err(invalid_context(format!(
+                            "ResolveContext.projectRoot '{root}' and ResolveContext.symbols.{name} '{value}' must be identical when both are present"
+                        )));
+                    }
+                }
             }
         }
         Ok((platform, architecture))
@@ -887,6 +918,7 @@ impl PolicyCatalog {
                 if definition.source == SymbolSource::Context {
                     ctx.project_root
                         .clone()
+                        .or_else(|| supplied(&name))
                         .map(|v| (v, SymbolValueSource::Caller))
                 } else {
                     supplied(&name).map(|v| (v, SymbolValueSource::Caller))
@@ -936,26 +968,26 @@ impl PolicyCatalog {
                     source.as_str()
                 )));
             }
-            if source != SymbolValueSource::Caller {
-                warnings.push(detail_warning(
-                    owners,
-                    entry_ids,
-                    DetailWarningKind::SymbolResolved {
-                        symbol: name.clone(),
-                        value: value.clone(),
-                        source,
-                    },
-                    format!(
-                        "symbol '{name}' resolved to '{value}' from {}",
-                        match source {
-                            SymbolValueSource::Discovery => "host-local discovery",
-                            SymbolValueSource::Host => "the host environment",
-                            SymbolValueSource::Default => "the contract's platform default",
-                            SymbolValueSource::Caller => "the caller",
-                        }
-                    ),
-                ));
-            }
+            // API spec §4: every resolved symbol is reported with its source,
+            // including caller values from either project-root form.
+            warnings.push(detail_warning(
+                owners,
+                entry_ids,
+                DetailWarningKind::SymbolResolved {
+                    symbol: name.clone(),
+                    value: value.clone(),
+                    source,
+                },
+                format!(
+                    "symbol '{name}' resolved to '{value}' from {}",
+                    match source {
+                        SymbolValueSource::Discovery => "host-local discovery",
+                        SymbolValueSource::Host => "the host environment",
+                        SymbolValueSource::Default => "the contract's platform default",
+                        SymbolValueSource::Caller => "the caller",
+                    }
+                ),
+            ));
             values.insert(name, value);
         }
         if !missing.is_empty() {

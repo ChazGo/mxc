@@ -133,7 +133,12 @@ fn explicit_architecture_wins_and_suppresses_the_host_default_warning() {
         fs_json(&result.requirements),
         j(r#"{"readonlyPaths":["C:\\g\\x64"],"readwritePaths":["C:\\p"]}"#)
     );
-    assert!(result.diagnostics.warnings.is_empty());
+    // Only the caller-supplied symbols are reported; no architecture warning.
+    assert!(result
+        .diagnostics
+        .warnings
+        .iter()
+        .all(|w| w.code() == "symbol_resolved"));
 }
 
 #[test]
@@ -167,8 +172,8 @@ fn another_architecture_is_never_used_and_neutral_additions_are_reported() {
             .warnings
             .iter()
             .filter_map(|w| match w {
-                Warning::Detail(d) => Some(d.kind.clone()),
-                Warning::Tool(_) => None,
+                Warning::Detail(d) if w.code() != "symbol_resolved" => Some(d.kind.clone()),
+                _ => None,
             })
             .collect()
     };
@@ -271,10 +276,43 @@ fn never_fabricates_project_root_or_caller_symbols() {
         .resolve_requirements_with_diagnostics("git", &weak().architecture(Architecture::X64))
         .unwrap();
     assert_eq!(result.requirements, None);
+    // No output means no input contributes, even though one was selected.
+    assert!(!result.diagnostics.tools[0].contributes);
+    assert!(result.diagnostics.tools[0].selection.is_some());
     let warnings = messages(&result.diagnostics.warnings);
     let a = warnings.find("required symbol 'git_prefix'").unwrap();
     let b = warnings.find("required symbol 'project_root'").unwrap();
     assert!(a < b);
+}
+
+#[test]
+fn project_root_binds_through_either_context_form() {
+    let catalog = catalog_for(revision(vec![entry("tool:t", "")]), linux_x64());
+    for ctx in [
+        weak().project_root("/p"),
+        weak().symbol("project_root", "/p"),
+        weak().project_root("/p").symbol("project_root", "/p"),
+    ] {
+        let result = catalog
+            .resolve_requirements_with_diagnostics("t", &ctx)
+            .unwrap();
+        assert_eq!(
+            fs_json(&result.requirements),
+            j(r#"{"readwritePaths":["/p"]}"#),
+            "{ctx:?}"
+        );
+        let resolved = result
+            .diagnostics
+            .warnings
+            .iter()
+            .find(|w| w.code() == "symbol_resolved")
+            .expect("symbol_resolved");
+        assert!(
+            resolved.to_json().get("source") == Some(&Json::String("caller".into())),
+            "{ctx:?}"
+        );
+        assert!(result.diagnostics.tools[0].contributes);
+    }
 }
 
 #[test]
@@ -437,7 +475,19 @@ fn invalid_context_and_inputs_are_failures_not_absence() {
         ("git".into(), ResolveContext::new().symbol("nope", "/x")),
         (
             "git".into(),
-            ResolveContext::new().symbol("project_root", "/x"),
+            ResolveContext::new()
+                .project_root("/x")
+                .symbol("project_root", "/y"),
+        ),
+        (
+            Vec::<ToolInput>::new().into(),
+            ResolveContext::new()
+                .project_root("/x")
+                .symbol("project_root", "/x/"),
+        ),
+        (
+            "git".into(),
+            ResolveContext::new().symbol("project_root", ""),
         ),
         (
             "git".into(),
@@ -589,7 +639,9 @@ fn package_identity_then_intent_then_architecture_and_ties_are_ambiguous() {
                 .unwrap()
                 .diagnostics
                 .tools[0]
-                .matches[0]
+                .selection
+                .as_ref()
+                .unwrap()
                 .entry_id
                 .clone()
         };
@@ -628,7 +680,14 @@ fn exact_architecture_outranks_neutral_and_default() {
     let result = catalog
         .resolve_requirements_with_diagnostics("x", &weak().project_root("/p"))
         .unwrap();
-    assert_eq!(result.diagnostics.tools[0].matches[0].entry_id, "tool:b");
+    assert_eq!(
+        result.diagnostics.tools[0]
+            .selection
+            .as_ref()
+            .unwrap()
+            .entry_id,
+        "tool:b"
+    );
 }
 
 #[test]
@@ -681,7 +740,7 @@ fn resolve_git(tools: impl Into<ToolInputs>) -> RequirementsResolution {
 #[test]
 fn version_selection_statuses() {
     let none = resolve_git(git(None, Some("push")));
-    let record = &none.diagnostics.tools[0].matches[0];
+    let record = &none.diagnostics.tools[0].selection.as_ref().unwrap();
     assert_eq!(
         none.diagnostics.tools[0].status,
         ToolResolutionStatus::Version(VersionStatus::MatchedDefault)
@@ -690,7 +749,7 @@ fn version_selection_statuses() {
     assert!(none.diagnostics.resolved_dependencies.is_empty());
 
     let inside = resolve_git(git(Some("2.45.1"), Some("push")));
-    let record = &inside.diagnostics.tools[0].matches[0];
+    let record = &inside.diagnostics.tools[0].selection.as_ref().unwrap();
     assert_eq!(
         record.version_selection.status,
         VersionStatus::MatchedVersion
@@ -736,13 +795,23 @@ fn version_selection_statuses() {
         bad.diagnostics.tools[0].status,
         ToolResolutionStatus::Version(VersionStatus::VersionUnparseable)
     );
-    assert_eq!(bad.diagnostics.tools[0].matches[0].intent_selection, None);
+    assert_eq!(
+        bad.diagnostics.tools[0]
+            .selection
+            .as_ref()
+            .unwrap()
+            .intent_selection,
+        None
+    );
 }
 
 #[test]
 fn intent_selection_and_unsupported_intents() {
     let all = resolve_git(git(Some("2.55"), None));
-    let selection = all.diagnostics.tools[0].matches[0]
+    let selection = all.diagnostics.tools[0]
+        .selection
+        .as_ref()
+        .unwrap()
         .intent_selection
         .clone()
         .unwrap();
@@ -772,11 +841,17 @@ fn intent_selection_and_unsupported_intents() {
     let tool = &unsupported.diagnostics.tools[0];
     assert_eq!(tool.status, ToolResolutionStatus::IntentUnsupported);
     assert_eq!(
-        tool.matches[0].version_selection.status,
+        tool.selection.as_ref().unwrap().version_selection.status,
         VersionStatus::MatchedVersion
     );
     assert_eq!(
-        tool.matches[0].intent_selection.as_ref().unwrap().mode,
+        tool.selection
+            .as_ref()
+            .unwrap()
+            .intent_selection
+            .as_ref()
+            .unwrap()
+            .mode,
         IntentMode::Unsupported
     );
     assert_eq!(unsupported.requirements, None);
@@ -785,7 +860,7 @@ fn intent_selection_and_unsupported_intents() {
     let tool = &both.diagnostics.tools[0];
     assert_eq!(tool.status, ToolResolutionStatus::IntentUnsupported);
     assert_eq!(
-        tool.matches[0].version_selection.status,
+        tool.selection.as_ref().unwrap().version_selection.status,
         VersionStatus::VersionOutOfRange
     );
     let codes: Vec<&str> = both
@@ -816,6 +891,16 @@ fn pairs_compose_and_a_tool_without_network_does_not_veto_another() {
             tcp("192.0.2.10/32", 443),
             tcp("192.0.2.10/32", 22)
         )))
+    );
+    // Duplicate inputs both contribute; the unmatched one does not.
+    assert_eq!(
+        result
+            .diagnostics
+            .tools
+            .iter()
+            .map(|t| t.contributes)
+            .collect::<Vec<_>>(),
+        [true, true, true, true, false]
     );
     assert_eq!(
         result.diagnostics.tools[4].status,
@@ -1040,6 +1125,9 @@ fn unsupported_combinations_fail_rather_than_broaden() {
                 ),
             ),
             entry("tool:u", &with_default(r#"{"timeoutMs":5}"#, "")),
+            entry("tool:u2", &with_default(r#"{"timeoutMs":5}"#, "")),
+            entry("tool:v", &with_default(r#"{"ui":{"disable":true}}"#, "")),
+            entry("tool:v2", &with_default(r#"{"ui":{"disable":true}}"#, "")),
             entry(
                 "tool:i",
                 &with_default(r#"{"network":{"ingress":{"default":"deny"}}}"#, ""),
@@ -1064,10 +1152,22 @@ fn unsupported_combinations_fail_rather_than_broaden() {
         reason_of(catalog.resolve_requirements(vec!["i", "n"], &weak())),
         ErrorReason::CompositionConflict
     );
+    // One source's ui/timeoutMs is kept; omission elsewhere adds nothing.
     assert_eq!(
-        reason_of(catalog.resolve_requirements(vec!["u", "b"], &weak())),
-        ErrorReason::CompositionConflict
+        catalog
+            .resolve_requirements(vec!["u", "b", "v", "u"], &weak())
+            .unwrap()
+            .unwrap()
+            .to_json(),
+        j(r#"{"ui":{"disable":true},"timeoutMs":5}"#)
     );
+    // Distinct sources supplying the same field conflict, even when equal.
+    for pair in [vec!["u", "u2"], vec!["v", "v2"]] {
+        assert_eq!(
+            reason_of(catalog.resolve_requirements(pair, &weak())),
+            ErrorReason::CompositionConflict
+        );
+    }
     // A single selected policy without additions passes through whole.
     assert_eq!(
         catalog
@@ -1137,7 +1237,7 @@ fn module_level_functions_use_the_bundled_catalog() {
     assert_eq!(result.requirements, None);
     assert_eq!(
         result.diagnostics.to_json().get("tools").unwrap(),
-        &j(r#"[{"inputIndex":0,"status":"tool_unmatched","matches":[]}]"#)
+        &j(r#"[{"inputIndex":0,"contributes":false,"status":"tool_unmatched"}]"#)
     );
     assert_eq!(
         reason_of(resolve_requirements(
@@ -1469,11 +1569,19 @@ fn validation_materializes_composition_limits() {
     };
     err(
         vec![
-            entry("tool:a", &dep("tool:b")),
+            entry(
+                "tool:a",
+                r#"{"default":{"requirements":{"timeoutMs":5},"dependencies":[{"entryId":"tool:b"}]}}"#,
+            ),
             entry("tool:b", &with_default(r#"{"timeoutMs":5}"#, "")),
         ],
-        "'tool:b' uses 'timeoutMs', which has no v1 cross-policy composition rule",
+        "'timeoutMs' is supplied by tool:a and tool:b; distinct sources cannot both supply it",
     );
+    validate(vec![
+        entry("tool:a", &dep("tool:b")),
+        entry("tool:b", &with_default(r#"{"timeoutMs":5}"#, "")),
+    ])
+    .unwrap();
     // An overlapping catalog deny is removed during materialization, not rejected.
     validate(vec![entry(
         "tool:a",
@@ -1781,7 +1889,11 @@ fn explicit_revisions_are_never_substituted() {
             .unwrap();
         (
             r.diagnostics.catalog_revision.clone(),
-            r.diagnostics.tools[0].matches[0].entry_revision,
+            r.diagnostics.tools[0]
+                .selection
+                .as_ref()
+                .unwrap()
+                .entry_revision,
         )
     };
     assert_eq!(of(&ctx), ("2000-01-02.1".into(), 2.0));

@@ -303,13 +303,12 @@ pub mod v1 {
         pub use crate::policy_store::{
             Architecture, ArchitectureFallback, CatalogAdditionsMetadata, CatalogEntryMetadata,
             CatalogIdentityMetadata, CatalogInfo, CatalogIntentMetadata, DefaultMetadata,
-            DependencyRecord, DetailWarningKind, Diagnostics, EntryMatchRecord, IdentityStrength,
-            IntentMode, IntentSelection, MatchedIdentity, NetworkRequirement, PathAccess,
-            PathRequirement, Platform, PlatformVariantMetadata, Provenance, PurlComponent,
-            ResolutionDetailWarning, ResolveContext, SymbolMap, SymbolValueSource, ToolCandidate,
-            ToolInput, ToolInputs, ToolRecord, ToolResolutionStatus, ToolResolutionWarning,
-            ToolWarningKind, VersionScheme, VersionSelection, VersionStatus,
-            VersionVariantMetadata, Warning,
+            DependencyRecord, DetailWarningKind, Diagnostics, IdentityStrength, IntentMode,
+            IntentSelection, MatchedIdentity, NetworkRequirement, PathAccess, PathRequirement,
+            Platform, PlatformVariantMetadata, Provenance, PurlComponent, ResolutionDetailWarning,
+            ResolveContext, SymbolMap, SymbolValueSource, ToolCandidate, ToolRecord,
+            ToolResolutionStatus, ToolResolutionWarning, ToolSelection, ToolWarningKind,
+            VersionScheme, VersionSelection, VersionStatus, VersionVariantMetadata, Warning,
         };
     }
 

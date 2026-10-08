@@ -57,11 +57,11 @@ pub use host::{FixedHost, HostEnvironment, SystemHost};
 pub use model::{
     Architecture, ArchitectureFallback, CatalogAdditionsMetadata, CatalogEntryMetadata,
     CatalogIdentityMetadata, CatalogInfo, CatalogIntentMetadata, DefaultMetadata, DependencyRecord,
-    DetailWarningKind, Diagnostics, EntryMatchRecord, FilesystemRequirements, IdentityStrength,
-    IntentMode, IntentSelection, MatchedIdentity, NetworkRequirement, PathAccess, PathRequirement,
-    Platform, PlatformVariantMetadata, Provenance, PurlComponent, Requirements,
-    RequirementsResolution, ResolutionDetailWarning, ResolveContext, SymbolMap, SymbolValueSource,
-    ToolCandidate, ToolInput, ToolInputs, ToolRecord, ToolResolutionStatus, ToolResolutionWarning,
+    DetailWarningKind, Diagnostics, FilesystemRequirements, IdentityStrength, IntentMode,
+    IntentSelection, MatchedIdentity, NetworkRequirement, PathAccess, PathRequirement, Platform,
+    PlatformVariantMetadata, Provenance, PurlComponent, Requirements, RequirementsResolution,
+    ResolutionDetailWarning, ResolveContext, SymbolMap, SymbolValueSource, ToolCandidate,
+    ToolInput, ToolInputs, ToolRecord, ToolResolutionStatus, ToolResolutionWarning, ToolSelection,
     ToolWarningKind, VersionSelection, VersionStatus, VersionVariantMetadata, Warning,
 };
 pub use resolver::{

@@ -128,9 +128,10 @@ fn diagnostics_include_attribution() {
     assert_eq!(status, MXC_STATUS_SUCCESS);
     let json: serde_json::Value = serde_json::from_str(&json.unwrap()).unwrap();
     assert_eq!(
-        json["diagnostics"]["tools"][0]["matches"][0]["entryId"],
+        json["diagnostics"]["tools"][0]["selection"]["entryId"],
         "tool:git"
     );
+    assert_eq!(json["diagnostics"]["tools"][0]["contributes"], true);
     assert!(json["requirements"].is_object());
 }
 
@@ -149,7 +150,8 @@ fn intent_and_version_cross_the_boundary() {
     let json: serde_json::Value = serde_json::from_str(&json.unwrap()).unwrap();
     let tool = &json["diagnostics"]["tools"][0];
     assert_eq!(tool["status"], "version_out_of_range");
-    assert_eq!(tool["matches"][0]["intentSelection"]["requested"], "fetch");
+    assert_eq!(tool["selection"]["intentSelection"]["requested"], "fetch");
+    assert_eq!(tool["contributes"], true);
     let warning = &json["diagnostics"]["warnings"][0];
     assert_eq!(warning["code"], "version_out_of_range");
     assert_eq!(warning["inputIndex"], 0);

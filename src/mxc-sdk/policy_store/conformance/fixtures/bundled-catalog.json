@@ -65,30 +65,29 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": [
-                      "fetch",
-                      "local",
-                      "push"
-                    ]
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "fetch",
+                    "local",
+                    "push"
+                  ]
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
@@ -99,6 +98,45 @@
               "entryId": "tool:git",
               "invocationName": "git.exe",
               "message": "input 0 ('git.exe') matched tool:git only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "C:\\Program Files\\Git\\cmd",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to 'C:\\Program Files\\Git\\cmd' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "C:\\work\\repo",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to 'C:\\work\\repo' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "programData",
+              "value": "C:\\ProgramData",
+              "source": "caller",
+              "message": "symbol 'programData' resolved to 'C:\\ProgramData' from the caller"
             }
           ]
         }
@@ -135,26 +173,25 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:node",
-                  "entryRevision": 2,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+              "selection": {
+                "entryId": "tool:node",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
@@ -165,6 +202,19 @@
               "entryId": "tool:node",
               "invocationName": "node",
               "message": "input 0 ('node') matched tool:node only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/usr/local/bin",
+              "source": "caller",
+              "message": "symbol 'node_prefix' resolved to '/usr/local/bin' from the caller"
             }
           ]
         }
@@ -204,30 +254,29 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:npm",
-                  "entryRevision": 2,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
+              "selection": {
+                "entryId": "tool:npm",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [
@@ -255,6 +304,58 @@
                 "version"
               ],
               "message": "input 0 ('npx'): packageUrl version ignored for matching; it is not version evidence (supply detectedVersion)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:npm"
+              ],
+              "symbol": "npm_prefix",
+              "value": "/opt/homebrew/bin",
+              "source": "caller",
+              "message": "symbol 'npm_prefix' resolved to '/opt/homebrew/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:npm"
+              ],
+              "symbol": "project_root",
+              "value": "/Users/dev/app/",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/Users/dev/app/' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:npm"
+              ],
+              "symbol": "npm_cache",
+              "value": "/Users/dev/.npm",
+              "source": "caller",
+              "message": "symbol 'npm_cache' resolved to '/Users/dev/.npm' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/opt/homebrew/bin",
+              "source": "caller",
+              "message": "symbol 'node_prefix' resolved to '/opt/homebrew/bin' from the caller"
             }
           ]
         }
@@ -331,99 +432,95 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": [
-                      "fetch",
-                      "local",
-                      "push"
-                    ]
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "fetch",
+                    "local",
+                    "push"
+                  ]
                 }
-              ]
+              }
             },
             {
               "inputIndex": 1,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:npm",
-                  "entryRevision": 2,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+              "selection": {
+                "entryId": "tool:npm",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             },
             {
               "inputIndex": 2,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:node",
-                  "entryRevision": 2,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+              "selection": {
+                "entryId": "tool:node",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             },
             {
               "inputIndex": 3,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:npm",
-                  "entryRevision": 2,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+              "selection": {
+                "entryId": "tool:npm",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [
@@ -471,6 +568,78 @@
               "entryId": "tool:npm",
               "invocationName": "npm",
               "message": "input 3 ('npm') matched tool:npm only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0,
+                1,
+                3
+              ],
+              "entryIds": [
+                "tool:git",
+                "tool:npm"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1,
+                3
+              ],
+              "entryIds": [
+                "tool:npm"
+              ],
+              "symbol": "npm_prefix",
+              "value": "/opt/node/bin",
+              "source": "caller",
+              "message": "symbol 'npm_prefix' resolved to '/opt/node/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1,
+                3
+              ],
+              "entryIds": [
+                "tool:npm"
+              ],
+              "symbol": "npm_cache",
+              "value": "/home/u/.npm",
+              "source": "caller",
+              "message": "symbol 'npm_cache' resolved to '/home/u/.npm' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1,
+                2,
+                3
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/opt/node/bin",
+              "source": "caller",
+              "message": "symbol 'node_prefix' resolved to '/opt/node/bin' from the caller"
             }
           ]
         }
@@ -540,35 +709,34 @@
           "tools": [
             {
               "inputIndex": 0,
-              "status": "tool_unmatched",
-              "matches": []
+              "contributes": false,
+              "status": "tool_unmatched"
             },
             {
               "inputIndex": 1,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": [
-                      "fetch",
-                      "local",
-                      "push"
-                    ]
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "fetch",
+                    "local",
+                    "push"
+                  ]
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
@@ -585,6 +753,32 @@
               "entryId": "tool:git",
               "invocationName": "git",
               "message": "input 1 ('git') matched tool:git only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
             }
           ]
         }
@@ -609,8 +803,8 @@
           "tools": [
             {
               "inputIndex": 0,
-              "status": "tool_unmatched",
-              "matches": []
+              "contributes": false,
+              "status": "tool_unmatched"
             }
           ],
           "resolvedDependencies": [],
@@ -658,30 +852,29 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": false,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": [
-                      "fetch",
-                      "local",
-                      "push"
-                    ]
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "fetch",
+                    "local",
+                    "push"
+                  ]
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
@@ -692,6 +885,19 @@
               "entryId": "tool:git",
               "invocationName": "git",
               "message": "input 0 ('git') matched tool:git only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
             },
             {
               "code": "symbol_unresolved",
@@ -802,53 +1008,51 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": [
-                      "fetch",
-                      "local",
-                      "push"
-                    ]
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "fetch",
+                    "local",
+                    "push"
+                  ]
                 }
-              ]
+              }
             },
             {
               "inputIndex": 1,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:node",
-                  "entryRevision": 2,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+              "selection": {
+                "entryId": "tool:node",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
@@ -866,6 +1070,45 @@
               "entryId": "tool:node",
               "invocationName": "node",
               "message": "input 1 ('node') matched tool:node only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/opt",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/opt' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/opt/node",
+              "source": "caller",
+              "message": "symbol 'node_prefix' resolved to '/opt/node' from the caller"
             },
             {
               "code": "readonly_superseded",
@@ -952,37 +1195,63 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "requested": "push",
-                    "mode": "named",
-                    "selected": [
-                      "push"
-                    ]
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "push",
+                  "mode": "named",
+                  "selected": [
+                    "push"
+                  ]
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
-          "warnings": []
+          "warnings": [
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            }
+          ]
         }
       }
     },
@@ -1041,35 +1310,34 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_version",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_version",
-                    "detectedVersion": "2.45.1",
-                    "selectedVersionRange": "vers:intdot/>=2.40|<2.50"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "requested": "push",
-                    "mode": "named",
-                    "selected": [
-                      "push"
-                    ]
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_version",
+                  "detectedVersion": "2.45.1",
+                  "selectedVersionRange": "vers:intdot/>=2.40|<2.50"
+                },
+                "intentSelection": {
+                  "requested": "push",
+                  "mode": "named",
+                  "selected": [
+                    "push"
+                  ]
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [
@@ -1088,7 +1356,47 @@
               }
             }
           ],
-          "warnings": []
+          "warnings": [
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:ssh"
+              ],
+              "symbol": "ssh_prefix",
+              "value": "/usr/lib/ssh",
+              "source": "caller",
+              "message": "symbol 'ssh_prefix' resolved to '/usr/lib/ssh' from the caller"
+            }
+          ]
         }
       }
     },
@@ -1147,39 +1455,78 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_version",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_version",
-                    "detectedVersion": "2.51.0",
-                    "selectedVersionRange": "vers:intdot/>=2.50|<3"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "requested": "bundle-fetch",
-                    "mode": "named",
-                    "selected": [
-                      "bundle-fetch"
-                    ]
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_version",
+                  "detectedVersion": "2.51.0",
+                  "selectedVersionRange": "vers:intdot/>=2.50|<3"
+                },
+                "intentSelection": {
+                  "requested": "bundle-fetch",
+                  "mode": "named",
+                  "selected": [
+                    "bundle-fetch"
+                  ]
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
-          "warnings": []
+          "warnings": [
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "temp_dir",
+              "value": "/tmp",
+              "source": "caller",
+              "message": "symbol 'temp_dir' resolved to '/tmp' from the caller"
+            }
+          ]
         }
       }
     },
@@ -1207,33 +1554,32 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": false,
               "status": "intent_unsupported",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_version",
-                    "detectedVersion": "2.45.1",
-                    "selectedVersionRange": "vers:intdot/>=2.40|<2.50"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "requested": "bundle-fetch",
-                    "mode": "unsupported",
-                    "selected": []
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_version",
+                  "detectedVersion": "2.45.1",
+                  "selectedVersionRange": "vers:intdot/>=2.40|<2.50"
+                },
+                "intentSelection": {
+                  "requested": "bundle-fetch",
+                  "mode": "unsupported",
+                  "selected": []
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
@@ -1273,32 +1619,31 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": false,
               "status": "intent_unsupported",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "version_out_of_range",
-                    "detectedVersion": "2.30.0"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "requested": "bundle-fetch",
-                    "mode": "unsupported",
-                    "selected": []
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "version_out_of_range",
+                  "detectedVersion": "2.30.0"
+                },
+                "intentSelection": {
+                  "requested": "bundle-fetch",
+                  "mode": "unsupported",
+                  "selected": []
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
@@ -1345,27 +1690,26 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": false,
               "status": "version_unparseable",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "version_unparseable",
-                    "detectedVersion": "banana"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
+                  },
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "version_unparseable",
+                  "detectedVersion": "banana"
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
@@ -1461,41 +1805,80 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_version",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_version",
-                    "detectedVersion": "2.51.0",
-                    "selectedVersionRange": "vers:intdot/>=2.50|<3"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": [
-                      "bundle-fetch",
-                      "fetch",
-                      "local",
-                      "push"
-                    ]
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_version",
+                  "detectedVersion": "2.51.0",
+                  "selectedVersionRange": "vers:intdot/>=2.50|<3"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "bundle-fetch",
+                    "fetch",
+                    "local",
+                    "push"
+                  ]
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
-          "warnings": []
+          "warnings": [
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "temp_dir",
+              "value": "/tmp",
+              "source": "caller",
+              "message": "symbol 'temp_dir' resolved to '/tmp' from the caller"
+            }
+          ]
         }
       }
     },
@@ -1532,37 +1915,76 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "requested": "local",
-                    "mode": "named",
-                    "selected": [
-                      "local"
-                    ]
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "local",
+                  "mode": "named",
+                  "selected": [
+                    "local"
+                  ]
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
-          "warnings": []
+          "warnings": [
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "C:\\Program Files\\Git",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to 'C:\\Program Files\\Git' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "C:\\work",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to 'C:\\work' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "programData",
+              "value": "C:\\ProgramData",
+              "source": "caller",
+              "message": "symbol 'programData' resolved to 'C:\\ProgramData' from the caller"
+            }
+          ]
         }
       }
     },
@@ -1645,98 +2067,95 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "requested": "local",
-                    "mode": "named",
-                    "selected": [
-                      "local"
-                    ]
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "local",
+                  "mode": "named",
+                  "selected": [
+                    "local"
+                  ]
                 }
-              ]
+              }
             },
             {
               "inputIndex": 1,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "requested": "fetch",
-                    "mode": "named",
-                    "selected": [
-                      "fetch"
-                    ]
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "fetch",
+                  "mode": "named",
+                  "selected": [
+                    "fetch"
+                  ]
                 }
-              ]
+              }
             },
             {
               "inputIndex": 2,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "requested": "push",
-                    "mode": "named",
-                    "selected": [
-                      "push"
-                    ]
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "push",
+                  "mode": "named",
+                  "selected": [
+                    "push"
+                  ]
                 }
-              ]
+              }
             },
             {
               "inputIndex": 3,
-              "status": "tool_unmatched",
-              "matches": []
+              "contributes": false,
+              "status": "tool_unmatched"
             }
           ],
           "resolvedDependencies": [],
@@ -1746,6 +2165,36 @@
               "inputIndex": 3,
               "invocationName": "cargo",
               "message": "input 3 ('cargo') matched no eligible catalog entry"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0,
+                1,
+                2
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0,
+                1,
+                2
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
             }
           ]
         }
@@ -1807,31 +2256,30 @@
           "tools": [
             {
               "inputIndex": 0,
-              "status": "tool_unmatched",
-              "matches": []
+              "contributes": false,
+              "status": "tool_unmatched"
             },
             {
               "inputIndex": 1,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:node",
-                  "entryRevision": 2,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+              "selection": {
+                "entryId": "tool:node",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
@@ -1848,6 +2296,19 @@
               "entryId": "tool:node",
               "invocationName": "node",
               "message": "input 1 ('node') matched tool:node only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/opt/node/bin",
+              "source": "caller",
+              "message": "symbol 'node_prefix' resolved to '/opt/node/bin' from the caller"
             }
           ]
         }
@@ -1884,33 +2345,32 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "requested": "local",
-                    "mode": "named",
-                    "selected": [
-                      "local"
-                    ]
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "local",
+                  "mode": "named",
+                  "selected": [
+                    "local"
+                  ]
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
@@ -1925,6 +2385,32 @@
                 "subpath"
               ],
               "message": "input 0 ('git'): packageUrl version, qualifiers, subpath ignored for matching; it is not version evidence (supply detectedVersion)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
             }
           ]
         }
@@ -1969,30 +2455,29 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:npm",
-                  "entryRevision": 2,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
+              "selection": {
+                "entryId": "tool:npm",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [
@@ -2024,6 +2509,19 @@
               "value": "/usr/lib/node_modules/npm/bin",
               "source": "discovery",
               "message": "symbol 'npm_prefix' resolved to '/usr/lib/node_modules/npm/bin' from host-local discovery"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:npm"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
             },
             {
               "code": "symbol_resolved",
@@ -2096,79 +2594,76 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": false,
               "status": "filesystem_identity_unresolved",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "requested": "local",
-                    "mode": "named",
-                    "selected": [
-                      "local"
-                    ]
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "local",
+                  "mode": "named",
+                  "selected": [
+                    "local"
+                  ]
                 }
-              ]
+              }
             },
             {
               "inputIndex": 1,
+              "contributes": false,
               "status": "filesystem_identity_unresolved",
-              "matches": [
-                {
-                  "entryId": "tool:node",
-                  "entryRevision": 2,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+              "selection": {
+                "entryId": "tool:node",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             },
             {
               "inputIndex": 2,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:ssh",
-                  "entryRevision": 2,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+              "selection": {
+                "entryId": "tool:ssh",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
@@ -2186,6 +2681,58 @@
               "entryId": "tool:ssh",
               "invocationName": "ssh",
               "message": "input 2 ('ssh') matched tool:ssh only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/opt/node/bin",
+              "source": "caller",
+              "message": "symbol 'node_prefix' resolved to '/opt/node/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                2
+              ],
+              "entryIds": [
+                "tool:ssh"
+              ],
+              "symbol": "ssh_prefix",
+              "value": "/usr/lib/ssh",
+              "source": "caller",
+              "message": "symbol 'ssh_prefix' resolved to '/usr/lib/ssh' from the caller"
             },
             {
               "code": "filesystem_identity_unresolved",
@@ -2254,56 +2801,54 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "requested": "local",
-                    "mode": "named",
-                    "selected": [
-                      "local"
-                    ]
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "local",
+                  "mode": "named",
+                  "selected": [
+                    "local"
+                  ]
                 }
-              ]
+              }
             },
             {
               "inputIndex": 1,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:node",
-                  "entryRevision": 2,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+              "selection": {
+                "entryId": "tool:node",
+                "entryRevision": 2,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
@@ -2314,6 +2859,45 @@
               "entryId": "tool:node",
               "invocationName": "node",
               "message": "input 1 ('node') matched tool:node only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "/usr/bin",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/usr/bin' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "/w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to '/w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                1
+              ],
+              "entryIds": [
+                "tool:node"
+              ],
+              "symbol": "node_prefix",
+              "value": "/srv/alias-of-w",
+              "source": "caller",
+              "message": "symbol 'node_prefix' resolved to '/srv/alias-of-w' from the caller"
             },
             {
               "code": "readonly_superseded",
@@ -2374,37 +2958,75 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": false,
               "status": "filesystem_identity_unresolved",
-              "matches": [
-                {
-                  "entryId": "tool:git",
-                  "entryRevision": 3,
-                  "matchedIdentities": [
-                    {
-                      "kind": "purl",
-                      "strength": "strong"
-                    },
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
+              "selection": {
+                "entryId": "tool:git",
+                "entryRevision": 3,
+                "matchedIdentities": [
+                  {
+                    "kind": "purl",
+                    "strength": "strong"
                   },
-                  "intentSelection": {
-                    "requested": "local",
-                    "mode": "named",
-                    "selected": [
-                      "local"
-                    ]
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "requested": "local",
+                  "mode": "named",
+                  "selected": [
+                    "local"
+                  ]
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [],
           "warnings": [
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "git_prefix",
+              "value": "C:\\Git\\cmd",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to 'C:\\Git\\cmd' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "project_root",
+              "value": "C:\\w",
+              "source": "caller",
+              "message": "symbol 'project_root' resolved to 'C:\\w' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:git"
+              ],
+              "symbol": "programData",
+              "value": "C:\\ProgramData",
+              "source": "caller",
+              "message": "symbol 'programData' resolved to 'C:\\ProgramData' from the caller"
+            },
             {
               "code": "filesystem_identity_unresolved",
               "inputIndexes": [

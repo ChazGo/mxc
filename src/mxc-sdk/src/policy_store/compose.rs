@@ -158,12 +158,27 @@ pub fn compose_check(contributions: &[Contribution<'_>]) -> Result<(), String> {
     }
     for group in &groups {
         for key in group.base.into_iter().flat_map(|b| b.raw().keys()) {
-            if !matches!(key, "filesystem" | "network") {
+            if !matches!(key, "filesystem" | "network" | "ui" | "timeoutMs") {
                 return Err(format!(
                     "'{}' uses '{key}', which has no v1 cross-policy composition rule",
                     group.entry_id
                 ));
             }
+        }
+    }
+    // API spec §4: one source's `ui`/`timeoutMs` is kept; two distinct
+    // sources supplying the same field conflict, even with equal values.
+    for field in SINGLE_SOURCE_FIELDS {
+        let sources: Vec<&str> = groups
+            .iter()
+            .filter(|g| g.base.is_some_and(|b| b.field(field).is_some()))
+            .map(|g| g.entry_id)
+            .collect();
+        if sources.len() > 1 {
+            return Err(format!(
+                "'{field}' is supplied by {}; distinct sources cannot both supply it",
+                sources.join(" and ")
+            ));
         }
     }
     if groups.iter().filter(|g| g.needs_network()).count() <= 1 {
@@ -195,6 +210,16 @@ pub fn compose_check(contributions: &[Contribution<'_>]) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Fields kept from at most one deduplicated source, never merged.
+const SINGLE_SOURCE_FIELDS: [&str; 2] = ["ui", "timeoutMs"];
+
+/// The one base that supplies `field`, if any (`compose_check` rejects more).
+fn single_source<'a>(groups: &[Group<'a>], field: &str) -> Option<&'a Json> {
+    groups
+        .iter()
+        .find_map(|g| g.base.and_then(|b| b.field(field)))
 }
 
 /// A single selected policy without additions or dependencies keeps every
@@ -535,23 +560,15 @@ pub fn compose(
     });
 
     let groups = groups(contributions);
-    let passthrough = is_passthrough(&groups);
-    let root = groups.first().and_then(|g| g.base);
     let network = compose_network(contributions, &groups, &mut warnings);
     Composed {
         requirements: Requirements {
             filesystem,
             network,
-            ui: passthrough
-                .then(|| root.and_then(|r| r.field("ui").cloned()))
-                .flatten(),
-            timeout_ms: passthrough
-                .then(|| {
-                    root.and_then(|r| r.field("timeoutMs"))
-                        .and_then(Json::as_f64)
-                        .map(|n| n as u32)
-                })
-                .flatten(),
+            ui: single_source(&groups, "ui").cloned(),
+            timeout_ms: single_source(&groups, "timeoutMs")
+                .and_then(Json::as_f64)
+                .map(|n| n as u32),
         },
         warnings,
         identity_failures: failures,

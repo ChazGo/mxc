@@ -133,10 +133,10 @@ fn every_entry_resolves_deterministically_through_its_own_identity() {
                                 ));
                             } else if first.to_json() != second.to_json() {
                                 failures.push(format!("{label} did not resolve deterministically"));
-                            } else if !first.diagnostics.tools[0]
-                                .matches
-                                .iter()
-                                .any(|m| m.entry_id == entry.entry_id)
+                            } else if first.diagnostics.tools[0]
+                                .selection
+                                .as_ref()
+                                .is_none_or(|m| m.entry_id != entry.entry_id)
                             {
                                 failures
                                     .push(format!("{label} was not matched by its own identity"));
@@ -182,12 +182,7 @@ fn every_entry_has_a_bundled_conformance_case() {
                 .and_then(|d| d.get("tools"))
                 .and_then(Json::as_array);
             for tool in tools.into_iter().flatten() {
-                for m in tool
-                    .get("matches")
-                    .and_then(Json::as_array)
-                    .into_iter()
-                    .flatten()
-                {
+                for m in tool.get("selection").into_iter() {
                     if let Some(id) = m.get("entryId").and_then(Json::as_str) {
                         covered.insert(id.to_string());
                     }

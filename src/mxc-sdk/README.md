@@ -130,13 +130,16 @@ let git = ToolCandidate::new("git")
     .with_package_url("pkg:generic/git")
     .with_detected_version("2.45.1")
     .with_intent("push");
-if let Some(requirements) = resolve_tool_requirements(git, &ResolveContext::default())? {
+let context = ResolveContext::default();
+if let Some(requirements) = resolve_tool_requirements(&[git], Some(&context))? {
     let request = ContainerRequest::from_requirements(requirements, "git push");
 }
 ```
 
 `resolve_tool_requirements_with_diagnostics` adds per-input statuses,
-dependency attribution, and structured warnings. The resolver is the internal
+dependency attribution, and structured warnings. Inputs are a slice of
+`ToolCandidate` (`ToolCandidate::from("git")` for a bare name); `None` for
+the context means `ResolveContext::default()`. The resolver is the internal
 `policy_store` module, which embeds the catalog in `policy_store/catalog/`.
 
 ## Public V1 types

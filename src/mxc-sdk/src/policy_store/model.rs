@@ -107,6 +107,18 @@ impl ToolCandidate {
     }
 }
 
+/// Name-only input: sets only `invocation_name` (API spec §6).
+impl From<&str> for ToolCandidate {
+    fn from(name: &str) -> Self {
+        Self {
+            invocation_name: name.to_owned(),
+            package_url: None,
+            detected_version: None,
+            intent: None,
+        }
+    }
+}
+
 /// A bare name is shorthand for `ToolCandidate { invocation_name }`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ToolInput {
@@ -178,6 +190,12 @@ impl From<Vec<ToolInput>> for ToolInputs {
 impl From<&[ToolInput]> for ToolInputs {
     fn from(value: &[ToolInput]) -> Self {
         ToolInputs(value.to_vec())
+    }
+}
+
+impl From<&[ToolCandidate]> for ToolInputs {
+    fn from(value: &[ToolCandidate]) -> Self {
+        ToolInputs(value.iter().cloned().map(ToolInput::from).collect())
     }
 }
 
@@ -493,8 +511,10 @@ pub struct MatchedIdentity {
     pub strength: IdentityStrength,
 }
 
+/// Metadata about the catalog entry one input selected (API spec §3). It is
+/// retained when a version or intent failure stops the input contributing.
 #[derive(Clone, Debug, PartialEq)]
-pub struct EntryMatchRecord {
+pub struct ToolSelection {
     pub entry_id: String,
     pub entry_revision: f64,
     pub matched_identities: Vec<MatchedIdentity>,
@@ -506,9 +526,13 @@ pub struct EntryMatchRecord {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ToolRecord {
     pub input_index: usize,
+    /// Whether this input's complete resolved requirements, including its
+    /// selected dependencies, are in the returned requirements. Not unique
+    /// access, authorization, or an execution guarantee.
+    pub contributes: bool,
     pub status: ToolResolutionStatus,
-    /// At most one entry; empty for `tool_unmatched`.
-    pub matches: Vec<EntryMatchRecord>,
+    /// The selected entry; `None` when no entry was selected.
+    pub selection: Option<ToolSelection>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -938,33 +962,29 @@ impl Diagnostics {
             .map(|tool| {
                 let mut record = JsonObject::new();
                 record.insert("inputIndex", Json::Number(tool.input_index as f64));
+                record.insert("contributes", Json::Bool(tool.contributes));
                 record.insert("status", tool.status.as_str().into());
-                let matches = tool
-                    .matches
-                    .iter()
-                    .map(|m| {
-                        let mut o = JsonObject::new();
-                        o.insert("entryId", Json::String(m.entry_id.clone()));
-                        o.insert("entryRevision", Json::Number(m.entry_revision));
-                        let identities = m
-                            .matched_identities
-                            .iter()
-                            .map(|i| {
-                                let mut io = JsonObject::new();
-                                io.insert("kind", Json::String(i.kind.clone()));
-                                io.insert("strength", Json::String(i.strength.as_str().into()));
-                                Json::Object(io)
-                            })
-                            .collect();
-                        o.insert("matchedIdentities", Json::Array(identities));
-                        o.insert("versionSelection", m.version_selection.to_json());
-                        if let Some(intent) = &m.intent_selection {
-                            o.insert("intentSelection", intent.to_json());
-                        }
-                        Json::Object(o)
-                    })
-                    .collect();
-                record.insert("matches", Json::Array(matches));
+                if let Some(m) = &tool.selection {
+                    let mut o = JsonObject::new();
+                    o.insert("entryId", Json::String(m.entry_id.clone()));
+                    o.insert("entryRevision", Json::Number(m.entry_revision));
+                    let identities = m
+                        .matched_identities
+                        .iter()
+                        .map(|i| {
+                            let mut io = JsonObject::new();
+                            io.insert("kind", Json::String(i.kind.clone()));
+                            io.insert("strength", Json::String(i.strength.as_str().into()));
+                            Json::Object(io)
+                        })
+                        .collect();
+                    o.insert("matchedIdentities", Json::Array(identities));
+                    o.insert("versionSelection", m.version_selection.to_json());
+                    if let Some(intent) = &m.intent_selection {
+                        o.insert("intentSelection", intent.to_json());
+                    }
+                    record.insert("selection", Json::Object(o));
+                }
                 Json::Object(record)
             })
             .collect();

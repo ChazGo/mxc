@@ -247,26 +247,25 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:fetcher",
-                  "entryRevision": 1,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+              "selection": {
+                "entryId": "tool:fetcher",
+                "entryRevision": 1,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [
@@ -294,6 +293,20 @@
               "entryId": "tool:fetcher",
               "invocationName": "fetcher",
               "message": "input 0 ('fetcher') matched tool:fetcher only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:fetcher",
+                "tool:helper"
+              ],
+              "symbol": "git_prefix",
+              "value": "/g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/g' from the caller"
             }
           ]
         }
@@ -352,26 +365,25 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:locker",
-                  "entryRevision": 1,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+              "selection": {
+                "entryId": "tool:locker",
+                "entryRevision": 1,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [
@@ -397,6 +409,20 @@
               "entryId": "tool:locker",
               "invocationName": "locker",
               "message": "input 0 ('locker') matched tool:locker only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:helper",
+                "tool:locker"
+              ],
+              "symbol": "git_prefix",
+              "value": "/g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/g' from the caller"
             }
           ]
         }
@@ -468,52 +494,50 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:helper",
-                  "entryRevision": 1,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": [
-                      "store",
-                      "sync"
-                    ]
+              "selection": {
+                "entryId": "tool:helper",
+                "entryRevision": 1,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": [
+                    "store",
+                    "sync"
+                  ]
                 }
-              ]
+              }
             },
             {
               "inputIndex": 1,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:fetcher",
-                  "entryRevision": 1,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+              "selection": {
+                "entryId": "tool:fetcher",
+                "entryRevision": 1,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [
@@ -548,6 +572,34 @@
               "entryId": "tool:fetcher",
               "invocationName": "fetcher",
               "message": "input 1 ('fetcher') matched tool:fetcher only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0,
+                1
+              ],
+              "entryIds": [
+                "tool:fetcher",
+                "tool:helper"
+              ],
+              "symbol": "git_prefix",
+              "value": "/g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/g' from the caller"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0
+              ],
+              "entryIds": [
+                "tool:helper"
+              ],
+              "symbol": "temp_dir",
+              "value": "/tmp",
+              "source": "caller",
+              "message": "symbol 'temp_dir' resolved to '/tmp' from the caller"
             }
           ]
         }
@@ -632,49 +684,47 @@
           "tools": [
             {
               "inputIndex": 0,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:fetcher",
-                  "entryRevision": 1,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+              "selection": {
+                "entryId": "tool:fetcher",
+                "entryRevision": 1,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             },
             {
               "inputIndex": 1,
+              "contributes": true,
               "status": "matched_default",
-              "matches": [
-                {
-                  "entryId": "tool:locker",
-                  "entryRevision": 1,
-                  "matchedIdentities": [
-                    {
-                      "kind": "invocation-name",
-                      "strength": "weak"
-                    }
-                  ],
-                  "versionSelection": {
-                    "status": "matched_default"
-                  },
-                  "intentSelection": {
-                    "mode": "all",
-                    "selected": []
+              "selection": {
+                "entryId": "tool:locker",
+                "entryRevision": 1,
+                "matchedIdentities": [
+                  {
+                    "kind": "invocation-name",
+                    "strength": "weak"
                   }
+                ],
+                "versionSelection": {
+                  "status": "matched_default"
+                },
+                "intentSelection": {
+                  "mode": "all",
+                  "selected": []
                 }
-              ]
+              }
             }
           ],
           "resolvedDependencies": [
@@ -723,6 +773,22 @@
               "entryId": "tool:locker",
               "invocationName": "locker",
               "message": "input 1 ('locker') matched tool:locker only by invocation name (weak identity)"
+            },
+            {
+              "code": "symbol_resolved",
+              "inputIndexes": [
+                0,
+                1
+              ],
+              "entryIds": [
+                "tool:fetcher",
+                "tool:helper",
+                "tool:locker"
+              ],
+              "symbol": "git_prefix",
+              "value": "/g",
+              "source": "caller",
+              "message": "symbol 'git_prefix' resolved to '/g' from the caller"
             },
             {
               "code": "network_deny_removed",

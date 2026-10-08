@@ -13,7 +13,7 @@ use crate::policy::ContainerRequirements;
 use crate::policy_store::errors::{self, PolicyCatalogError};
 use crate::policy_store::exact::to_container_requirements;
 use crate::policy_store::model::{
-    CatalogEntryMetadata, CatalogInfo, Diagnostics, ResolveContext, ToolInputs,
+    CatalogEntryMetadata, CatalogInfo, Diagnostics, ResolveContext, ToolCandidate,
 };
 use crate::policy_store::resolver;
 
@@ -49,21 +49,27 @@ fn typed(
 /// best-effort floor that callers review and constrain before adding a
 /// command with [`crate::v1::ContainerRequest::from_requirements`]. `None`
 /// means no requirements were resolved; library failures are errors.
+///
+/// One tool is a one-element slice; `None` selects the documented context
+/// defaults (API spec §6).
 pub fn resolve_tool_requirements(
-    tools: impl Into<ToolInputs>,
-    ctx: &ResolveContext,
+    tools: &[ToolCandidate],
+    context: Option<&ResolveContext>,
 ) -> Result<Option<ContainerRequirements>, Error> {
-    typed(resolver::resolve_requirements(tools, ctx).map_err(to_error)?)
+    let default = ResolveContext::default();
+    typed(resolver::resolve_requirements(tools, context.unwrap_or(&default)).map_err(to_error)?)
 }
 
 /// [`resolve_tool_requirements`] plus per-input statuses, dependency
 /// attribution, and structured warnings from the same pass.
 pub fn resolve_tool_requirements_with_diagnostics(
-    tools: impl Into<ToolInputs>,
-    ctx: &ResolveContext,
+    tools: &[ToolCandidate],
+    context: Option<&ResolveContext>,
 ) -> Result<ToolRequirementsResolution, Error> {
+    let default = ResolveContext::default();
     let resolution =
-        resolver::resolve_requirements_with_diagnostics(tools, ctx).map_err(to_error)?;
+        resolver::resolve_requirements_with_diagnostics(tools, context.unwrap_or(&default))
+            .map_err(to_error)?;
     Ok(ToolRequirementsResolution {
         requirements: typed(resolution.requirements)?,
         diagnostics: resolution.diagnostics,
